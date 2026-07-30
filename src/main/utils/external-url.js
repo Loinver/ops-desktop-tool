@@ -1,3 +1,5 @@
+const { execFile: defaultExecFile } = require('node:child_process')
+
 const ALLOWED_EXTERNAL_PROTOCOLS = new Set(['http:', 'https:', 'mailto:'])
 const SCHEME_PATTERN = /^[a-zA-Z][a-zA-Z\d+.-]*:/
 const HTTP_SCHEME_PATTERN = /^https?:\/\//i
@@ -66,4 +68,28 @@ function normalizeExternalUrl(rawUrl) {
   return url.toString()
 }
 
-module.exports = { normalizeExternalUrl, ALLOWED_EXTERNAL_PROTOCOLS }
+/**
+ * 用系统默认应用打开已规范化的网址。
+ * macOS 上改用原生 `open`：在部分已安装 Electron 应用中，shell.openExternal 虽会
+ * resolve，却可能没有将 URL 交给默认浏览器。`open` 会直接走 Launch Services。
+ */
+function openExternalUrl(url, { shell, platform = process.platform, execFile = defaultExecFile } = {}) {
+  if (platform !== 'darwin') {
+    if (!shell || typeof shell.openExternal !== 'function') {
+      return Promise.reject(new Error('系统浏览器服务不可用'))
+    }
+    return shell.openExternal(url)
+  }
+
+  return new Promise((resolve, reject) => {
+    execFile('/usr/bin/open', [url], { timeout: 15_000 }, (error) => {
+      if (error) {
+        reject(new Error(`无法使用系统默认浏览器打开网址：${error.message}`))
+        return
+      }
+      resolve()
+    })
+  })
+}
+
+module.exports = { normalizeExternalUrl, openExternalUrl, ALLOWED_EXTERNAL_PROTOCOLS }

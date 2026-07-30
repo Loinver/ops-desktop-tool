@@ -27,3 +27,33 @@ test('快捷启动拒绝危险协议和无效网址', () => {
   assert.throws(() => normalizeExternalUrl('https://'), /网址格式无效|网址缺少域名/)
   assert.throws(() => normalizeExternalUrl(''), /请输入网址/)
 })
+
+test('macOS 使用系统 open 打开网址，避免 Electron shell 无响应', async () => {
+  const { openExternalUrl } = require('../src/main/utils/external-url')
+  let received
+  await openExternalUrl('https://example.com/', {
+    platform: 'darwin',
+    execFile: (command, args, options, callback) => {
+      received = { command, args, options }
+      callback(null)
+    },
+  })
+
+  assert.deepEqual(received, {
+    command: '/usr/bin/open',
+    args: ['https://example.com/'],
+    options: { timeout: 15_000 },
+  })
+})
+
+test('非 macOS 仍通过 Electron shell 打开网址', async () => {
+  const { openExternalUrl } = require('../src/main/utils/external-url')
+  let received = ''
+  await openExternalUrl('https://example.com/', {
+    platform: 'win32',
+    shell: {
+      openExternal: async (url) => { received = url },
+    },
+  })
+  assert.equal(received, 'https://example.com/')
+})

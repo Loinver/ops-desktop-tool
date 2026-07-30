@@ -3,7 +3,7 @@ const path = require('node:path')
 const { app, ipcMain, shell, BrowserWindow, dialog } = require('electron')
 const { IPC_CHANNELS } = require('../../shared/ipc-channels')
 const { readJsonFile, writeJsonFile } = require('../utils/json-store')
-const { normalizeExternalUrl } = require('../utils/external-url')
+const { normalizeExternalUrl, openExternalUrl } = require('../utils/external-url')
 const { parseWebsiteBatch, makeWebsiteExport } = require('../utils/quicklaunch-websites')
 const { readQuickLaunchState, makeQuickLaunchState } = require('../utils/quicklaunch-storage')
 
@@ -36,7 +36,7 @@ function registerQuickLaunchHandlers() {
       // URL 类型使用系统默认浏览器（支持直接输入 example.com）。
       if (item.type === 'url') {
         const url = normalizeExternalUrl(item.target)
-        await shell.openExternal(url)
+        await openExternalUrl(url, { shell })
         return { ok: true, target: url }
       }
 
@@ -73,7 +73,7 @@ function registerQuickLaunchHandlers() {
         const url = normalizeExternalUrl(item.target)
         if (targets.has(url)) continue
         targets.add(url)
-        await shell.openExternal(url)
+        await openExternalUrl(url, { shell })
         opened += 1
       } catch (error) {
         errors.push({
