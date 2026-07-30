@@ -1,0 +1,81 @@
+{
+  "name": "ops-desktop-tool",
+  "version": "1.0.0",
+  "description": "电脑管理工具 - 系统运维助手",
+  "main": "src/main/main.js",
+  "scripts": {
+    "dev": "vite",
+    "dev:all": "concurrently \"vite\" \"electron .\"",
+    "build": "vite build",
+    "start": "electron .",
+    "preview": "vite preview",
+    "test": "node --test scripts/*.test.cjs && node scripts/check-port-parser.js",
+    "check": "pnpm test && pnpm build",
+    "test:sftp": "node --test scripts/sftp-deploy-safety.test.cjs",
+    "electron:build": "vite build && electron-builder",
+    "electron:build:mac": "vite build && electron-builder --mac",
+    "electron:build:win": "vite build && electron-builder --win",
+    "electron:build:linux": "vite build && electron-builder --linux"
+  },
+  "keywords": [
+    "electron",
+    "vue",
+    "node",
+    "ports",
+    "system-tools"
+  ],
+  "author": "",
+  "license": "MIT",
+  "packageManager": "pnpm@11.5.2",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "build": {
+    "appId": "com.ops-desktop-tool",
+    "productName": "Ops Desktop",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "src/main/**/*",
+      "src/shared/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ]
+    },
+    "npmRebuild": false
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.1.2",
+    "concurrently": "^10.0.3",
+    "electron": "^31.7.7",
+    "electron-builder": "^25.1.8",
+    "vite": "^5.4.0"
+  },
+  "dependencies": {
+    "pinia": "^3.0.4",
+    "ssh2": "^1.17.0",
+    "ssh2-sftp-client": "^11.0.0",
+    "tdesign-vue-next": "^1.20.1",
+    "vue": "^3.4.38",
+    "vue-router": "^4.6.4"
+  }
+}

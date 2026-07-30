@@ -1,0 +1,220 @@
+:root {
+  /* 主色调 - 更现代的蓝紫渐变 */
+  --primary: #5b6abf;
+  --primary-hover: #4a59ae;
+  --primary-light: #eef0ff;
+  --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+
+  /* 语义色 */
+  --success: #10b981;
+  --success-light: #ecfdf5;
+  --warning: #f59e0b;
+  --warning-light: #fffbeb;
+  --danger: #ef4444;
+  --danger-light: #fef2f2;
+  --info: #3b82f6;
+  --info-light: #eff6ff;
+
+  /* 中性色 */
+  --bg: #f8fafc;
+  --bg-elevated: #ffffff;
+  --card-bg: #ffffff;
+  --text: #1e293b;
+  --text-secondary: #64748b;
+  --text-muted: #94a3b8;
+  --border: #e2e8f0;
+  --border-light: #f1f5f9;
+  --divider: #e2e8f0;
+
+  /* 侧边栏 */
+  --sidebar-bg: #0f172a;
+  --sidebar-hover: rgba(255, 255, 255, 0.06);
+  --sidebar-active: rgba(99, 102, 241, 0.2);
+  --sidebar-text: rgba(255, 255, 255, 0.65);
+  --sidebar-text-active: #ffffff;
+  --sidebar-width: 240px;
+
+  /* 圆角 */
+  --radius-xs: 6px;
+  --radius: 10px;
+  --radius-sm: 8px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+
+  /* 阴影 - 更柔和 */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
+
+  /* 字体 */
+  --font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'PingFang SC', 'Helvetica Neue', 'Microsoft YaHei', sans-serif;
+  --font-mono: 'SF Mono', 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+
+  /* 间距 */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+  --spacing-2xl: 48px;
+
+  /* 页面排版 */
+  --page-padding-y: 28px;
+  --page-padding-x: 32px;
+  --page-header-gap: 24px;
+  --page-title-size: 24px;
+  --page-title-line-height: 32px;
+  --page-title-letter-spacing: -0.5px;
+  --page-desc-size: 13px;
+  --page-desc-line-height: 20px;
+  --header-actions-gap: 8px;
+  --header-control-height: 40px;
+  --header-control-font-size: 14px;
+  --content-gap: 16px;
+  --panel-padding: 20px;
+  --section-title-size: 16px;
+  --section-title-line-height: 24px;
+
+  /* 过渡 */
+  --transition-fast: 0.15s ease;
+  --transition: 0.2s ease;
+  --transition-slow: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-family);
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 滚动条 - 更精致 */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* 通用工具类 */
+.mono {
+  font-family: var(--font-mono);
+}
+
+.ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* TDesign 全局覆盖 */
+:root {
+  --td-brand-color: var(--primary);
+  --td-brand-color-hover: var(--primary-hover);
+  --td-brand-color-focus: var(--primary);
+  --td-brand-color-active: var(--primary-hover);
+  --td-font-size-body-small: 13px;
+  --td-font-size-body-medium: 14px;
+  --td-radius-default: var(--radius);
+  --td-radius-medium: var(--radius);
+  --td-radius-large: var(--radius-lg);
+}
+
+/* TDesign Card 覆盖 */
+.t-card {
+  border-radius: var(--radius-lg) !important;
+  border: 1px solid var(--border-light) !important;
+  box-shadow: var(--shadow-xs) !important;
+  transition: all var(--transition) !important;
+}
+
+.t-card:hover {
+  box-shadow: var(--shadow-md) !important;
+}
+
+/* TDesign Button 覆盖 */
+.t-button {
+  border-radius: var(--radius-sm) !important;
+  font-weight: 500 !important;
+}
+
+/* TDesign Input 覆盖 */
+.t-input__inner {
+  border-radius: var(--radius-sm) !important;
+}
+
+/* TDesign Tag 覆盖 */
+.t-tag {
+  border-radius: var(--radius-xs) !important;
+  font-weight: 500 !important;
+}
+
+/* TDesign Table 覆盖 */
+.t-table {
+  border-radius: var(--radius-lg) !important;
+  overflow: hidden;
+}
+
+.t-table th {
+  background: #f8fafc !important;
+  font-weight: 600 !important;
+  color: var(--text-secondary) !important;
+  font-size: 12px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.5px !important;
+}
+
+/* TDesign Empty 覆盖 */
+.t-empty__image {
+  font-size: 64px !important;
+}
+
+/* TDesign Menu 覆盖 */
+.t-menu--dark {
+  background: transparent !important;
+}
+
+.t-menu-item {
+  border-radius: var(--radius-sm) !important;
+  margin: 2px 8px !important;
+  transition: all var(--transition) !important;
+}
+
+.t-menu-item:hover {
+  background: var(--sidebar-hover) !important;
+}
+
+.t-menu-item--active {
+  background: var(--sidebar-active) !important;
+  color: var(--sidebar-text-active) !important;
+}
+
+/* TDesign Breadcrumb 覆盖 */
+.t-breadcrumb__item {
+  cursor: pointer !important;
+}
+
+.t-breadcrumb__item:hover .t-breadcrumb__inner {
+  color: var(--primary) !important;
+}

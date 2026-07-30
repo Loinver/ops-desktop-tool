@@ -1,0 +1,190 @@
+const path = require('node:path')
+const crypto = require('node:crypto')
+const { app, safeStorage } = require('electron')
+const { readJsonFile, writeJsonFile } = require('./json-store')
+const { encryptSecret, maskSecret, readSecretField } = require('./secure-secret')
+const { DEFAULT_RELEASE_IGNORE_RULES, normalizeRuleLines } = require('./release-ignore')
+
+const MAX_RELEASE_HISTORY = 100
+
+function profilesPath() {
+  return path.join(app.getPath('userData'), 'release-profiles.json')
+}
+
+function historyPath() {
+  return path.join(app.getPath('userData'), 'release-history.json')
+}
+
+function normalizeProfileRecord(profile = {}) {
+  return {
+    id: String(profile.id || crypto.randomUUID()),
+    name: String(profile.name || '默认环境').trim().slice(0, 40) || '默认环境',
+    host: String(profile.host || '').trim().slice(0, 255),
+    port: Math.min(65535, Math.max(1, Number(profile.port) || 22)),
+    username: String(profile.username || '').trim().slice(0, 128),
+    passwordEncrypted: String(profile.passwordEncrypted || ''),
+    localDir: String(profile.localDir || '').trim().slice(0, 4096),
+    remoteDir: String(profile.remoteDir || '').trim().slice(0, 4096),
+    ignoreRules: normalizeRuleLines(profile.ignoreRules?.length ? profile.ignoreRules : DEFAULT_RELEASE_IGNORE_RULES),
+    createdAt: Number(profile.createdAt) || Date.now(),
+    updatedAt: Number(profile.updatedAt) || Date.now(),
+  }
+}
+
+function loadReleaseProfileState() {
+  const stored = readJsonFile(profilesPath(), { version: 1, activeProfileId: '', profiles: [] })
+  const profiles = Array.isArray(stored?.profiles) ? stored.profiles.map(normalizeProfileRecord) : []
+  const activeProfileId = profiles.some(item => item.id === stored?.activeProfileId)
+    ? stored.activeProfileId
+    : profiles[0]?.id || ''
+  return { version: 1, activeProfileId, profiles }
+}
+
+function saveReleaseProfileState(state) {
+  return writeJsonFile(profilesPath(), {
+    version: 1,
+    activeProfileId: state.activeProfileId || '',
+    profiles: state.profiles.map(normalizeProfileRecord),
+  })
+}
+
+function readProfilePassword(profile) {
+  if (!profile) return ''
+  return readSecretField({
+    safeStorage,
+    record: profile,
+    encryptedKey: 'passwordEncrypted',
+    legacyKey: 'password',
+  }).value
+}
+
+function safeProfile(profile) {
+  let password = ''
+  try { password = readProfilePassword(profile) } catch {}
+  const { passwordEncrypted, password: _legacyPassword, ...rest } = profile
+  return {
+    ...rest,
+    hasPassword: Boolean(password || passwordEncrypted),
+    passwordMasked: password ? maskSecret(password) : '••••••••',
+  }
+}
+
+function listReleaseProfiles() {
+  const state = loadReleaseProfileState()
+  return {
+    activeProfileId: state.activeProfileId,
+    profiles: state.profiles.map(safeProfile),
+  }
+}
+
+function getActiveReleaseProfile({ includePassword = false } = {}) {
+  const state = loadReleaseProfileState()
+  const profile = state.profiles.find(item => item.id === state.activeProfileId) || null
+  if (!profile) return null
+  return includePassword ? { ...profile, password: readProfilePassword(profile) } : safeProfile(profile)
+}
+
+function saveReleaseProfile(input = {}) {
+  const state = loadReleaseProfileState()
+  const existing = state.profiles.find(item => item.id === input.id)
+  const suppliedPassword = String(input.password || '')
+  let passwordEncrypted = existing?.passwordEncrypted || ''
+  if (input.clearPassword) passwordEncrypted = ''
+  else if (suppliedPassword) passwordEncrypted = encryptSecret(safeStorage, suppliedPassword)
+
+  const profile = normalizeProfileRecord({
+    ...existing,
+    ...input,
+    id: existing?.id || input.id || crypto.randomUUID(),
+    passwordEncrypted,
+    createdAt: existing?.createdAt || Date.now(),
+    updatedAt: Date.now(),
+  })
+  delete profile.password
+
+  const index = state.profiles.findIndex(item => item.id === profile.id)
+  if (index >= 0) state.profiles[index] = profile
+  else state.profiles.push(profile)
+  state.activeProfileId = profile.id
+  if (!saveReleaseProfileState(state)) throw new Error('保存发布环境失败')
+  return safeProfile(profile)
+}
+
+function activateReleaseProfile(profileId) {
+  const state = loadReleaseProfileState()
+  if (!state.profiles.some(item => item.id === profileId)) throw new Error('发布环境不存在')
+  state.activeProfileId = profileId
+  if (!saveReleaseProfileState(state)) throw new Error('切换发布环境失败')
+  return safeProfile(state.profiles.find(item => item.id === profileId))
+}
+
+function deleteReleaseProfile(profileId) {
+  const state = loadReleaseProfileState()
+  if (state.profiles.length <= 1) throw new Error('至少保留一个发布环境')
+  const next = state.profiles.filter(item => item.id !== profileId)
+  if (next.length === state.profiles.length) throw new Error('发布环境不存在')
+  state.profiles = next
+  if (state.activeProfileId === profileId) state.activeProfileId = next[0].id
+  if (!saveReleaseProfileState(state)) throw new Error('删除发布环境失败')
+  return listReleaseProfiles()
+}
+
+function filterReleaseHistoryByProfile(history, profileId) {
+  const normalizedProfileId = String(profileId || '').trim()
+  if (!normalizedProfileId) return history
+  return history.filter(item => String(item?.profileId || '') === normalizedProfileId)
+}
+
+function loadReleaseHistory({ profileId } = {}) {
+  const value = readJsonFile(historyPath(), [])
+  const history = Array.isArray(value) ? value.slice(0, MAX_RELEASE_HISTORY) : []
+  return filterReleaseHistoryByProfile(history, profileId)
+}
+
+function appendReleaseHistory(record = {}) {
+  const history = loadReleaseHistory()
+  const entry = {
+    id: String(record.id || crypto.randomUUID()),
+    profileId: String(record.profileId || ''),
+    profileName: String(record.profileName || ''),
+    action: record.action === 'rollback' ? 'rollback' : 'deploy',
+    status: ['success', 'failed', 'rolled-back'].includes(record.status) ? record.status : 'failed',
+    label: String(record.label || '发布任务').slice(0, 200),
+    remoteDir: String(record.remoteDir || ''),
+    archiveRoots: Array.isArray(record.archiveRoots) ? record.archiveRoots.map(String).slice(0, 100) : [],
+    backupPath: String(record.backupPath || ''),
+    sourceReleaseId: String(record.sourceReleaseId || ''),
+    entryCount: Number(record.entryCount || 0),
+    zipSize: Number(record.zipSize || 0),
+    message: String(record.message || '').slice(0, 1000),
+    startedAt: Number(record.startedAt) || Date.now(),
+    finishedAt: Number(record.finishedAt) || Date.now(),
+  }
+  history.unshift(entry)
+  if (!writeJsonFile(historyPath(), history.slice(0, MAX_RELEASE_HISTORY))) {
+    throw new Error('保存发布历史失败')
+  }
+  return entry
+}
+
+function markReleaseRolledBack(releaseId) {
+  const history = loadReleaseHistory()
+  const target = history.find(item => item.id === releaseId)
+  if (!target) throw new Error('发布记录不存在')
+  target.status = 'rolled-back'
+  target.rolledBackAt = Date.now()
+  if (!writeJsonFile(historyPath(), history)) throw new Error('更新发布历史失败')
+  return target
+}
+
+module.exports = {
+  listReleaseProfiles,
+  getActiveReleaseProfile,
+  saveReleaseProfile,
+  activateReleaseProfile,
+  deleteReleaseProfile,
+  loadReleaseHistory,
+  appendReleaseHistory,
+  markReleaseRolledBack,
+  __testables: { filterReleaseHistoryByProfile },
+}
