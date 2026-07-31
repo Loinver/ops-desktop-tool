@@ -8,8 +8,14 @@ const {
   createBackupArchive,
   getBackupOverview,
   inspectBackupArchive,
+  listRestorePoints,
+  readAutoBackupHistory,
+  readAutoBackupSettings,
   restoreBackupArchive,
+  restoreRestorePoint,
+  safeAutoBackupSettings,
 } = require('../utils/app-data-backup')
+const { runAutoBackupNow, saveAutoBackupSchedule } = require('../ops-auto-backup-scheduler')
 
 const pendingImports = new Map()
 const IMPORT_TTL_MS = 10 * 60 * 1000
@@ -38,6 +44,29 @@ function cleanupPendingImports() {
 
 function registerDataBackupHandlers() {
   ipcMain.handle(IPC_CHANNELS.DATA_BACKUP_OVERVIEW, async () => getBackupOverview(app.getPath('userData')))
+
+  ipcMain.handle(IPC_CHANNELS.DATA_BACKUP_AUTO_GET, async () => (
+    safeAutoBackupSettings(readAutoBackupSettings(app.getPath('userData')))
+  ))
+
+  ipcMain.handle(IPC_CHANNELS.DATA_BACKUP_AUTO_SAVE, async (_event, options = {}) => {
+    const settings = saveAutoBackupSchedule(options)
+    return { ok: true, settings }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.DATA_BACKUP_AUTO_RUN, async () => runAutoBackupNow())
+
+  ipcMain.handle(IPC_CHANNELS.DATA_BACKUP_HISTORY_GET, async () => (
+    readAutoBackupHistory(app.getPath('userData'))
+  ))
+
+  ipcMain.handle(IPC_CHANNELS.DATA_BACKUP_RESTORE_POINTS_GET, async () => (
+    listRestorePoints(app.getPath('userData'))
+  ))
+
+  ipcMain.handle(IPC_CHANNELS.DATA_BACKUP_RESTORE_POINT, async (_event, options = {}) => (
+    restoreRestorePoint({ userDataPath: app.getPath('userData'), id: options.id })
+  ))
 
   ipcMain.handle(IPC_CHANNELS.DATA_BACKUP_EXPORT, async (_event, options = {}) => {
     const archive = createBackupArchive({

@@ -97,3 +97,131 @@ test('恢复会替换备份内文件、保留其他数据并创建恢复点', ()
   const point = fs.readdirSync(restoreRoot)[0]
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(restoreRoot, point, 'ops-events.json'), 'utf8')), [{ id: 'before-restore' }])
 })
+
+test('自动备份计划只暴露安全状态，并校验启用配置', () => {
+  const root = tempDir()
+  const outputDirectory = tempDir()
+  const {
+    readAutoBackupSettings,
+    safeAutoBackupSettings,
+    saveAutoBackupSettings,
+  } = require('../src/main/utils/app-data-backup')
+
+  assert.throws(() => saveAutoBackupSettings({
+    userDataPath: root,
+    input: { enabled: true, outputDirectory, categories: ['operations'] },
+    encryptPassword: value => `enc:${value}`,
+  }), /设置备份密码/)
+
+  const settings = saveAutoBackupSettings({
+    userDataPath: root,
+    input: {
+      enabled: true,
+      outputDirectory,
+      interval: 'daily',
+      retentionCount: 99,
+      categories: ['operations'],
+      password: 'automatic-password',
+    },
+    encryptPassword: value => `enc:${value}`,
+    now: 1_000,
+  })
+
+  assert.deepEqual(settings, {
+    enabled: true,
+    outputDirectory,
+    interval: 'daily',
+    retentionCount: 30,
+    categories: ['operations'],
+    hasPassword: true,
+    lastRunAt: 0,
+    nextRunAt: 1_000 + 24 * 60 * 60 * 1_000,
+  })
+  assert.equal('passwordEncrypted' in settings, false)
+  assert.match(readAutoBackupSettings(root).passwordEncrypted, /^enc:/)
+  assert.deepEqual(safeAutoBackupSettings(readAutoBackupSettings(root)), settings)
+})
+
+test('自动备份按保留策略清理旧文件并记录执行历史', () => {
+  const root = tempDir()
+  const outputDirectory = tempDir()
+  const {
+    readAutoBackupHistory,
+    readAutoBackupSettings,
+    runAutoBackup,
+    saveAutoBackupSettings,
+  } = require('../src/main/utils/app-data-backup')
+  writeJson(root, 'ops-events.json', [{ id: 'auto-backup' }])
+  saveAutoBackupSettings({
+    userDataPath: root,
+    input: {
+      enabled: true,
+      outputDirectory,
+      interval: 'weekly',
+      retentionCount: 1,
+      categories: ['operations'],
+      password: 'automatic-password',
+    },
+    encryptPassword: value => `enc:${value}`,
+    now: 1_000,
+  })
+
+  const first = runAutoBackup({
+    userDataPath: root,
+    decryptPassword: value => value.slice(4),
+    now: 2_000,
+    iterations: 1_000,
+  })
+  const second = runAutoBackup({
+    userDataPath: root,
+    decryptPassword: value => value.slice(4),
+    now: 3_000,
+    iterations: 1_000,
+  })
+
+  assert.equal(fs.existsSync(path.join(outputDirectory, first.entry.fileName)), false)
+  assert.equal(fs.existsSync(path.join(outputDirectory, second.entry.fileName)), true)
+  const history = readAutoBackupHistory(root)
+  assert.equal(history.length, 1)
+  assert.equal(history[0].fileName, second.entry.fileName)
+  assert.equal(history[0].status, 'success')
+  const settings = readAutoBackupSettings(root)
+  assert.equal(settings.lastRunAt, 3_000)
+  assert.equal(settings.nextRunAt, 3_000 + 7 * 24 * 60 * 60 * 1_000)
+})
+
+test('恢复点可回滚当前数据，并在回滚前创建新的恢复点', () => {
+  const source = tempDir()
+  const target = tempDir()
+  const {
+    createBackupArchive: createArchive,
+    listRestorePoints,
+    restoreBackupArchive: restoreArchive,
+    restoreRestorePoint,
+  } = require('../src/main/utils/app-data-backup')
+  writeJson(source, 'ops-events.json', [{ id: 'from-archive' }])
+  writeJson(target, 'ops-events.json', [{ id: 'before-import' }])
+  const archive = createArchive({
+    userDataPath: source,
+    password: 'restore-point-password',
+    categories: ['operations'],
+    iterations: 1_000,
+  })
+  restoreArchive({ userDataPath: target, archive, password: 'restore-point-password', now: 4_000 })
+  const originalPoint = listRestorePoints(target)[0]
+  assert.ok(originalPoint)
+
+  writeJson(target, 'ops-events.json', [{ id: 'current-before-rollback' }])
+  const result = restoreRestorePoint({ userDataPath: target, id: originalPoint.id, now: 5_000 })
+
+  assert.equal(result.restartRequired, true)
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(target, 'ops-events.json'), 'utf8')), [{ id: 'before-import' }])
+  const points = listRestorePoints(target)
+  assert.equal(points.length, 2)
+  const reversiblePoint = points.find(point => point.id !== originalPoint.id)
+  assert.ok(reversiblePoint)
+  assert.deepEqual(
+    JSON.parse(fs.readFileSync(path.join(target, 'ops-backup-restore-points', reversiblePoint.id, 'ops-events.json'), 'utf8')),
+    [{ id: 'current-before-rollback' }],
+  )
+})

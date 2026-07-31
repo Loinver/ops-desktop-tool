@@ -305,7 +305,300 @@ function restoreBackupArchive({ userDataPath, archive, password, now = Date.now(
   }
 }
 
+
+const AUTO_BACKUP_SETTINGS_FILE = 'ops-auto-backup-settings.json'
+const AUTO_BACKUP_HISTORY_FILE = 'ops-auto-backup-history.json'
+const AUTO_BACKUP_DIRECTORY_NAME = 'ops-auto-backups'
+const AUTO_BACKUP_HISTORY_LIMIT = 50
+const AUTO_BACKUP_INTERVALS = Object.freeze({ daily: 24 * 60 * 60 * 1000, weekly: 7 * 24 * 60 * 60 * 1000 })
+
+function autoBackupSettingsPath(userDataPath) { return path.join(userDataPath, AUTO_BACKUP_SETTINGS_FILE) }
+function autoBackupHistoryPath(userDataPath) { return path.join(userDataPath, AUTO_BACKUP_HISTORY_FILE) }
+function restorePointsPath(userDataPath) { return path.join(userDataPath, 'ops-backup-restore-points') }
+
+function defaultAutoBackupSettings() {
+  return {
+    enabled: false,
+    outputDirectory: '',
+    interval: 'weekly',
+    retentionCount: 7,
+    categories: BACKUP_GROUPS.map(group => group.id),
+    passwordEncrypted: '',
+    lastRunAt: 0,
+    nextRunAt: 0,
+  }
+}
+
+function clampInteger(value, fallback, min, max) {
+  const number = Number(value)
+  if (!Number.isFinite(number)) return fallback
+  return Math.min(max, Math.max(min, Math.round(number)))
+}
+
+function normalizeAutoBackupSettings(value = {}) {
+  const defaults = defaultAutoBackupSettings()
+  const interval = Object.hasOwn(AUTO_BACKUP_INTERVALS, value.interval) ? value.interval : defaults.interval
+  const categories = Array.isArray(value.categories)
+    ? [...new Set(value.categories.map(item => String(item || '')).filter(item => BACKUP_GROUPS.some(group => group.id === item)))]
+    : defaults.categories
+  return {
+    enabled: Boolean(value.enabled),
+    outputDirectory: typeof value.outputDirectory === 'string' ? value.outputDirectory.slice(0, 4096) : '',
+    interval,
+    retentionCount: clampInteger(value.retentionCount, defaults.retentionCount, 1, 30),
+    categories,
+    passwordEncrypted: typeof value.passwordEncrypted === 'string' ? value.passwordEncrypted.slice(0, 16 * 1024) : '',
+    lastRunAt: Number(value.lastRunAt) || 0,
+    nextRunAt: Number(value.nextRunAt) || 0,
+  }
+}
+
+function readAutoBackupSettings(userDataPath) {
+  try {
+    if (!fs.existsSync(autoBackupSettingsPath(userDataPath))) return defaultAutoBackupSettings()
+    return normalizeAutoBackupSettings(JSON.parse(fs.readFileSync(autoBackupSettingsPath(userDataPath), 'utf8')))
+  } catch {
+    return defaultAutoBackupSettings()
+  }
+}
+
+function safeAutoBackupSettings(settings) {
+  const normalized = normalizeAutoBackupSettings(settings)
+  return {
+    enabled: normalized.enabled,
+    outputDirectory: normalized.outputDirectory,
+    interval: normalized.interval,
+    retentionCount: normalized.retentionCount,
+    categories: normalized.categories,
+    hasPassword: Boolean(normalized.passwordEncrypted),
+    lastRunAt: normalized.lastRunAt,
+    nextRunAt: normalized.nextRunAt,
+  }
+}
+
+function assertOutputDirectory(directory) {
+  const resolved = path.resolve(String(directory || '').trim().slice(0, 4096))
+  if (!resolved || resolved === path.parse(resolved).root) throw new Error('请选择一个专用的自动备份目录')
+  let stat
+  try { stat = fs.statSync(resolved) } catch { throw new Error('自动备份目录不存在或无法访问') }
+  if (!stat.isDirectory()) throw new Error('自动备份位置必须是目录')
+  return resolved
+}
+
+function saveAutoBackupSettings({ userDataPath, input = {}, encryptPassword, now = Date.now() }) {
+  const current = readAutoBackupSettings(userDataPath)
+  const suppliedPassword = typeof input.password === 'string' ? input.password : ''
+  const next = normalizeAutoBackupSettings({
+    ...current,
+    ...(Object.hasOwn(input, 'enabled') ? { enabled: input.enabled } : {}),
+    ...(Object.hasOwn(input, 'outputDirectory') ? { outputDirectory: input.outputDirectory } : {}),
+    ...(Object.hasOwn(input, 'interval') ? { interval: input.interval } : {}),
+    ...(Object.hasOwn(input, 'retentionCount') ? { retentionCount: input.retentionCount } : {}),
+    ...(Object.hasOwn(input, 'categories') ? { categories: input.categories } : {}),
+  })
+  if (suppliedPassword) {
+    assertPassword(suppliedPassword)
+    if (typeof encryptPassword !== 'function') throw new Error('当前环境无法安全保存自动备份密码')
+    next.passwordEncrypted = String(encryptPassword(suppliedPassword) || '')
+  }
+  if (next.enabled) {
+    next.outputDirectory = assertOutputDirectory(next.outputDirectory)
+    if (!next.categories.length) throw new Error('请至少选择一个自动备份分类')
+    if (!next.passwordEncrypted) throw new Error('启用自动备份前，请设置备份密码')
+    next.nextRunAt = (Number(now) || Date.now()) + AUTO_BACKUP_INTERVALS[next.interval]
+  } else {
+    next.nextRunAt = 0
+  }
+  fs.mkdirSync(userDataPath, { recursive: true })
+  writeAtomic(autoBackupSettingsPath(userDataPath), JSON.stringify(next, null, 2))
+  return safeAutoBackupSettings(next)
+}
+
+function normalizeAutoBackupHistory(value) {
+  if (!Array.isArray(value)) return []
+  return value.map((item) => ({
+    id: String(item?.id || '').slice(0, 80),
+    createdAt: Number(item?.createdAt) || 0,
+    fileName: path.basename(String(item?.fileName || '')).slice(0, 255),
+    outputDirectory: typeof item?.outputDirectory === 'string' ? item.outputDirectory.slice(0, 4096) : '',
+    sizeBytes: Math.max(0, Number(item?.sizeBytes) || 0),
+    status: item?.status === 'failed' ? 'failed' : 'success',
+    error: item?.status === 'failed' ? String(item?.error || '自动备份失败').slice(0, 280) : '',
+    categories: Array.isArray(item?.categories) ? item.categories.filter(category => BACKUP_GROUPS.some(group => group.id === category)) : [],
+  })).filter(item => item.id && item.createdAt && item.outputDirectory)
+}
+
+function readAutoBackupHistory(userDataPath) {
+  try {
+    if (!fs.existsSync(autoBackupHistoryPath(userDataPath))) return []
+    return normalizeAutoBackupHistory(JSON.parse(fs.readFileSync(autoBackupHistoryPath(userDataPath), 'utf8')))
+  } catch {
+    return []
+  }
+}
+
+function writeAutoBackupHistory(userDataPath, entries) {
+  writeAtomic(autoBackupHistoryPath(userDataPath), JSON.stringify(normalizeAutoBackupHistory(entries).slice(0, AUTO_BACKUP_HISTORY_LIMIT), null, 2))
+}
+
+function safeAutoBackupFilePath(outputDirectory, fileName) {
+  const directory = assertOutputDirectory(outputDirectory)
+  const safeName = path.basename(String(fileName || ''))
+  if (!/^ops-desktop-auto-[0-9TZ-]+-[a-f0-9]{8}\.opsbackup$/.test(safeName)) throw new Error('自动备份文件名无效')
+  const result = path.resolve(directory, safeName)
+  if (path.dirname(result) !== directory) throw new Error('自动备份文件路径无效')
+  return result
+}
+
+function compactTimestamp(value) {
+  return new Date(value).toISOString().replace(/[:.]/g, '-').replace(/Z$/, 'Z')
+}
+
+function pruneAutoBackups({ userDataPath, outputDirectory, retentionCount }) {
+  const directory = assertOutputDirectory(outputDirectory)
+  const history = readAutoBackupHistory(userDataPath)
+  const active = []
+  const removable = []
+  for (const entry of history) {
+    if (path.resolve(entry.outputDirectory) !== directory || entry.status !== 'success') {
+      active.push(entry)
+      continue
+    }
+    if (active.filter(item => path.resolve(item.outputDirectory) === directory && item.status === 'success').length < retentionCount) active.push(entry)
+    else removable.push(entry)
+  }
+  for (const entry of removable) {
+    try {
+      const filePath = safeAutoBackupFilePath(directory, entry.fileName)
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
+    } catch {}
+  }
+  writeAutoBackupHistory(userDataPath, active)
+  return active
+}
+
+function updateAutoBackupTiming(userDataPath, settings, now) {
+  const next = normalizeAutoBackupSettings({
+    ...settings,
+    lastRunAt: Number(now) || Date.now(),
+    nextRunAt: (Number(now) || Date.now()) + AUTO_BACKUP_INTERVALS[settings.interval],
+  })
+  writeAtomic(autoBackupSettingsPath(userDataPath), JSON.stringify(next, null, 2))
+  return next
+}
+
+function runAutoBackup({ userDataPath, decryptPassword, appVersion = '', now = Date.now(), iterations = DEFAULT_ITERATIONS }) {
+  const settings = readAutoBackupSettings(userDataPath)
+  if (!settings.enabled) throw new Error('自动备份尚未启用')
+  settings.outputDirectory = assertOutputDirectory(settings.outputDirectory)
+  if (!settings.passwordEncrypted || typeof decryptPassword !== 'function') throw new Error('自动备份密码不可用，请重新设置')
+  const password = decryptPassword(settings.passwordEncrypted)
+  assertPassword(password)
+  const archive = createBackupArchive({ userDataPath, password, categories: settings.categories, appVersion, now, iterations })
+  const fileName = `ops-desktop-auto-${compactTimestamp(now)}-${crypto.randomBytes(4).toString('hex')}.opsbackup`
+  const filePath = safeAutoBackupFilePath(settings.outputDirectory, fileName)
+  fs.writeFileSync(filePath, archive, { mode: 0o600 })
+  try { fs.chmodSync(filePath, 0o600) } catch {}
+
+  const entry = {
+    id: crypto.randomUUID(),
+    createdAt: Number(now) || Date.now(),
+    fileName,
+    outputDirectory: settings.outputDirectory,
+    sizeBytes: archive.length,
+    status: 'success',
+    categories: settings.categories,
+  }
+  writeAutoBackupHistory(userDataPath, [entry, ...readAutoBackupHistory(userDataPath)])
+  pruneAutoBackups({ userDataPath, outputDirectory: settings.outputDirectory, retentionCount: settings.retentionCount })
+  const updated = updateAutoBackupTiming(userDataPath, settings, now)
+  return { entry, settings: safeAutoBackupSettings(updated) }
+}
+
+function recordAutoBackupFailure({ userDataPath, error, now = Date.now() }) {
+  const settings = readAutoBackupSettings(userDataPath)
+  if (!settings.enabled || !settings.outputDirectory) return safeAutoBackupSettings(settings)
+  const entry = {
+    id: crypto.randomUUID(),
+    createdAt: Number(now) || Date.now(),
+    fileName: '',
+    outputDirectory: settings.outputDirectory,
+    sizeBytes: 0,
+    status: 'failed',
+    error: String(error?.message || error || '自动备份失败').slice(0, 280),
+    categories: settings.categories,
+  }
+  writeAutoBackupHistory(userDataPath, [entry, ...readAutoBackupHistory(userDataPath)])
+  return safeAutoBackupSettings(updateAutoBackupTiming(userDataPath, settings, now))
+}
+
+function listRestorePoints(userDataPath) {
+  const root = restorePointsPath(userDataPath)
+  if (!fs.existsSync(root)) return []
+  return fs.readdirSync(root, { withFileTypes: true })
+    .filter(item => item.isDirectory() && /^\d+-[a-f0-9]{8}$/.test(item.name))
+    .map((item) => {
+      try {
+        const manifest = JSON.parse(fs.readFileSync(path.join(root, item.name, 'manifest.json'), 'utf8'))
+        const files = Array.isArray(manifest.files) ? manifest.files.filter(fileName => FILE_TO_GROUP.has(fileName)) : []
+        const groups = [...new Set(files.map(fileName => FILE_TO_GROUP.get(fileName)))].map(id => BACKUP_GROUPS.find(group => group.id === id)?.label).filter(Boolean)
+        return {
+          id: item.name,
+          createdAt: Number(manifest.createdAt) || 0,
+          sourceCreatedAt: Number(manifest.sourceCreatedAt) || 0,
+          fileCount: files.length,
+          groups,
+        }
+      } catch {
+        return null
+      }
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.createdAt - a.createdAt)
+}
+
+function createRestorePoint(userDataPath, fileNames, { now = Date.now(), sourceCreatedAt = 0 } = {}) {
+  const root = restorePointsPath(userDataPath)
+  const point = path.join(root, `${Number(now) || Date.now()}-${crypto.randomBytes(4).toString('hex')}`)
+  const files = []
+  fs.mkdirSync(point, { recursive: true, mode: 0o700 })
+  for (const fileName of fileNames) {
+    if (!FILE_TO_GROUP.has(fileName)) continue
+    const targetPath = path.join(userDataPath, fileName)
+    if (!fs.existsSync(targetPath)) continue
+    const content = fs.readFileSync(targetPath, 'utf8')
+    assertJsonContent(content, fileName)
+    fs.copyFileSync(targetPath, path.join(point, fileName))
+    try { fs.chmodSync(path.join(point, fileName), 0o600) } catch {}
+    files.push(fileName)
+  }
+  writeAtomic(path.join(point, 'manifest.json'), JSON.stringify({ createdAt: Number(now) || Date.now(), sourceCreatedAt, files }, null, 2))
+  pruneRestorePoints(root)
+  return point
+}
+
+function restoreRestorePoint({ userDataPath, id, now = Date.now() }) {
+  const pointId = String(id || '')
+  if (!/^\d+-[a-f0-9]{8}$/.test(pointId)) throw new Error('恢复点标识无效')
+  const point = path.join(restorePointsPath(userDataPath), pointId)
+  const resolvedPoint = path.resolve(point)
+  if (path.dirname(resolvedPoint) !== path.resolve(restorePointsPath(userDataPath))) throw new Error('恢复点路径无效')
+  let manifest
+  try { manifest = JSON.parse(fs.readFileSync(path.join(resolvedPoint, 'manifest.json'), 'utf8')) } catch { throw new Error('恢复点已损坏或不存在') }
+  const files = Array.isArray(manifest.files) ? [...new Set(manifest.files.filter(fileName => FILE_TO_GROUP.has(fileName)))] : []
+  if (!files.length) throw new Error('恢复点不包含可恢复的数据')
+  const records = files.map((fileName) => {
+    const content = fs.readFileSync(path.join(resolvedPoint, fileName), 'utf8')
+    assertJsonContent(content, fileName)
+    return { fileName, content }
+  })
+  createRestorePoint(userDataPath, files, { now, sourceCreatedAt: Number(manifest.createdAt) || 0 })
+  for (const record of records) writeAtomic(path.join(userDataPath, record.fileName), record.content)
+  return { restoredAt: Number(now) || Date.now(), fileCount: records.length, restartRequired: true }
+}
+
 module.exports = {
+  AUTO_BACKUP_INTERVALS,
   BACKUP_FORMAT,
   BACKUP_GROUPS,
   BACKUP_VERSION,
@@ -313,6 +606,14 @@ module.exports = {
   createBackupArchive,
   getBackupOverview,
   inspectBackupArchive,
+  listRestorePoints,
   parseBackupArchive,
+  readAutoBackupHistory,
+  readAutoBackupSettings,
+  recordAutoBackupFailure,
   restoreBackupArchive,
+  restoreRestorePoint,
+  runAutoBackup,
+  safeAutoBackupSettings,
+  saveAutoBackupSettings,
 }

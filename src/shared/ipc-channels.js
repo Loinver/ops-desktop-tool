@@ -26,6 +26,12 @@ const IPC_CHANNELS = {
   DATA_BACKUP_EXPORT: 'dataBackup:export',
   DATA_BACKUP_INSPECT: 'dataBackup:inspect',
   DATA_BACKUP_RESTORE: 'dataBackup:restore',
+  DATA_BACKUP_AUTO_GET: 'dataBackup:getAutoSettings',
+  DATA_BACKUP_AUTO_SAVE: 'dataBackup:saveAutoSettings',
+  DATA_BACKUP_AUTO_RUN: 'dataBackup:runAutoBackup',
+  DATA_BACKUP_HISTORY_GET: 'dataBackup:getAutoHistory',
+  DATA_BACKUP_RESTORE_POINTS_GET: 'dataBackup:getRestorePoints',
+  DATA_BACKUP_RESTORE_POINT: 'dataBackup:restorePoint',
 
   // 快捷启动
   QUICKLAUNCH_GET: 'quicklaunch:get',

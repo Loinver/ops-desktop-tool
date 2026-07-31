@@ -7,7 +7,7 @@
         <p class="page-desc">按功能分类导出加密备份；恢复前会先校验内容，并为当前数据保留本机恢复点。</p>
       </div>
       <div class="page-actions">
-        <button class="btn-secondary" type="button" :disabled="loading || busy" @click="loadOverview">
+        <button class="btn-secondary" type="button" :disabled="loading || busy" @click="loadDataManagementState">
           <t-icon :name="loading ? 'loading' : 'refresh'" :class="{ spinning: loading }" /> 刷新概览
         </button>
       </div>
@@ -120,6 +120,92 @@
         <div v-else class="restore-empty"><t-icon name="file" /> 选择备份并输入密码后，可在恢复前查看其中的分类、文件数和导出时间。</div>
       </section>
 
+      <section class="surface-panel page-section" aria-labelledby="auto-backup-title">
+        <div class="section-heading">
+          <div>
+            <h3 id="auto-backup-title" class="section-title">自动备份计划</h3>
+            <p class="section-desc">主进程会按计划生成加密备份；密码仅使用系统安全存储保存，不会回显到页面。</p>
+          </div>
+          <span class="section-status" :class="{ 'section-status--muted': !autoSettings.enabled }">
+            <t-icon :name="autoSettings.enabled ? 'check-circle' : 'stop-circle'" /> {{ autoSettings.enabled ? '计划已启用' : '计划未启用' }}
+          </span>
+        </div>
+
+        <div class="auto-settings-grid">
+          <label class="toggle-field">
+            <input v-model="autoSettings.enabled" type="checkbox" />
+            <span><strong>启用自动备份</strong><small>关闭后不会执行计划任务，也不会删除已有备份。</small></span>
+          </label>
+          <label class="field-label">
+            <span>执行频率</span>
+            <select v-model="autoSettings.interval" class="field-input"><option value="daily">每天一次</option><option value="weekly">每周一次</option></select>
+          </label>
+          <label class="field-label">
+            <span>保留数量</span>
+            <input v-model.number="autoSettings.retentionCount" class="field-input" type="number" min="1" max="30" />
+          </label>
+          <label class="field-label auto-directory-field">
+            <span>自动备份目录</span>
+            <div class="path-control"><input :value="autoSettings.outputDirectory" class="field-input" type="text" readonly placeholder="选择专用目录保存 .opsbackup 文件" /><button class="btn-secondary" type="button" :disabled="busy" @click="chooseAutoBackupDirectory"><t-icon name="folder-open" /> 选择目录</button></div>
+          </label>
+          <label class="field-label">
+            <span>自动备份密码</span>
+            <input v-model="autoPassword" class="field-input" type="password" autocomplete="new-password" minlength="8" maxlength="256" :placeholder="autoSettings.hasPassword ? '已安全保存；留空则继续使用' : '首次启用时至少 8 个字符'" />
+          </label>
+        </div>
+
+        <div class="backup-group-grid backup-group-grid--auto">
+          <label v-for="group in overview.groups" :key="`auto-${group.id}`" class="backup-group">
+            <input v-model="autoSettings.categories" type="checkbox" :value="group.id" />
+            <span class="backup-group-copy"><strong>{{ group.label }}</strong><small>{{ group.description }}</small><em>{{ group.fileCount }} 个当前数据文件</em></span>
+          </label>
+        </div>
+
+        <div class="auto-status-line">
+          <span>上次执行：{{ autoSettings.lastRunAt ? formatDate(autoSettings.lastRunAt) : '尚未执行' }}</span>
+          <span>下次执行：{{ autoSettings.enabled && autoSettings.nextRunAt ? formatDate(autoSettings.nextRunAt) : '保存并启用后生成计划' }}</span>
+          <span>{{ autoSettings.hasPassword ? '密码已由系统安全存储保护' : '尚未保存密码' }}</span>
+        </div>
+        <div class="panel-actions">
+          <p>建议选择只用于本应用备份的目录；保留策略只清理本应用自动生成的备份文件。</p>
+          <div class="panel-action-buttons">
+            <button class="btn-secondary" type="button" :disabled="busy" @click="saveAutoBackup"><t-icon :name="busyAction === 'auto-save' ? 'loading' : 'save'" :class="{ spinning: busyAction === 'auto-save' }" /> 保存计划</button>
+            <button class="btn-primary" type="button" :disabled="busy || !canRunAutoBackup" @click="runAutoBackup"><t-icon :name="busyAction === 'auto-run' ? 'loading' : 'play-circle'" :class="{ spinning: busyAction === 'auto-run' }" /> 立即备份</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="surface-panel page-section" aria-labelledby="recovery-history-title">
+        <div class="section-heading">
+          <div>
+            <h3 id="recovery-history-title" class="section-title">自动备份与恢复点</h3>
+            <p class="section-desc">查看自动备份结果，或将本机数据一键回滚到恢复前的安全状态。</p>
+          </div>
+        </div>
+        <div class="recovery-grid">
+          <div class="recovery-column">
+            <div class="subsection-heading"><strong>自动备份历史</strong><span>最近 {{ autoHistory.length }} 条</span></div>
+            <div v-if="autoHistory.length" class="history-list">
+              <article v-for="item in autoHistory" :key="item.id" class="history-item" :class="{ 'history-item--failed': item.status === 'failed' }">
+                <div><strong>{{ item.status === 'success' ? item.fileName : '自动备份失败' }}</strong><small>{{ formatDate(item.createdAt) }} · {{ item.status === 'success' ? formatBytes(item.sizeBytes) : item.error }}</small></div>
+                <span>{{ item.status === 'success' ? '完成' : '失败' }}</span>
+              </article>
+            </div>
+            <div v-else class="restore-empty"><t-icon name="time" /> 暂无自动备份记录。</div>
+          </div>
+          <div class="recovery-column">
+            <div class="subsection-heading"><strong>本机恢复点</strong><span>最多保留 3 个</span></div>
+            <div v-if="restorePoints.length" class="history-list">
+              <article v-for="point in restorePoints" :key="point.id" class="history-item history-item--restore-point">
+                <div><strong>{{ formatDate(point.createdAt) }}</strong><small>{{ point.fileCount }} 个文件 · {{ point.groups.join('、') || '本地数据' }}</small></div>
+                <button class="btn-secondary" type="button" :disabled="busy" @click="restorePoint(point)"><t-icon :name="busyAction === `restore-point-${point.id}` ? 'loading' : 'rollback'" :class="{ spinning: busyAction === `restore-point-${point.id}` }" /> 回滚</button>
+              </article>
+            </div>
+            <div v-else class="restore-empty"><t-icon name="file" /> 暂无恢复点；恢复外部备份前会自动创建。</div>
+          </div>
+        </div>
+      </section>
+
       <section class="data-security-note" aria-label="备份说明">
         <t-icon name="secured" />
         <div><strong>安全说明</strong><p>备份文件已由你的密码加密。已保存的 SFTP 与 AI 凭证仍使用系统安全存储保护；跨设备恢复后，如系统安全存储无法解密旧凭证，请在对应页面重新输入密码或 API Key。</p></div>
@@ -140,6 +226,10 @@ const backupPassword = ref('')
 const backupPasswordConfirm = ref('')
 const restorePassword = ref('')
 const backupPreview = ref(null)
+const autoSettings = ref({ enabled: false, outputDirectory: '', interval: 'weekly', retentionCount: 7, categories: [], hasPassword: false, lastRunAt: 0, nextRunAt: 0 })
+const autoPassword = ref('')
+const autoHistory = ref([])
+const restorePoints = ref([])
 
 const busy = computed(() => Boolean(busyAction.value))
 const availableGroupCount = computed(() => overview.value.groups.filter(group => group.available).length)
@@ -150,6 +240,7 @@ const selectedFileCount = computed(() => overview.value.groups
   .filter(group => selectedGroups.value.includes(group.id))
   .reduce((total, group) => total + group.fileCount, 0))
 const canExport = computed(() => selectedGroups.value.length > 0 && backupPassword.value.length >= 8 && backupPassword.value === backupPasswordConfirm.value)
+const canRunAutoBackup = computed(() => autoSettings.value.enabled && autoSettings.value.outputDirectory && autoSettings.value.hasPassword && autoSettings.value.categories.length > 0)
 
 function formatBytes(value) {
   const bytes = Number(value) || 0
@@ -235,7 +326,93 @@ async function restoreBackup() {
   }
 }
 
-onMounted(loadOverview)
+async function loadAutoBackupState() {
+  try {
+    const [settings, history] = await Promise.all([
+      window.opsApi.getAutoBackupSettings(),
+      window.opsApi.getAutoBackupHistory(),
+    ])
+    autoSettings.value = { ...autoSettings.value, ...(settings || {}) }
+    autoHistory.value = Array.isArray(history) ? history : []
+  } catch (error) {
+    MessagePlugin.error({ content: error.message || '无法读取自动备份状态', placement: 'bottom-right' })
+  }
+}
+
+async function loadRestorePoints() {
+  try {
+    const points = await window.opsApi.getDataRestorePoints()
+    restorePoints.value = Array.isArray(points) ? points : []
+  } catch (error) {
+    MessagePlugin.error({ content: error.message || '无法读取本机恢复点', placement: 'bottom-right' })
+  }
+}
+
+async function loadDataManagementState() {
+  await Promise.all([loadOverview(), loadAutoBackupState(), loadRestorePoints()])
+}
+
+async function chooseAutoBackupDirectory() {
+  const directory = await window.opsApi.browseFile({ directory: true, defaultPath: autoSettings.value.outputDirectory })
+  if (directory) autoSettings.value.outputDirectory = directory
+}
+
+async function saveAutoBackup() {
+  busyAction.value = 'auto-save'
+  try {
+    const result = await window.opsApi.saveAutoBackupSettings({
+      enabled: autoSettings.value.enabled,
+      outputDirectory: autoSettings.value.outputDirectory,
+      interval: autoSettings.value.interval,
+      retentionCount: autoSettings.value.retentionCount,
+      categories: autoSettings.value.categories,
+      password: autoPassword.value,
+    })
+    autoSettings.value = { ...autoSettings.value, ...(result?.settings || {}) }
+    autoPassword.value = ''
+    MessagePlugin.success({ content: autoSettings.value.enabled ? '自动备份计划已保存' : '自动备份计划已关闭', placement: 'bottom-right' })
+  } catch (error) {
+    MessagePlugin.error({ content: error.message || '保存自动备份计划失败', placement: 'bottom-right' })
+  } finally {
+    busyAction.value = ''
+  }
+}
+
+async function runAutoBackup() {
+  busyAction.value = 'auto-run'
+  try {
+    const result = await window.opsApi.runAutoBackupNow()
+    if (result?.settings) autoSettings.value = { ...autoSettings.value, ...result.settings }
+    MessagePlugin.success({ content: `已创建自动备份 ${result?.entry?.fileName || ''}`, placement: 'bottom-right' })
+    await loadAutoBackupState()
+  } catch (error) {
+    MessagePlugin.error({ content: error.message || '立即自动备份失败', placement: 'bottom-right' })
+    await loadAutoBackupState()
+  } finally {
+    busyAction.value = ''
+  }
+}
+
+async function restorePoint(point) {
+  const confirmed = await window.opsApi.confirm({
+    title: '确认回滚本机恢复点',
+    message: `将回滚 ${point.fileCount} 个本地数据文件。`,
+    detail: '回滚前会额外创建当前数据的恢复点，完成后应用将立即重启。',
+  })
+  if (!confirmed) return
+  busyAction.value = `restore-point-${point.id}`
+  try {
+    await window.opsApi.restoreDataRestorePoint(point.id)
+    MessagePlugin.success({ content: '数据已回滚，正在重启应用…', placement: 'bottom-right' })
+    await window.opsApi.relaunchApp()
+  } catch (error) {
+    MessagePlugin.error({ content: error.message || '回滚恢复点失败', placement: 'bottom-right' })
+  } finally {
+    busyAction.value = ''
+  }
+}
+
+onMounted(loadDataManagementState)
 </script>
 
 <style scoped>
@@ -296,6 +473,33 @@ onMounted(loadOverview)
 .data-security-note > .t-icon { flex: 0 0 auto; margin-top: 2px; color: var(--primary); }
 .data-security-note strong { color: var(--text); font-size: 13px; }
 .data-security-note p { margin-top: 3px; color: var(--text-muted); font-size: 12px; line-height: 19px; }
-@media (max-width: 900px) { .data-summary,.preview-metrics { grid-template-columns: 1fr; } .backup-group-grid { grid-template-columns: 1fr; } }
-@media (max-width: 760px) { .backup-form-grid { grid-template-columns: 1fr; } .restore-controls { align-items: stretch; flex-direction: column; } .restore-password { max-width: none; } .restore-preview-heading { flex-direction: column; } .preview-time { flex-basis: auto; } .panel-actions > .btn-primary,.panel-actions > .btn-danger,.restore-controls > .btn-secondary { width: 100%; justify-content: center; } }
+.auto-settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--spacing-md); margin-top: var(--spacing-md); }
+.auto-directory-field { grid-column: 1 / -1; }
+.path-control { display: flex; gap: 8px; min-width: 0; }
+.path-control .field-input { min-width: 0; }
+.toggle-field { display: flex; align-items: flex-start; gap: 10px; min-height: var(--header-control-height); padding: 10px 12px; border: 1px solid var(--border-light); border-radius: var(--radius-md); color: var(--text-secondary); cursor: pointer; }
+.toggle-field input { width: 16px; height: 16px; margin: 2px 0 0; accent-color: var(--primary); }
+.toggle-field strong,.toggle-field small { display: block; }
+.toggle-field strong { color: var(--text); font-size: 13px; line-height: 18px; }
+.toggle-field small { margin-top: 2px; color: var(--text-muted); font-size: 11px; line-height: 16px; }
+.backup-group-grid--auto { margin-top: var(--spacing-lg); }
+.auto-status-line { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: var(--spacing-md); color: var(--text-muted); font-size: 12px; line-height: 18px; }
+.panel-action-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.recovery-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--spacing-lg); margin-top: var(--spacing-md); }
+.recovery-column { min-width: 0; }
+.subsection-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-md); margin-bottom: 10px; color: var(--text); font-size: 13px; }
+.subsection-heading span { color: var(--text-muted); font-size: 11px; }
+.history-list { display: grid; gap: 8px; }
+.history-item { display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-md); padding: 10px 12px; border: 1px solid var(--border-light); border-radius: var(--radius-md); background: var(--card-bg); }
+.history-item > div { min-width: 0; }
+.history-item strong,.history-item small { display: block; }
+.history-item strong { overflow: hidden; color: var(--text); font-size: 12px; line-height: 18px; text-overflow: ellipsis; white-space: nowrap; }
+.history-item small { margin-top: 2px; overflow: hidden; color: var(--text-muted); font-size: 11px; line-height: 17px; text-overflow: ellipsis; white-space: nowrap; }
+.history-item > span { flex: 0 0 auto; color: var(--success); font-size: 11px; font-weight: 600; }
+.history-item--failed { border-color: color-mix(in srgb, var(--danger) 32%, var(--border-light)); }
+.history-item--failed > span { color: var(--danger); }
+.history-item--restore-point .btn-secondary { flex: 0 0 auto; }
+.section-status--muted { color: var(--text-muted); background: var(--bg-soft); }
+@media (max-width: 900px) { .data-summary,.preview-metrics,.recovery-grid { grid-template-columns: 1fr; } .backup-group-grid { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { .backup-form-grid,.auto-settings-grid { grid-template-columns: 1fr; } .path-control { flex-direction: column; } .path-control .btn-secondary { width: 100%; } .restore-controls { align-items: stretch; flex-direction: column; } .restore-password { max-width: none; } .restore-preview-heading { flex-direction: column; } .preview-time { flex-basis: auto; } .panel-actions > .btn-primary,.panel-actions > .btn-danger,.restore-controls > .btn-secondary { width: 100%; justify-content: center; } }
 </style>

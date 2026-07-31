@@ -30,6 +30,7 @@ ops-desktop-tool/
 │   │   ├── ipc/
 │   │   │   ├── app.js             # 应用信息、确认框、文件选择
 │   │   │   ├── clipboard.js       # 剪贴板读取、写入和历史
+│   │   │   ├── data-backup.js     # 加密备份、恢复、自动计划与恢复点
 │   │   │   ├── gpt-image.js       # AI 生图配置、模型、生成、历史、保存
 │   │   │   ├── model-test.js      # cc-switch 供应商读取和模型探测
 │   │   │   ├── ports.js           # 端口扫描和进程结束
@@ -37,6 +38,7 @@ ops-desktop-tool/
 │   │   │   ├── sftp.js            # SFTP 浏览、比较、上传和 ZIP 部署
 │   │   │   └── system.js          # 系统信息
 │   │   ├── utils/
+│   │   │   ├── app-data-backup.js # 加密数据备份、自动备份与恢复点
 │   │   │   ├── ccswitch.js        # 只读解析 cc-switch SQLite 配置
 │   │   │   ├── format.js          # 文件大小、时间、权限等格式化
 │   │   │   ├── gpt-image-file.js  # 生图响应和文件名处理
@@ -44,6 +46,7 @@ ops-desktop-tool/
 │   │   │   ├── path-security.js   # 本地/远程路径边界校验
 │   │   │   └── secure-secret.js   # safeStorage 加解密、迁移和掩码
 │   │   ├── main.js                # 生命周期与 IPC 注册入口
+│   │   ├── ops-auto-backup-scheduler.js # 自动数据备份的主进程调度
 │   │   ├── port-manager.js        # 跨平台端口解析和进程操作
 │   │   ├── preload.js             # sandbox 兼容的 IPC 白名单桥接
 │   │   └── window.js              # BrowserWindow 与导航安全策略
@@ -58,6 +61,7 @@ ops-desktop-tool/
 │   │   ├── stores/                # Pinia 状态模块
 │   │   ├── views/
 │   │   │   ├── clipboard-history/
+│   │   │   ├── data-management/
 │   │   │   ├── gpt-image/
 │   │   │   ├── model-test/
 │   │   │   ├── node-services/
@@ -128,6 +132,7 @@ IPC 通道按功能域命名：
 | `system:*` | 系统信息 |
 | `quicklaunch:*` | 快捷启动 |
 | `clipboard:*` | 剪贴板 |
+| `dataBackup:*` | 加密备份、自动备份、历史与恢复点 |
 | `sftp:*` | 发布和远程文件 |
 | `gptImage:*` | AI 生图 |
 | `modelTest:*` | 模型测试 |
@@ -156,6 +161,9 @@ sftp-config.json
 sftp-paths.json
 gpt-image-config.json
 gpt-image-history.json
+ops-backup-restore-points/
+ops-auto-backup-settings.json
+ops-auto-backup-history.json
 ```
 
 `json-store.js` 的写入流程为：创建父目录 → 写入同目录临时文件 → 尽量设置 `0600` → 原子 `rename` 覆盖目标文件。这样可降低进程中断造成半文件或敏感配置权限过宽的风险。
@@ -170,9 +178,15 @@ gpt-image-history.json
 - 仅向 Renderer 返回是否存在和掩码值
 - 安全存储不可用时拒绝新明文凭证落盘
 
-保存设置时，空密码或空 API Key 表示保留已有值；只有显式 `clearPassword` / `clearApiKey` 才清除凭证。
+保存设置时，空密码或空 API Key 表示保留已有值；只有显式 `clearPassword` / `clearApiKey` 才清除凭证。自动备份密码也遵循这一边界：Renderer 只会得到 `hasPassword`，实际密文由 Main Process 用 `safeStorage` 保存和使用。
 
-### 5.3 SFTP 配置优先级
+### 5.3 本地数据自动备份
+
+`ops-auto-backup-scheduler.js` 在 `app.whenReady()` 后读取自动备份设置，并以单个 `setTimeout` 调度每日或每周任务。每次运行都在 Main Process 解密自动备份密码、调用与手动导出相同的 AES-256-GCM 归档逻辑、写入执行历史，并按配置保留数量清理仅由应用生成的自动备份文件。任务失败同样写入历史，并重新计算下次执行时间。
+
+外部备份恢复与恢复点回滚均先将当前同名 JSON 文件原子写入 `ops-backup-restore-points/`，该目录最多保留 3 个恢复点；因此恢复点回滚也可以继续回滚。
+
+### 5.4 SFTP 配置优先级
 
 ```text
 环境变量

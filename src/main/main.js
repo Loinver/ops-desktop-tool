@@ -11,6 +11,7 @@ const { registerModelTestHandlers } = require('./ipc/model-test')
 const { registerAiOpsHandlers } = require('./ipc/ai-ops')
 const { registerDataBackupHandlers } = require('./ipc/data-backup')
 const { initializeOpsNotificationService, stopOpsNotificationService } = require('./ops-notification-service')
+const { initializeAutoBackupScheduler, stopAutoBackupScheduler } = require('./ops-auto-backup-scheduler')
 
 const isMcpMode = process.argv.includes('--mcp')
 
@@ -38,6 +39,7 @@ if (isMcpMode) {
     // safeStorage 在 app ready 后才保证可用，因此 IPC 处理器也在此时注册。
     createWindow()
     initializeOpsNotificationService({ userDataPath: app.getPath('userData'), getWindow: getMainWindow })
+    initializeAutoBackupScheduler({ userDataPath: app.getPath('userData') })
     registerAllHandlers()
 
     app.on('activate', () => {
@@ -57,6 +59,7 @@ if (isMcpMode) {
   app.on('will-quit', async () => {
     stopNodeServiceMonitor()
     stopOpsNotificationService()
+    stopAutoBackupScheduler()
     await closeSftpConnection()
   })
 }
