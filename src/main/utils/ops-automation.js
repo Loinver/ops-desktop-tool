@@ -3,7 +3,9 @@ const net = require('node:net')
 const path = require('node:path')
 const { readJsonFile, writeJsonFile } = require('./json-store')
 
+const EVENT_STATE_VERSION = 2
 const MAX_EVENTS = 500
+const MAX_EVENT_TIMELINE = 40
 const MAX_TASKS = 100
 const MAX_RUNS_PER_TASK = 50
 const MIN_INTERVAL_MINUTES = 5
@@ -19,50 +21,202 @@ function normalizeLevel(level) {
 function normalizeEventStatus(status) {
   return ['open', 'acknowledged', 'resolved'].includes(status) ? status : 'open'
 }
+function normalizeAttributes(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return {}
+  return Object.fromEntries(Object.entries(input).slice(0, 30).map(([key, item]) => {
+    const safeKey = value(key, 80)
+    if (typeof item === 'number' || typeof item === 'boolean') return [safeKey, item]
+    return [safeKey, value(item, 500)]
+  }).filter(([key]) => key))
+}
+function normalizeTimeline(input) {
+  if (!Array.isArray(input)) return []
+  return input.slice(-MAX_EVENT_TIMELINE).map(item => ({
+    id: value(item?.id, 100) || crypto.randomUUID(),
+    type: ['opened', 'occurred', 'reopened', 'acknowledged', 'resolved', 'recovered'].includes(item?.type) ? item.type : 'occurred',
+    message: value(item?.message, 500),
+    createdAt: Number(item?.createdAt) || Date.now(),
+  }))
+}
+function appendTimeline(timeline, type, message, createdAt = Date.now()) {
+  return [...normalizeTimeline(timeline), {
+    id: crypto.randomUUID(),
+    type,
+    message: value(message, 500),
+    createdAt: Number(createdAt) || Date.now(),
+  }].slice(-MAX_EVENT_TIMELINE)
+}
+function eventFingerprint(input = {}) {
+  const explicit = value(input.fingerprint || input.sourceKey, 240)
+  if (explicit) return explicit
+  const sourceType = value(input.sourceType || input.category, 60) || 'system'
+  const sourceId = value(input.sourceId || input.relatedId, 180)
+  const title = value(input.title, 160) || 'event'
+  return `${sourceType}:${sourceId || title}`.slice(0, 240)
+}
+function normalizeStoredEvent(input = {}) {
+  const status = normalizeEventStatus(input.status)
+  const severity = normalizeLevel(input.severity || input.level)
+  const sourceType = value(input.sourceType || input.category, 60) || 'system'
+  const sourceId = value(input.sourceId || input.relatedId, 180)
+  const fingerprint = !input.fingerprint && sourceType === 'automation' && sourceId
+    ? `automation:${sourceId}`.slice(0, 240)
+    : eventFingerprint({ ...input, sourceType, sourceId })
+  const firstOccurredAt = Number(input.firstOccurredAt || input.createdAt || input.updatedAt) || Date.now()
+  const lastOccurredAt = Number(input.lastOccurredAt || input.updatedAt || input.createdAt) || firstOccurredAt
+  const updatedAt = Number(input.updatedAt) || lastOccurredAt
+  return {
+    id: value(input.id, 100) || crypto.randomUUID(),
+    fingerprint,
+    sourceKey: value(input.sourceKey, 240) || fingerprint,
+    sourceType,
+    sourceId,
+    category: sourceType,
+    severity,
+    level: severity,
+    status,
+    title: value(input.title, 160) || '运维事件',
+    description: value(input.description, 1000),
+    resolutionNote: value(input.resolutionNote, 500),
+    relatedId: value(input.relatedId, 180) || sourceId,
+    attributes: normalizeAttributes(input.attributes),
+    occurrenceCount: Math.max(1, Number(input.occurrenceCount) || 1),
+    firstOccurredAt,
+    lastOccurredAt,
+    acknowledgedAt: Number(input.acknowledgedAt) || 0,
+    resolvedAt: Number(input.resolvedAt) || (status === 'resolved' ? updatedAt : 0),
+    recoveredAt: Number(input.recoveredAt) || 0,
+    createdAt: firstOccurredAt,
+    updatedAt,
+    timeline: normalizeTimeline(input.timeline),
+  }
+}
 function loadEventState(userDataPath) {
-  const stored = readJsonFile(eventsPath(userDataPath), { version: 1, items: [] })
-  return { version: 1, items: Array.isArray(stored?.items) ? stored.items.slice(0, MAX_EVENTS) : [] }
+  const stored = readJsonFile(eventsPath(userDataPath), { version: EVENT_STATE_VERSION, items: [] })
+  const normalizedItems = Array.isArray(stored?.items)
+    ? stored.items.slice(0, MAX_EVENTS).map(normalizeStoredEvent)
+    : []
+  const itemsByFingerprint = new Map()
+  for (const item of normalizedItems) {
+    const existing = itemsByFingerprint.get(item.fingerprint)
+    if (!existing) {
+      itemsByFingerprint.set(item.fingerprint, item)
+      continue
+    }
+    const latest = item.updatedAt >= existing.updatedAt ? item : existing
+    const earliest = item.firstOccurredAt <= existing.firstOccurredAt ? item : existing
+    itemsByFingerprint.set(item.fingerprint, normalizeStoredEvent({
+      ...latest,
+      id: earliest.id,
+      occurrenceCount: existing.occurrenceCount + item.occurrenceCount,
+      firstOccurredAt: Math.min(existing.firstOccurredAt, item.firstOccurredAt),
+      lastOccurredAt: Math.max(existing.lastOccurredAt, item.lastOccurredAt),
+      timeline: [...existing.timeline, ...item.timeline]
+        .sort((a, b) => Number(a.createdAt) - Number(b.createdAt))
+        .slice(-MAX_EVENT_TIMELINE),
+    }))
+  }
+  const items = [...itemsByFingerprint.values()]
+    .sort((a, b) => Number(b.updatedAt) - Number(a.updatedAt))
+    .slice(0, MAX_EVENTS)
+  return { version: EVENT_STATE_VERSION, items }
 }
 function saveEventState(userDataPath, state) {
-  if (!writeJsonFile(eventsPath(userDataPath), { version: 1, items: state.items.slice(0, MAX_EVENTS) })) throw new Error('保存运维事件失败')
+  const items = state.items.slice(0, MAX_EVENTS).map(normalizeStoredEvent)
+  if (!writeJsonFile(eventsPath(userDataPath), { version: EVENT_STATE_VERSION, items })) throw new Error('保存运维事件失败')
 }
 function addOpsEvent(userDataPath, input = {}) {
   const state = loadEventState(userDataPath)
-  const sourceKey = value(input.sourceKey, 180)
-  const timestamp = Number(input.createdAt) || Date.now()
-  const existingIndex = sourceKey ? state.items.findIndex(item => item.sourceKey === sourceKey) : -1
-  const normalized = {
-    id: existingIndex >= 0 ? state.items[existingIndex].id : crypto.randomUUID(),
-    sourceKey,
-    category: value(input.category, 40) || 'system',
-    level: normalizeLevel(input.level),
-    status: existingIndex >= 0 ? normalizeEventStatus(state.items[existingIndex].status) : normalizeEventStatus(input.status),
-    title: value(input.title, 160) || '运维事件',
-    description: value(input.description, 1000),
-    relatedId: value(input.relatedId, 160),
-    createdAt: existingIndex >= 0 ? Number(state.items[existingIndex].createdAt) || timestamp : timestamp,
-    updatedAt: Date.now(),
-  }
-  if (existingIndex >= 0) state.items.splice(existingIndex, 1, { ...state.items[existingIndex], ...normalized })
+  const fingerprint = eventFingerprint(input)
+  const existingIndex = state.items.findIndex(item => item.fingerprint === fingerprint)
+  const existing = existingIndex >= 0 ? state.items[existingIndex] : null
+  const occurredAt = Number(input.occurredAt || input.createdAt) || Date.now()
+  const updatedAt = Date.now()
+  const sourceType = value(input.sourceType || input.category || existing?.sourceType, 60) || 'system'
+  const sourceId = value(input.sourceId || input.relatedId || existing?.sourceId, 180)
+  const severity = normalizeLevel(input.severity || input.level || existing?.severity)
+  const requestedStatus = normalizeEventStatus(input.status)
+  const status = existing && requestedStatus === 'open' && existing.status !== 'resolved'
+    ? existing.status
+    : requestedStatus
+  const timelineType = existing ? (existing.status === 'resolved' && status !== 'resolved' ? 'reopened' : 'occurred') : (status === 'resolved' ? 'resolved' : 'opened')
+  const title = value(input.title, 160) || existing?.title || '运维事件'
+  const description = value(input.description, 1000) || existing?.description || ''
+  const timelineMessage = value(input.timelineMessage, 500) || description || title
+  const normalized = normalizeStoredEvent({
+    ...existing,
+    id: existing?.id || crypto.randomUUID(),
+    fingerprint,
+    sourceKey: value(input.sourceKey, 240) || fingerprint,
+    sourceType,
+    sourceId,
+    severity,
+    status,
+    title,
+    description,
+    resolutionNote: status === 'resolved' ? value(input.resolutionNote, 500) : '',
+    relatedId: value(input.relatedId, 180) || existing?.relatedId || sourceId,
+    attributes: { ...existing?.attributes, ...normalizeAttributes(input.attributes) },
+    occurrenceCount: existing ? existing.occurrenceCount + 1 : 1,
+    firstOccurredAt: existing?.firstOccurredAt || occurredAt,
+    lastOccurredAt: occurredAt,
+    acknowledgedAt: status === 'acknowledged' ? (existing?.acknowledgedAt || occurredAt) : 0,
+    resolvedAt: status === 'resolved' ? occurredAt : 0,
+    recoveredAt: status === 'resolved' && input.recovered ? occurredAt : 0,
+    updatedAt,
+    timeline: appendTimeline(existing?.timeline, timelineType, timelineMessage, occurredAt),
+  })
+  if (existingIndex >= 0) state.items.splice(existingIndex, 1, normalized)
   else state.items.unshift(normalized)
-  state.items.sort((a, b) => Number(b.createdAt) - Number(a.createdAt))
+  state.items.sort((a, b) => Number(b.updatedAt) - Number(a.updatedAt))
   saveEventState(userDataPath, state)
   return normalized
 }
-function updateOpsEvent(userDataPath, id, status) {
+function updateOpsEvent(userDataPath, id, status, note = '') {
   const state = loadEventState(userDataPath)
   const item = state.items.find(entry => entry.id === id)
   if (!item) throw new Error('运维事件不存在')
-  item.status = normalizeEventStatus(status)
-  item.updatedAt = Date.now()
+  const nextStatus = normalizeEventStatus(status)
+  const updatedAt = Date.now()
+  item.status = nextStatus
+  item.updatedAt = updatedAt
+  item.acknowledgedAt = nextStatus === 'acknowledged' ? (item.acknowledgedAt || updatedAt) : item.acknowledgedAt
+  item.resolvedAt = nextStatus === 'resolved' ? updatedAt : 0
+  if (nextStatus !== 'resolved') item.recoveredAt = 0
+  item.resolutionNote = nextStatus === 'resolved' ? value(note, 500) : ''
+  item.timeline = appendTimeline(item.timeline, nextStatus === 'acknowledged' ? 'acknowledged' : nextStatus === 'resolved' ? 'resolved' : 'reopened', note || (nextStatus === 'acknowledged' ? '用户已确认事件' : nextStatus === 'resolved' ? '用户已将事件标记为已解决' : '用户重新打开事件'), updatedAt)
   saveEventState(userDataPath, state)
-  return item
+  return normalizeStoredEvent(item)
 }
-function listOpsEvents(userDataPath, { status = '', limit = 100 } = {}) {
+function recoverOpsEvent(userDataPath, fingerprint, input = {}) {
+  const state = loadEventState(userDataPath)
+  const item = state.items.find(entry => entry.fingerprint === value(fingerprint, 240) && entry.status !== 'resolved')
+  if (!item) return null
+  const recoveredAt = Number(input.recoveredAt || input.occurredAt) || Date.now()
+  const message = value(input.message || input.resolutionNote, 500) || '检测结果已恢复正常'
+  item.status = 'resolved'
+  item.updatedAt = recoveredAt
+  item.resolvedAt = recoveredAt
+  item.recoveredAt = recoveredAt
+  item.resolutionNote = message
+  item.relatedId = value(input.relatedId, 180) || item.relatedId
+  item.attributes = { ...item.attributes, ...normalizeAttributes(input.attributes) }
+  item.timeline = appendTimeline(item.timeline, 'recovered', message, recoveredAt)
+  saveEventState(userDataPath, state)
+  return normalizeStoredEvent(item)
+}
+function listOpsEvents(userDataPath, { status = '', sourceType = '', category = '', severity = '', level = '', query = '', limit = 100 } = {}) {
   const normalizedStatus = status ? normalizeEventStatus(status) : ''
+  const normalizedSourceType = value(sourceType || category, 60)
+  const normalizedSeverity = severity || level ? normalizeLevel(severity || level) : ''
+  const normalizedQuery = value(query, 200).toLowerCase()
   return loadEventState(userDataPath).items
     .filter(item => !normalizedStatus || item.status === normalizedStatus)
-    .slice(0, Math.max(1, Math.min(200, Number(limit) || 100)))
+    .filter(item => !normalizedSourceType || item.sourceType === normalizedSourceType)
+    .filter(item => !normalizedSeverity || item.severity === normalizedSeverity)
+    .filter(item => !normalizedQuery || `${item.title} ${item.description} ${item.sourceType} ${item.sourceId}`.toLowerCase().includes(normalizedQuery))
+    .sort((a, b) => Number(b.updatedAt) - Number(a.updatedAt))
+    .slice(0, Math.max(1, Math.min(500, Number(limit) || 100)))
 }
 
 function normalizeTargetUrl(input) {
@@ -120,10 +274,15 @@ function saveAutomationTask(userDataPath, input) {
 }
 function deleteAutomationTask(userDataPath, id) {
   const state = loadAutomationState(userDataPath)
+  const task = state.tasks.find(item => item.id === id)
   const next = state.tasks.filter(item => item.id !== id)
-  if (next.length === state.tasks.length) throw new Error('自动化任务不存在')
+  if (!task) throw new Error('自动化任务不存在')
   state.tasks = next
   saveAutomationState(userDataPath, state)
+  recoverOpsEvent(userDataPath, `automation:${id}`, {
+    message: `巡检任务“${task.title}”已删除，关联事件自动关闭`,
+    relatedId: id,
+  })
   return next
 }
 async function runHttpHealthCheck(task) {
@@ -165,16 +324,30 @@ async function runAutomationTask(userDataPath, id) {
   task.lastResult = entry
   task.runs = [entry, ...(task.runs || [])].slice(0, MAX_RUNS_PER_TASK)
   saveAutomationState(userDataPath, state)
-  // 成功运行保留在任务历史中；只有异常写入事件中心，避免高频巡检淹没待处理告警。
+  const fingerprint = `automation:${task.id}`
   if (!entry.ok) {
     addOpsEvent(userDataPath, {
-      sourceKey: `automation:${task.id}:${entry.id}`,
-      category: 'automation',
-      level: 'warning',
+      fingerprint,
+      sourceType: 'automation',
+      sourceId: task.id,
+      severity: 'warning',
       title: `巡检失败：${task.title}`,
       description: entry.message,
       relatedId: task.id,
-      createdAt: completedAt,
+      occurredAt: completedAt,
+      attributes: {
+        taskType: task.type,
+        target: task.type === 'tcp-port' ? `${task.target}:${task.port}` : task.target,
+        durationMs: entry.durationMs,
+        statusCode: entry.statusCode,
+      },
+    })
+  } else {
+    recoverOpsEvent(userDataPath, fingerprint, {
+      message: `巡检恢复：${entry.message}`,
+      relatedId: task.id,
+      recoveredAt: completedAt,
+      attributes: { durationMs: entry.durationMs, statusCode: entry.statusCode },
     })
   }
   return { task, result: entry }
@@ -188,12 +361,17 @@ async function runDueAutomationTasks(userDataPath) {
   return results
 }
 function eventSummary(userDataPath) {
-  const items = listOpsEvents(userDataPath, { limit: 200 })
+  const items = loadEventState(userDataPath).items
+  const active = items.filter(item => item.status !== 'resolved')
   return {
     total: items.length,
+    active: active.length,
     open: items.filter(item => item.status === 'open').length,
-    critical: items.filter(item => item.status === 'open' && item.level === 'critical').length,
-    warning: items.filter(item => item.status === 'open' && item.level === 'warning').length,
+    acknowledged: items.filter(item => item.status === 'acknowledged').length,
+    resolved: items.filter(item => item.status === 'resolved').length,
+    recovered: items.filter(item => item.recoveredAt > 0).length,
+    critical: active.filter(item => item.severity === 'critical').length,
+    warning: active.filter(item => item.severity === 'warning').length,
   }
 }
 
@@ -204,6 +382,8 @@ module.exports = {
   listAutomationTasks,
   listOpsEvents,
   loadAutomationState,
+  loadEventState,
+  recoverOpsEvent,
   runAutomationTask,
   runDueAutomationTasks,
   runHttpHealthCheck,

@@ -24,7 +24,7 @@ const {
 } = require('../utils/model-list-settings')
 const { loadReleaseHistory, getActiveReleaseProfile } = require('../utils/release-store')
 const { buildOpsDashboardData } = require('../utils/ops-dashboard')
-const { addOpsEvent } = require('../utils/ops-automation')
+const { addOpsEvent, recoverOpsEvent } = require('../utils/ops-automation')
 
 const DEFAULT_TIMEOUT_MS = 30_000
 /**
@@ -1058,6 +1058,54 @@ async function refreshProviderCache() {
   return { ok: true, dbPath: result.dbPath, providers: filteredProviders }
 }
 
+function modelMonitorFingerprint(item = {}) {
+  return `model-monitor:${String(item.providerId || '')}:${String(item.appType || '')}:${String(item.model || '')}`.slice(0, 240)
+}
+
+function recordModelInspectionEvents(snapshot) {
+  const userDataPath = app.getPath('userData')
+  for (const result of snapshot.results || []) {
+    const fingerprint = modelMonitorFingerprint(result)
+    const sourceId = `${result.providerId}:${result.appType}:${result.model}`
+    const providerLabel = result.providerName || result.providerId || '未知 Provider'
+    const modelLabel = result.model || '未知模型'
+    const attributes = {
+      providerId: result.providerId,
+      providerName: result.providerName,
+      appType: result.appType,
+      model: result.model,
+      snapshotId: snapshot.id,
+      httpStatus: result.httpStatus,
+      durationMs: result.durationMs,
+    }
+    if (result.status === 'ok') {
+      recoverOpsEvent(userDataPath, fingerprint, {
+        message: `${providerLabel} · ${modelLabel} 已恢复可用`,
+        relatedId: snapshot.id,
+        recoveredAt: snapshot.finishedAt,
+        attributes,
+      })
+      continue
+    }
+    addOpsEvent(userDataPath, {
+      fingerprint,
+      sourceType: 'model-monitor',
+      sourceId,
+      severity: result.status === 'gateway' ? 'warning' : 'critical',
+      title: `模型巡检异常：${modelLabel}`,
+      description: `${providerLabel} · ${result.message || (result.status === 'gateway' ? '无法验证' : '巡检失败')}`,
+      relatedId: snapshot.id,
+      occurredAt: snapshot.finishedAt,
+      attributes,
+    })
+  }
+  recoverOpsEvent(userDataPath, 'model-monitor:scheduled-runner', {
+    message: '模型定时巡检任务已恢复执行',
+    relatedId: snapshot.id,
+    recoveredAt: snapshot.finishedAt,
+  })
+}
+
 async function runScheduledInspection() {
   if (inspectionRunning) throw new Error('巡检任务正在执行')
   const settings = loadMonitorSettings()
@@ -1081,21 +1129,10 @@ async function runScheduledInspection() {
     if (!writeJsonFile(monitorSettingsPath(), nextSettings)) throw new Error('更新巡检运行时间失败')
     completionRecorded = true
     const anomalyCount = countMonitorAnomalies(snapshot.summary)
-    if (anomalyCount > 0) {
-      try {
-        const level = snapshot.summary.failed > 0 ? 'critical' : 'warning'
-        addOpsEvent(app.getPath('userData'), {
-          sourceKey: `model-inspection:${snapshot.id}`,
-          category: 'model-monitor',
-          level,
-          title: `模型巡检异常：${snapshot.label}`,
-          description: `${snapshot.summary.failed} 个失败，${snapshot.summary.gateway} 个无法验证，${snapshot.summary.ok}/${snapshot.summary.total} 正常`,
-          relatedId: snapshot.id,
-          createdAt: snapshot.finishedAt,
-        })
-      } catch (eventError) {
-        console.error('记录模型巡检事件失败:', eventError)
-      }
+    try {
+      recordModelInspectionEvents(snapshot)
+    } catch (eventError) {
+      console.error('记录模型巡检事件失败:', eventError)
     }
     if (latestSettings.notifyOnFailure && anomalyCount > 0 && Notification.isSupported()) {
       try {
@@ -1128,12 +1165,14 @@ async function runScheduledInspection() {
     }
     try {
       addOpsEvent(app.getPath('userData'), {
-        sourceKey: `model-inspection-failure:${startedAt}`,
-        category: 'model-monitor',
-        level: 'critical',
+        fingerprint: 'model-monitor:scheduled-runner',
+        sourceType: 'model-monitor',
+        sourceId: 'scheduled-runner',
+        severity: 'critical',
         title: '模型定时巡检执行失败',
         description: String(error?.message || '未知错误').slice(0, 1000),
-        createdAt: Date.now(),
+        occurredAt: Date.now(),
+        attributes: { startedAt },
       })
     } catch (eventError) {
       console.error('记录模型巡检失败事件失败:', eventError)

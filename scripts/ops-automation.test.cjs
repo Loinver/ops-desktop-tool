@@ -5,8 +5,12 @@ const path = require('node:path')
 const test = require('node:test')
 
 const {
+  addOpsEvent,
+  eventSummary,
   listAutomationTasks,
   listOpsEvents,
+  loadEventState,
+  recoverOpsEvent,
   runAutomationTask,
   runHttpHealthCheck,
   saveAutomationTask,
@@ -57,6 +61,159 @@ test('自动化任务校验、运行记录与失败事件', async () => {
     assert.equal(updateOpsEvent(userDataPath, event.id, 'resolved').status, 'resolved')
   } finally {
     global.fetch = originalFetch
+    fs.rmSync(userDataPath, { recursive: true, force: true })
+  }
+})
+
+
+test('统一事件按指纹去重、累计次数并自动恢复', () => {
+  const userDataPath = createTempDir()
+  try {
+    const first = addOpsEvent(userDataPath, {
+      fingerprint: 'model-monitor:p1:claude:m1',
+      sourceType: 'model-monitor',
+      sourceId: 'p1:claude:m1',
+      severity: 'warning',
+      title: '模型巡检异常：m1',
+      description: '第一次失败',
+      occurredAt: 100,
+    })
+    const repeated = addOpsEvent(userDataPath, {
+      fingerprint: 'model-monitor:p1:claude:m1',
+      sourceType: 'model-monitor',
+      sourceId: 'p1:claude:m1',
+      severity: 'critical',
+      title: '模型巡检异常：m1',
+      description: '第二次失败',
+      occurredAt: 200,
+    })
+
+    assert.equal(first.id, repeated.id)
+    assert.equal(repeated.occurrenceCount, 2)
+    assert.equal(repeated.firstOccurredAt, 100)
+    assert.equal(repeated.lastOccurredAt, 200)
+    assert.equal(repeated.severity, 'critical')
+    assert.equal(listOpsEvents(userDataPath).length, 1)
+
+    const recovered = recoverOpsEvent(userDataPath, repeated.fingerprint, {
+      message: '模型已恢复可用',
+      recoveredAt: 300,
+    })
+    assert.equal(recovered.status, 'resolved')
+    assert.equal(recovered.recoveredAt, 300)
+    assert.equal(recovered.resolutionNote, '模型已恢复可用')
+    assert.equal(recovered.timeline.at(-1).type, 'recovered')
+    assert.deepEqual(eventSummary(userDataPath), {
+      total: 1,
+      active: 0,
+      open: 0,
+      acknowledged: 0,
+      resolved: 1,
+      recovered: 1,
+      critical: 0,
+      warning: 0,
+    })
+
+    const reopened = addOpsEvent(userDataPath, {
+      fingerprint: repeated.fingerprint,
+      sourceType: 'model-monitor',
+      sourceId: 'p1:claude:m1',
+      severity: 'warning',
+      title: '模型巡检异常：m1',
+      description: '恢复后再次失败',
+      occurredAt: 400,
+    })
+    assert.equal(reopened.id, first.id)
+    assert.equal(reopened.status, 'open')
+    assert.equal(reopened.occurrenceCount, 3)
+    assert.equal(reopened.recoveredAt, 0)
+    assert.equal(reopened.timeline.at(-1).type, 'reopened')
+  } finally {
+    fs.rmSync(userDataPath, { recursive: true, force: true })
+  }
+})
+
+test('旧版事件数据读取时迁移为统一事件模型', () => {
+  const userDataPath = createTempDir()
+  try {
+    fs.writeFileSync(path.join(userDataPath, 'ops-events.json'), JSON.stringify({
+      version: 1,
+      items: [{
+        id: 'legacy-event',
+        sourceKey: 'legacy:key',
+        category: 'release',
+        level: 'critical',
+        status: 'open',
+        title: '旧事件',
+        description: '旧结构仍需兼容',
+        relatedId: 'release-1',
+        createdAt: 100,
+        updatedAt: 200,
+      }],
+    }))
+
+    const state = loadEventState(userDataPath)
+    assert.equal(state.version, 2)
+    assert.equal(state.items[0].fingerprint, 'legacy:key')
+    assert.equal(state.items[0].sourceType, 'release')
+    assert.equal(state.items[0].severity, 'critical')
+    assert.equal(state.items[0].sourceId, 'release-1')
+    assert.equal(state.items[0].occurrenceCount, 1)
+    assert.equal(state.items[0].firstOccurredAt, 100)
+    assert.equal(state.items[0].lastOccurredAt, 200)
+  } finally {
+    fs.rmSync(userDataPath, { recursive: true, force: true })
+  }
+})
+
+test('自动化巡检恢复正常后自动关闭关联事件', async () => {
+  const userDataPath = createTempDir()
+  const originalFetch = global.fetch
+  try {
+    const task = saveAutomationTask(userDataPath, {
+      title: '站点健康检查',
+      type: 'http-health',
+      target: 'https://example.test/health',
+      expectedStatus: 200,
+      intervalMinutes: 5,
+      timeoutMs: 1000,
+    })
+    global.fetch = async () => ({ status: 503 })
+    await runAutomationTask(userDataPath, task.id)
+    let [event] = listOpsEvents(userDataPath)
+    assert.equal(event.fingerprint, `automation:${task.id}`)
+    assert.equal(event.status, 'open')
+
+    global.fetch = async () => ({ status: 200 })
+    await runAutomationTask(userDataPath, task.id)
+    ;[event] = listOpsEvents(userDataPath)
+    assert.equal(event.status, 'resolved')
+    assert.ok(event.recoveredAt > 0)
+    assert.match(event.resolutionNote, /巡检恢复/)
+  } finally {
+    global.fetch = originalFetch
+    fs.rmSync(userDataPath, { recursive: true, force: true })
+  }
+})
+
+test('旧版自动化事件按任务标识合并', () => {
+  const userDataPath = createTempDir()
+  try {
+    fs.writeFileSync(path.join(userDataPath, 'ops-events.json'), JSON.stringify({
+      version: 1,
+      items: [
+        { id: 'run-1', sourceKey: 'automation:task-1:run-1', category: 'automation', level: 'warning', status: 'open', title: '巡检失败', relatedId: 'task-1', createdAt: 100, updatedAt: 100 },
+        { id: 'run-2', sourceKey: 'automation:task-1:run-2', category: 'automation', level: 'warning', status: 'open', title: '巡检失败', relatedId: 'task-1', createdAt: 200, updatedAt: 200 },
+      ],
+    }))
+
+    const items = loadEventState(userDataPath).items
+    assert.equal(items.length, 1)
+    assert.equal(items[0].fingerprint, 'automation:task-1')
+    assert.equal(items[0].occurrenceCount, 2)
+    assert.equal(items[0].firstOccurredAt, 100)
+    assert.equal(items[0].lastOccurredAt, 200)
+  } finally {
     fs.rmSync(userDataPath, { recursive: true, force: true })
   }
 })
