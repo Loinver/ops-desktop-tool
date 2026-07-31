@@ -650,6 +650,30 @@ function updateAutoBackupTiming(userDataPath, settings, now) {
   return next
 }
 
+function writeVerifiedAutoBackupFile({ filePath, archive, password }) {
+  const directory = path.dirname(filePath)
+  const tempPath = path.join(directory, `.${path.basename(filePath)}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`)
+  let published = false
+  try {
+    fs.writeFileSync(tempPath, archive, { mode: 0o600, flag: 'wx' })
+    try { fs.chmodSync(tempPath, 0o600) } catch {}
+    const descriptor = fs.openSync(tempPath, 'r')
+    try { fs.fsyncSync(descriptor) } finally { fs.closeSync(descriptor) }
+
+    // Verify bytes read back from disk before making the backup visible or recording it as usable.
+    inspectBackupArchive(fs.readFileSync(tempPath), password)
+    fs.renameSync(tempPath, filePath)
+    published = true
+    return fs.statSync(filePath).size
+  } catch {
+    throw new Error('自动备份文件写入或校验失败')
+  } finally {
+    if (!published) {
+      try { fs.unlinkSync(tempPath) } catch {}
+    }
+  }
+}
+
 function runAutoBackup({ userDataPath, decryptPassword, appVersion = '', now = Date.now(), iterations = DEFAULT_ITERATIONS }) {
   const settings = readAutoBackupSettings(userDataPath)
   if (!settings.enabled) throw new Error('自动备份尚未启用')
@@ -660,15 +684,14 @@ function runAutoBackup({ userDataPath, decryptPassword, appVersion = '', now = D
   const archive = createBackupArchive({ userDataPath, password, categories: settings.categories, appVersion, now, iterations })
   const fileName = `ops-desktop-auto-${compactTimestamp(now)}-${crypto.randomBytes(4).toString('hex')}.opsbackup`
   const filePath = safeAutoBackupFilePath(settings.outputDirectory, fileName)
-  fs.writeFileSync(filePath, archive, { mode: 0o600 })
-  try { fs.chmodSync(filePath, 0o600) } catch {}
+  const sizeBytes = writeVerifiedAutoBackupFile({ filePath, archive, password })
 
   const entry = {
     id: crypto.randomUUID(),
     createdAt: Number(now) || Date.now(),
     fileName,
     outputDirectory: settings.outputDirectory,
-    sizeBytes: archive.length,
+    sizeBytes,
     status: 'success',
     categories: settings.categories,
     passwordEncrypted: settings.passwordEncrypted,

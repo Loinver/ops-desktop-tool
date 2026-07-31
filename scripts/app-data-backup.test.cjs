@@ -347,3 +347,50 @@ test('自动备份健康检查会报告首次备份、缺失文件和不可用�
   assert.equal(unavailable.status, 'error')
   assert.ok(unavailable.issues.some(issue => issue.id === 'directory'))
 })
+
+test('自动备份在落盘校验成功后才发布，并会清理失败的临时文件', () => {
+  const root = tempDir()
+  const outputDirectory = tempDir()
+  const {
+    getAutoBackupHistory,
+    runAutoBackup,
+    saveAutoBackupSettings,
+  } = require('../src/main/utils/app-data-backup')
+  writeJson(root, 'ops-events.json', [{ id: 'atomic-auto-backup' }])
+  saveAutoBackupSettings({
+    userDataPath: root,
+    input: { enabled: true, outputDirectory, categories: ['operations'], password: 'automatic-password' },
+    encryptPassword: value => `enc:${value}`,
+    now: 1_000,
+  })
+
+  const originalReadFileSync = fs.readFileSync
+  fs.readFileSync = function patchedReadFileSync(filePath, ...args) {
+    if (String(filePath).includes('.opsbackup.') && String(filePath).endsWith('.tmp')) return Buffer.from('corrupted')
+    return originalReadFileSync.call(this, filePath, ...args)
+  }
+  try {
+    assert.throws(() => runAutoBackup({
+      userDataPath: root,
+      decryptPassword: value => value.slice(4),
+      now: 2_000,
+      iterations: 1_000,
+    }), /自动备份文件写入或校验失败/)
+  } finally {
+    fs.readFileSync = originalReadFileSync
+  }
+
+  assert.deepEqual(getAutoBackupHistory(root), [])
+  assert.deepEqual(fs.readdirSync(outputDirectory), [])
+
+  const result = runAutoBackup({
+    userDataPath: root,
+    decryptPassword: value => value.slice(4),
+    now: 3_000,
+    iterations: 1_000,
+  })
+  const filePath = path.join(outputDirectory, result.entry.fileName)
+  assert.equal(fs.existsSync(filePath), true)
+  assert.equal(fs.statSync(filePath).size, result.entry.sizeBytes)
+  assert.equal(fs.readdirSync(outputDirectory).some(fileName => fileName.endsWith('.tmp')), false)
+})
