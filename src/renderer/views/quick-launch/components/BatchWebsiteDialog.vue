@@ -1,4 +1,5 @@
 <template>
+  <Teleport to="body">
   <div v-if="modelValue" class="dialog-overlay">
     <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="batch-website-title">
       <header class="dialog-header">
@@ -42,6 +43,7 @@
       </footer>
     </section>
   </div>
+  </Teleport>
 </template>
 
 <script setup>

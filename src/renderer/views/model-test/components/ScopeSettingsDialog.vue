@@ -1,12 +1,10 @@
 <template>
+  <Teleport to="body">
   <div
     v-if="open"
-    class="modal-mask"
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="scope-dialog-title"
+    class="model-test-page modal-mask"
   >
-    <div class="settings-dialog">
+    <div class="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="scope-dialog-title">
       <header class="dialog-header">
         <div>
           <h3 id="scope-dialog-title">测试范围</h3>
@@ -98,6 +96,7 @@
       </div>
     </div>
   </div>
+  </Teleport>
 </template>
 
 <script setup>

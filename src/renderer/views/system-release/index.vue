@@ -31,14 +31,15 @@
       </div>
     </header>
 
+    <Teleport to="body">
     <div
       v-if="showSftpSettings"
       class="sftp-modal-mask"
     >
-      <form class="sftp-settings-dialog" @submit.prevent="saveSftpSettings">
+      <form class="sftp-settings-dialog" role="dialog" aria-modal="true" aria-labelledby="sftp-settings-title" @submit.prevent="saveSftpSettings">
         <div class="sftp-dialog-header">
           <div>
-            <h3>发布设置</h3>
+            <h3 id="sftp-settings-title">发布设置</h3>
             <p>连接和目录配置会保存在本机，下次进入时自动读取。</p>
           </div>
           <button
@@ -182,10 +183,12 @@
         </div>
       </form>
     </div>
+    </Teleport>
 
+    <Teleport to="body">
     <div v-if="showReleaseHistory" class="sftp-modal-mask">
-      <div class="release-history-dialog">
-        <div class="sftp-dialog-header"><div><h3>{{ activeReleaseProfileName }} · 发布历史</h3><p>仅显示当前发布环境的记录；成功发布会保留远端备份，可一键回滚。</p></div><button type="button" class="sftp-icon-button" @click="showReleaseHistory = false"><t-icon name="close" /></button></div>
+      <div class="release-history-dialog" role="dialog" aria-modal="true" aria-labelledby="release-history-title">
+        <div class="sftp-dialog-header"><div><h3 id="release-history-title">{{ activeReleaseProfileName }} · 发布历史</h3><p>仅显示当前发布环境的记录；成功发布会保留远端备份，可一键回滚。</p></div><button type="button" class="sftp-icon-button" @click="showReleaseHistory = false"><t-icon name="close" /></button></div>
         <div class="release-history-list">
           <div v-for="item in releaseHistory" :key="item.id" class="release-history-item">
             <span class="release-status" :class="item.status"></span>
@@ -196,6 +199,7 @@
         </div>
       </div>
     </div>
+    </Teleport>
 
     <main class="page-content">
       <!-- 路径栏 -->

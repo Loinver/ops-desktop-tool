@@ -438,6 +438,21 @@ textarea:focus {
   --td-radius-large: var(--radius-lg);
 }
 
+/* TDesign Message 覆盖：右侧定位容器占满可用宽度，让提示向视口内侧展开。 */
+.t-message__list[style*='right:'] {
+  left: var(--spacing-xl);
+  display: flex;
+  width: auto;
+  max-width: none;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.t-message__list .t-message {
+  max-width: min(480px, calc(100vw - (var(--spacing-xl) * 2)));
+  white-space: normal;
+}
+
 /* TDesign Card 覆盖 */
 .t-card {
   border-radius: var(--radius-lg) !important;

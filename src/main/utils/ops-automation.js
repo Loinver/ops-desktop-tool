@@ -1,5 +1,6 @@
 const crypto = require('node:crypto')
 const net = require('node:net')
+const { EventEmitter } = require('node:events')
 const path = require('node:path')
 const { readJsonFile, writeJsonFile } = require('./json-store')
 
@@ -10,6 +11,16 @@ const MAX_TASKS = 100
 const MAX_RUNS_PER_TASK = 50
 const MIN_INTERVAL_MINUTES = 5
 const MAX_INTERVAL_MINUTES = 7 * 24 * 60
+const opsEventEmitter = new EventEmitter()
+
+function onOpsEventChange(listener) {
+  opsEventEmitter.on('change', listener)
+  return () => opsEventEmitter.off('change', listener)
+}
+
+function emitOpsEventChange(kind, item, previous = null) {
+  opsEventEmitter.emit('change', { kind, item, previous })
+}
 
 function value(input, max = 500) { return String(input || '').trim().slice(0, max) }
 function eventsPath(userDataPath) { return path.join(userDataPath, 'ops-events.json') }
@@ -178,6 +189,7 @@ function addOpsEvent(userDataPath, input = {}) {
   else state.items.unshift(normalized)
   state.items.sort((a, b) => Number(b.updatedAt) - Number(a.updatedAt))
   saveEventState(userDataPath, state)
+  emitOpsEventChange(timelineType, normalized, existing)
   return normalized
 }
 function updateOpsEvent(userDataPath, id, status, note = '') {
@@ -213,7 +225,9 @@ function recoverOpsEvent(userDataPath, fingerprint, input = {}) {
   item.attributes = { ...item.attributes, ...normalizeAttributes(input.attributes) }
   item.timeline = appendTimeline(item.timeline, 'recovered', message, recoveredAt)
   saveEventState(userDataPath, state)
-  return normalizeStoredEvent(item)
+  const normalized = normalizeStoredEvent(item)
+  emitOpsEventChange('recovered', normalized)
+  return normalized
 }
 function markOpsEventsRead(userDataPath, { ids = [], all = false } = {}) {
   const state = loadEventState(userDataPath)
@@ -412,6 +426,7 @@ module.exports = {
   loadAutomationState,
   loadEventState,
   markOpsEventsRead,
+  onOpsEventChange,
   recoverOpsEvent,
   runAutomationTask,
   runDueAutomationTasks,

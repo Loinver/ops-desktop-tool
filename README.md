@@ -85,6 +85,14 @@ pnpm electron:build:win
 pnpm electron:build:linux
 ```
 
+项目已在 `electron-builder.env` 中配置 Electron 与 electron-builder 二进制镜像，避免访问 GitHub Releases 超时。外部环境变量的优先级更高；若需要改回官方源，可在执行命令时临时覆盖：
+
+```bash
+ELECTRON_MIRROR=https://github.com/electron/electron/releases/download/ \
+ELECTRON_BUILDER_BINARIES_MIRROR=https://github.com/electron-userland/electron-builder-binaries/releases/download/ \
+  pnpm electron:build:win
+```
+
 安装包输出目录为 `release/`。源码目录中的 `pnpm start` 属于开发模式，会加载本地 Vite 服务；安装后的生产应用才会加载 `dist/renderer/index.html`。
 
 ## SFTP 配置

@@ -155,6 +155,7 @@
 }
 
 .model-test-page .btn-link {
+  min-height: 28px;
   border: none;
   background: none;
   color: var(--primary);
@@ -759,8 +760,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 28px;
+  height: 28px;
   border: none;
   background: none;
   color: var(--text-muted);
@@ -879,6 +880,7 @@
 
 .model-test-page .provider-meta-copy {
   display: inline-flex;
+  min-height: 28px;
   align-items: center;
   gap: 5px;
   max-width: 100%;
@@ -948,7 +950,10 @@
 }
 
 .model-test-page .model-section {
+  min-width: 0;
   padding: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
 
 .model-test-page .section-loading,
@@ -1005,6 +1010,7 @@
 
 .model-test-page .model-table {
   width: 100%;
+  min-width: 640px;
   border-collapse: collapse;
   font-size: 13px;
   table-layout: fixed;
@@ -1090,7 +1096,8 @@
   cursor: pointer;
   align-items: flex-start;
   gap: 4px;
-  padding: 1px 2px;
+  min-height: 28px;
+  padding: 4px 6px;
   border-radius: 4px;
   transition:
     color var(--transition),
@@ -1319,7 +1326,7 @@
   animation: spin 1s linear infinite;
 }
 
-.model-test-page .modal-mask {
+.model-test-page.modal-mask {
   position: fixed;
   inset: 0;
   z-index: 100;
@@ -1622,6 +1629,36 @@
   .model-test-page .provider-card,
   .model-test-page .provider-card.nav-target {
     scroll-margin-top: 160px;
+  }
+
+  .model-test-page .provider-head,
+  .model-test-page .provider-profile-head {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+    padding-inline: var(--spacing-md);
+  }
+
+  .model-test-page .provider-title,
+  .model-test-page .provider-actions,
+  .model-test-page .provider-meta {
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+
+  .model-test-page .provider-actions,
+  .model-test-page .provider-profile-actions {
+    width: 100%;
+    margin-left: 0;
+    justify-content: flex-end;
+  }
+
+  .model-test-page .provider-meta {
+    width: 100%;
+  }
+
+  .model-test-page .provider-meta-copy {
+    max-width: 100%;
   }
 
   .model-test-page .scope-toolbar {

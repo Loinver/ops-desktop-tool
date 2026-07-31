@@ -1,9 +1,10 @@
 <template>
+  <Teleport to="body">
   <div v-if="modelValue" class="dialog-overlay">
-    <div class="dialog">
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="launch-dialog-title">
       <div class="dialog-header">
-        <h3>{{ editingItem ? '编辑快捷方式' : '添加快捷方式' }}</h3>
-        <button type="button" class="close-btn" @click="close">
+        <h3 id="launch-dialog-title">{{ editingItem ? '编辑快捷方式' : '添加快捷方式' }}</h3>
+        <button type="button" class="close-btn" title="关闭" aria-label="关闭" @click="close">
           <t-icon name="close" />
         </button>
       </div>
@@ -113,6 +114,7 @@
       </div>
     </div>
   </div>
+  </Teleport>
 </template>
 
 <script setup>

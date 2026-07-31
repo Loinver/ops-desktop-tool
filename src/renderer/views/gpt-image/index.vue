@@ -114,14 +114,15 @@
       </section>
     </div>
 
-    <div v-if="showSettings" class="modal-mask">
-      <div class="settings-dialog">
+    <Teleport to="body">
+      <div v-if="showSettings" class="modal-mask">
+      <div class="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="gpt-image-settings-title">
         <div class="dialog-header">
           <div>
-            <h3>模型设置</h3>
+            <h3 id="gpt-image-settings-title">模型设置</h3>
             <p>配置 OpenAI 兼容图片生成接口</p>
           </div>
-          <button type="button" class="icon-button" @click="closeSettings">
+          <button type="button" class="icon-button" title="关闭" aria-label="关闭" @click="closeSettings">
             <t-icon name="close" />
           </button>
         </div>
@@ -204,15 +205,17 @@
         </div>
       </div>
     </div>
+    </Teleport>
 
-    <div v-if="showHistory" class="modal-mask">
-      <div class="history-dialog">
+    <Teleport to="body">
+      <div v-if="showHistory" class="modal-mask">
+      <div class="history-dialog" role="dialog" aria-modal="true" aria-labelledby="gpt-image-history-title">
         <div class="dialog-header">
           <div>
-            <h3>历史记录</h3>
+            <h3 id="gpt-image-history-title">历史记录</h3>
             <p>{{ historyItems.length }} 张图片</p>
           </div>
-          <button type="button" class="icon-button" @click="closeHistory">
+          <button type="button" class="icon-button" title="关闭" aria-label="关闭" @click="closeHistory">
             <t-icon name="close" />
           </button>
         </div>
@@ -250,6 +253,7 @@
         </div>
       </div>
     </div>
+    </Teleport>
   </div>
 </template>
 

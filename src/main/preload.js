@@ -85,6 +85,10 @@ const CHANNELS = Object.freeze({
   OPS_EVENTS_GET: 'ops:getEvents',
   OPS_EVENT_UPDATE: 'ops:updateEvent',
   OPS_EVENTS_MARK_READ: 'ops:markEventsRead',
+  OPS_NOTIFICATION_PREFERENCES_GET: 'ops:getNotificationPreferences',
+  OPS_NOTIFICATION_PREFERENCES_SAVE: 'ops:saveNotificationPreferences',
+  OPS_NOTIFICATION_TEST: 'ops:testNotification',
+  OPS_NOTIFICATION_OPEN: 'ops:openNotification',
   OPS_AUTOMATION_GET: 'ops:getAutomationTasks',
   OPS_AUTOMATION_SAVE: 'ops:saveAutomationTask',
   OPS_AUTOMATION_DELETE: 'ops:deleteAutomationTask',
@@ -93,6 +97,12 @@ const CHANNELS = Object.freeze({
 })
 
 const invoke = (channel, ...args) => ipcRenderer.invoke(channel, ...args)
+const subscribe = (channel, listener) => {
+  if (typeof listener !== 'function') return () => {}
+  const handler = (_event, payload) => listener(payload)
+  ipcRenderer.on(channel, handler)
+  return () => ipcRenderer.removeListener(channel, handler)
+}
 
 contextBridge.exposeInMainWorld('opsApi', Object.freeze({
   getAppInfo: () => invoke(CHANNELS.APP_INFO),
@@ -177,6 +187,10 @@ contextBridge.exposeInMainWorld('opsApi', Object.freeze({
   getOpsEvents: options => invoke(CHANNELS.OPS_EVENTS_GET, options),
   updateOpsEvent: (id, status) => invoke(CHANNELS.OPS_EVENT_UPDATE, { id, status }),
   markOpsEventsRead: options => invoke(CHANNELS.OPS_EVENTS_MARK_READ, options),
+  getOpsNotificationPreferences: () => invoke(CHANNELS.OPS_NOTIFICATION_PREFERENCES_GET),
+  saveOpsNotificationPreferences: preferences => invoke(CHANNELS.OPS_NOTIFICATION_PREFERENCES_SAVE, preferences),
+  testOpsNotification: () => invoke(CHANNELS.OPS_NOTIFICATION_TEST),
+  onOpsNotificationOpen: listener => subscribe(CHANNELS.OPS_NOTIFICATION_OPEN, listener),
   getAutomationTasks: () => invoke(CHANNELS.OPS_AUTOMATION_GET),
   saveAutomationTask: task => invoke(CHANNELS.OPS_AUTOMATION_SAVE, task),
   deleteAutomationTask: id => invoke(CHANNELS.OPS_AUTOMATION_DELETE, id),

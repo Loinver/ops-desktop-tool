@@ -1,5 +1,5 @@
 const { app, BrowserWindow } = require('electron')
-const { createWindow } = require('./window')
+const { createWindow, getMainWindow } = require('./window')
 const { registerPortsHandlers, stopNodeServiceMonitor } = require('./ipc/ports')
 const { registerSystemHandlers } = require('./ipc/system')
 const { registerAppHandlers } = require('./ipc/app')
@@ -9,6 +9,7 @@ const { registerSftpHandlers, closeSftpConnection } = require('./ipc/sftp')
 const { registerGptImageHandlers } = require('./ipc/gpt-image')
 const { registerModelTestHandlers } = require('./ipc/model-test')
 const { registerAiOpsHandlers } = require('./ipc/ai-ops')
+const { initializeOpsNotificationService, stopOpsNotificationService } = require('./ops-notification-service')
 
 const isMcpMode = process.argv.includes('--mcp')
 
@@ -33,8 +34,9 @@ if (isMcpMode) {
 } else {
   app.whenReady().then(() => {
     // safeStorage 在 app ready 后才保证可用，因此 IPC 处理器也在此时注册。
-    registerAllHandlers()
     createWindow()
+    initializeOpsNotificationService({ userDataPath: app.getPath('userData'), getWindow: getMainWindow })
+    registerAllHandlers()
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {
@@ -52,6 +54,7 @@ if (isMcpMode) {
   // 应用退出时关闭 SFTP 连接
   app.on('will-quit', async () => {
     stopNodeServiceMonitor()
+    stopOpsNotificationService()
     await closeSftpConnection()
   })
 }

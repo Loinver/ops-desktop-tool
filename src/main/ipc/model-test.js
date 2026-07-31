@@ -7,13 +7,12 @@
 
 const path = require('node:path')
 const crypto = require('node:crypto')
-const { ipcMain, net, clipboard, app, Notification } = require('electron')
+const { ipcMain, net, clipboard, app } = require('electron')
 const { IPC_CHANNELS } = require('../../shared/ipc-channels')
 const { loadProviders } = require('../utils/ccswitch')
 const { readJsonFile, writeJsonFile } = require('../utils/json-store')
 const {
   completeMonitorRun,
-  countMonitorAnomalies,
   normalizeMonitorSettings,
   updateMonitorSettings,
 } = require('../utils/model-monitor')
@@ -1062,7 +1061,7 @@ function modelMonitorFingerprint(item = {}) {
   return `model-monitor:${String(item.providerId || '')}:${String(item.appType || '')}:${String(item.model || '')}`.slice(0, 240)
 }
 
-function recordModelInspectionEvents(snapshot) {
+function recordModelInspectionEvents(snapshot, { desktopNotification = true } = {}) {
   const userDataPath = app.getPath('userData')
   for (const result of snapshot.results || []) {
     const fingerprint = modelMonitorFingerprint(result)
@@ -1077,6 +1076,7 @@ function recordModelInspectionEvents(snapshot) {
       snapshotId: snapshot.id,
       httpStatus: result.httpStatus,
       durationMs: result.durationMs,
+      desktopNotification,
     }
     if (result.status === 'ok') {
       recoverOpsEvent(userDataPath, fingerprint, {
@@ -1103,6 +1103,7 @@ function recordModelInspectionEvents(snapshot) {
     message: '模型定时巡检任务已恢复执行',
     relatedId: snapshot.id,
     recoveredAt: snapshot.finishedAt,
+    attributes: { desktopNotification },
   })
 }
 
@@ -1128,37 +1129,22 @@ async function runScheduledInspection() {
     const nextSettings = completeMonitorRun(latestSettings)
     if (!writeJsonFile(monitorSettingsPath(), nextSettings)) throw new Error('更新巡检运行时间失败')
     completionRecorded = true
-    const anomalyCount = countMonitorAnomalies(snapshot.summary)
     try {
-      recordModelInspectionEvents(snapshot)
+      recordModelInspectionEvents(snapshot, { desktopNotification: latestSettings.notifyOnFailure })
     } catch (eventError) {
       console.error('记录模型巡检事件失败:', eventError)
-    }
-    if (latestSettings.notifyOnFailure && anomalyCount > 0 && Notification.isSupported()) {
-      try {
-        new Notification({
-          title: '模型巡检发现异常',
-          body: `${snapshot.summary.failed} 个失败，${snapshot.summary.gateway} 个无法验证，${snapshot.summary.ok}/${snapshot.summary.total} 正常`,
-        }).show()
-      } catch (error) {
-        console.error('发送模型巡检通知失败:', error)
-      }
     }
     return snapshot
   } catch (error) {
     // 配置读取或巡检本身失败时也要推进 nextRunAt，否则定时器会每分钟重试，
     // 持续打满中转服务并刷屏日志。
+    let failureDesktopNotification = true
     if (!completionRecorded) {
       try {
         const latestSettings = loadMonitorSettings()
+        failureDesktopNotification = latestSettings.notifyOnFailure
         const nextSettings = completeMonitorRun(latestSettings)
         if (!writeJsonFile(monitorSettingsPath(), nextSettings)) throw new Error('更新巡检运行时间失败')
-        if (latestSettings.notifyOnFailure && Notification.isSupported()) {
-          new Notification({
-            title: '模型巡检执行失败',
-            body: String(error?.message || '未知错误').slice(0, 200),
-          }).show()
-        }
       } catch (recordError) {
         console.error('记录模型巡检失败状态失败:', recordError)
       }
@@ -1172,7 +1158,7 @@ async function runScheduledInspection() {
         title: '模型定时巡检执行失败',
         description: String(error?.message || '未知错误').slice(0, 1000),
         occurredAt: Date.now(),
-        attributes: { startedAt },
+        attributes: { startedAt, desktopNotification: failureDesktopNotification },
       })
     } catch (eventError) {
       console.error('记录模型巡检失败事件失败:', eventError)

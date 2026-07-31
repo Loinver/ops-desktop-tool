@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, toRaw } from 'vue'
 
 export const useClipboardStore = defineStore('clipboard', () => {
   const history = ref([])
@@ -16,7 +16,8 @@ export const useClipboardStore = defineStore('clipboard', () => {
   }
 
   async function saveHistory() {
-    await window.opsApi.saveClipboardHistory(history.value)
+    const serializableHistory = toRaw(history.value).map(item => ({ ...toRaw(item) }))
+    await window.opsApi.saveClipboardHistory(serializableHistory)
   }
 
   async function checkClipboard() {

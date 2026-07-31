@@ -1,12 +1,10 @@
 <template>
+  <Teleport to="body">
   <div
     v-if="open"
-    class="modal-mask"
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="model-list-settings-title"
+    class="model-test-page modal-mask"
   >
-    <div class="settings-dialog model-list-settings-dialog">
+    <div class="settings-dialog model-list-settings-dialog" role="dialog" aria-modal="true" aria-labelledby="model-list-settings-title">
       <header class="dialog-header">
         <div>
           <h3 id="model-list-settings-title">模型筛选</h3>
@@ -71,6 +69,7 @@
       </div>
     </div>
   </div>
+  </Teleport>
 </template>
 
 <script setup>
