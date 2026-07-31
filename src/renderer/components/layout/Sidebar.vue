@@ -52,6 +52,7 @@ const menuItems = computed(() => [
   { path: '/system-release', name: '系统发布', icon: 'folder-open' },
   { path: '/gpt-image', name: 'AI 生图', icon: 'image' },
   { path: '/model-test', name: '模型测试', icon: 'dashboard' },
+  { path: '/ai-ops', name: 'AI 运维中心', icon: 'chat' },
   { path: '/quick-launch', name: '快捷启动', icon: 'rocket' },
   { path: '/clipboard-history', name: '剪贴板历史', icon: 'file-copy' },
   { path: '/system-info', name: '系统信息', icon: 'chart-bar' },

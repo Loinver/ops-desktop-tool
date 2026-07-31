@@ -78,6 +78,23 @@ const IPC_CHANNELS = {
   MODEL_TEST_MONITOR_SAVE: 'modelTest:saveMonitorSettings',
   MODEL_TEST_MONITOR_RUN: 'modelTest:runInspection',
   OPS_DASHBOARD_GET: 'ops:getDashboard',
+
+  // AI 运维中心
+  AI_OPS_GET_STATE: 'aiOps:getState',
+  AI_PROVIDER_SAVE: 'aiOps:saveProvider',
+  AI_PROVIDER_DELETE: 'aiOps:deleteProvider',
+  AI_PROVIDER_ACTIVATE: 'aiOps:activateProvider',
+  AI_PROVIDER_TEST: 'aiOps:testProvider',
+  AI_EVALUATION_SAVE_CASES: 'aiOps:saveEvaluationCases',
+  AI_EVALUATION_RUN: 'aiOps:runEvaluation',
+  AI_LOG_ANALYZE: 'aiOps:analyzeLog',
+  AI_KNOWLEDGE_SAVE: 'aiOps:saveKnowledge',
+  AI_KNOWLEDGE_DELETE: 'aiOps:deleteKnowledge',
+  AI_KNOWLEDGE_SEARCH: 'aiOps:searchKnowledge',
+  AI_KNOWLEDGE_ANSWER: 'aiOps:answerKnowledge',
+  AI_WORKFLOW_PLAN: 'aiOps:planWorkflow',
+  AI_WORKFLOW_EXECUTE: 'aiOps:executeWorkflow',
+  AI_MCP_INFO: 'aiOps:getMcpInfo',
 }
 
 module.exports = { IPC_CHANNELS }

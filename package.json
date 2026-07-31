@@ -8,6 +8,7 @@
     "dev:all": "concurrently \"vite\" \"electron .\"",
     "build": "vite build",
     "start": "electron .",
+    "mcp": "node src/main/mcp-server.js",
     "preview": "vite preview",
     "test": "node --test scripts/*.test.cjs && node scripts/check-port-parser.js",
     "check": "pnpm test && pnpm build",

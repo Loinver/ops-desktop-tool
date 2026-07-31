@@ -54,6 +54,12 @@ const routes = [
         name: 'ModelTest',
         component: () => import('../views/model-test/index.vue'),
         meta: { title: '模型测试', keepAlive: true }
+      },
+      {
+        path: 'ai-ops',
+        name: 'AiOps',
+        component: () => import('../views/ai-ops/index.vue'),
+        meta: { title: 'AI 运维中心', keepAlive: true }
       }
     ]
   }

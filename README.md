@@ -14,6 +14,7 @@
 | 系统发布 | 发布前预检、忽略规则、多环境 Profile、发布历史、远端备份与一键回滚；浏览本地和远程目录，通过 SFTP 上传、续传、比较、删除、创建目录或 ZIP 部署 |
 | AI 生图 | 对接 OpenAI 兼容的模型与图片生成接口，保存配置、生成记录和图片文件 |
 | 模型测试 | 检测 cc-switch 中转模型可用性，保存历史与趋势，支持定时巡检和异常桌面通知 |
+| AI 运维中心 | 统一管理 OpenAI 兼容 Provider、模型语义评测、脱敏日志分析、本地知识库检索、确认式自然语言工作流与只读 MCP 服务 |
 
 ## 环境要求
 
@@ -61,9 +62,12 @@ pnpm check
 
 # 仅运行 SFTP 部署安全测试
 pnpm test:sftp
+
+# 从源码以 stdio 方式启动只读 MCP 服务
+pnpm mcp
 ```
 
-测试覆盖安全凭证迁移、IPC 通道一致性、路径边界、SFTP 部署安全、AI 图片文件处理和端口解析。
+测试覆盖安全凭证迁移、IPC 通道一致性、路径边界、SFTP 部署安全、AI 图片文件处理、AI 运维核心能力和端口解析。
 
 ## 构建与打包
 
@@ -116,6 +120,11 @@ export SFTP_PASSWORD='your-password'
 | `model-monitor-settings.json` | 巡检间隔、通知开关和巡检目标 |
 | `gpt-image-config.json` | AI 生图配置，API Key 为加密字段 |
 | `gpt-image-history.json` | AI 生图历史 |
+| `ai-providers.json` | AI Provider 配置，API Key 为加密字段 |
+| `ai-evaluations.json` | 模型语义评测用例与运行结果，回答会先脱敏 |
+| `ai-log-analysis.json` | 脱敏日志的本地规则分析和可选 AI 总结 |
+| `ai-knowledge.json` | 本地运维知识库，保存前会脱敏 |
+| `ai-workflows.json` | 自然语言工作流预览历史 |
 
 SFTP 密码和 AI API Key 使用 Electron `safeStorage` 加密后保存。渲染进程只能获得 `hasPassword`、`passwordMasked`、`hasApiKey`、`apiKeyMasked` 等状态，不会获得完整凭证。旧版本遗留的明文字段会在可用时自动迁移为加密字段；系统安全存储不可用时，应用拒绝把新的敏感凭证明文写入磁盘。
 
@@ -142,3 +151,11 @@ ZIP 部署成功后，旧版本按发布记录保留在远端目标目录父级�
 - 页面路由懒加载，TDesign 仅保留消息插件，图标使用本地 sprite，不依赖远程 CDN
 
 更详细的模块边界、数据流和目录说明见 [ARCHITECTURE.md](./ARCHITECTURE.md)。
+
+## AI 运维中心与 MCP
+
+AI 运维中心当前统一接入 OpenAI 兼容的 Chat Completions 接口，可用于公司网关、本地模型或兼容服务。Provider 的 API Key 使用系统安全存储加密；评测结果、日志和知识文档在持久化前均会进行基础敏感信息脱敏。
+
+自然语言工作流只生成预览：页面导航属于低风险操作，外部网站打开必须由用户确认；发布、删除、回滚和任何 shell 命令都不会由 AI 自动执行。
+
+MCP 服务通过 stdio 提供严格只读的 `get_release_history`、`get_model_health` 和 `search_ops_knowledge` 工具，不返回 Provider/SFTP 凭证，也不提供发布写操作。源码环境可运行 `pnpm mcp`；安装包环境可在 AI 运维中心的 **MCP** 页复制当前应用生成的命令与配置示例。
