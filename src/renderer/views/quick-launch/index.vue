@@ -320,10 +320,10 @@ onMounted(async () => {
 
 <style scoped>
 .page {
-  height: 100%;
+  min-height: 100%;
   padding: var(--page-padding-y) var(--page-padding-x);
   overflow-y: auto;
-  background: var(--bg);
+  background: transparent;
 }
 
 /* 页头 */

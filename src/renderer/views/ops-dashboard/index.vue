@@ -166,11 +166,11 @@ onMounted(loadDashboard)
 
 <style scoped>
 .dashboard-page {
-  height: 100%;
+  min-height: 100%;
   box-sizing: border-box;
-  overflow: hidden;
-  padding: 24px var(--page-padding-x);
-  background: var(--bg);
+  overflow-y: auto;
+  padding: var(--page-padding-y) var(--page-padding-x);
+  background: transparent;
   color: var(--text);
 }
 
@@ -179,7 +179,7 @@ onMounted(loadDashboard)
   justify-content: space-between;
   align-items: flex-start;
   gap: var(--spacing-md);
-  margin-bottom: 16px;
+  margin-bottom: var(--page-header-gap);
 }
 
 .dashboard-header h2 {
@@ -248,9 +248,9 @@ input:disabled {
 .metric-card,
 .panel {
   background: var(--card-bg);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
 }
 
 .metric-card {

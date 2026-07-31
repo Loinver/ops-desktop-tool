@@ -1725,7 +1725,7 @@ onMounted(async () => {
 .page {
   height: 100%;
   padding: var(--page-padding-y) var(--page-padding-x);
-  background: var(--bg);
+  background: transparent;
   display: flex;
   flex-direction: column;
   gap: var(--content-gap);

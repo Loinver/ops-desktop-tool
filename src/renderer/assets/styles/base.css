@@ -19,6 +19,13 @@
   --bg: #f8fafc;
   --bg-elevated: #ffffff;
   --card-bg: #ffffff;
+  --bg-subtle: #f1f5f9;
+  --shell-bg: #f6f8fc;
+  --shell-surface: rgba(248, 250, 252, 0.86);
+  --shell-surface-raised: #ffffff;
+  --shell-border: rgba(203, 213, 225, 0.78);
+  --border-strong: #cbd5e1;
+  --primary-soft: rgba(91, 106, 191, 0.09);
   --text: #1e293b;
   --text-secondary: #64748b;
   --text-muted: #94a3b8;
@@ -32,7 +39,11 @@
   --sidebar-active: rgba(99, 102, 241, 0.2);
   --sidebar-text: rgba(255, 255, 255, 0.65);
   --sidebar-text-active: #ffffff;
-  --sidebar-width: 240px;
+  --sidebar-width: 252px;
+  --sidebar-collapsed-width: 72px;
+  --topbar-height: 68px;
+  /* macOS hiddenInset 标题栏下，侧栏品牌与系统窗口控制区保持安全距离。 */
+  --window-safe-top: 36px;
 
   /* 圆角 */
   --radius-xs: 6px;
@@ -47,6 +58,7 @@
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
   --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
+  --shadow-shell: 0 18px 42px rgba(15, 23, 42, 0.07);
 
   /* 字体 */
   --font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'PingFang SC', 'Helvetica Neue', 'Microsoft YaHei', sans-serif;
@@ -89,6 +101,13 @@
   padding: 0;
 }
 
+html,
+body,
+#app {
+  width: 100%;
+  height: 100%;
+}
+
 body {
   font-family: var(--font-family);
   background: var(--bg);
@@ -96,6 +115,64 @@ body {
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+
+/* 统一工作区基础：业务页可以沿用 .page / .page-header，而不必各自重新定义背景与节奏。 */
+.page {
+  min-height: 100%;
+  padding: var(--page-padding-y) var(--page-padding-x);
+  overflow-y: auto;
+  background: transparent;
+}
+
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  margin-bottom: var(--page-header-gap);
+}
+
+.page-title {
+  color: var(--text);
+  font-size: var(--page-title-size);
+  font-weight: 700;
+  letter-spacing: var(--page-title-letter-spacing);
+  line-height: var(--page-title-line-height);
+}
+
+.page-desc {
+  margin-top: var(--spacing-xs);
+  color: var(--text-muted);
+  font-size: var(--page-desc-size);
+  line-height: var(--page-desc-line-height);
+}
+
+/* 数据密集型区域与日志区共用更清晰的层次。 */
+.surface-panel {
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  background: var(--card-bg);
+  box-shadow: var(--shadow-xs);
+}
+
+.mono-panel,
+pre,
+code {
+  font-family: var(--font-mono);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--primary) 68%, #fff);
+  outline-offset: 2px;
 }
 
 /* 滚动条 - 更精致 */
@@ -217,4 +294,50 @@ body {
 
 .t-breadcrumb__item:hover .t-breadcrumb__inner {
   color: var(--primary) !important;
+}
+
+/* 工作台视觉层级：避免不同页面的表格、卡片和日志区各自呈现。 */
+.t-card {
+  background: var(--card-bg) !important;
+}
+
+.t-table,
+.t-table__content {
+  background: var(--card-bg) !important;
+}
+
+.t-table th {
+  background: var(--bg-subtle) !important;
+}
+
+.t-table tr:hover td {
+  background: color-mix(in srgb, var(--primary) 3.5%, #fff) !important;
+}
+
+.t-dialog__ctx .t-dialog {
+  border: 1px solid var(--shell-border);
+  border-radius: var(--radius-xl) !important;
+  box-shadow: var(--shadow-xl) !important;
+}
+
+.t-dialog__header {
+  color: var(--text);
+  font-weight: 700;
+}
+
+@media (max-width: 960px) {
+  :root {
+    --page-padding-x: 24px;
+  }
+}
+
+@media (max-width: 700px) {
+  :root {
+    --page-padding-x: 16px;
+    --page-padding-y: 20px;
+  }
+
+  .page-header {
+    flex-direction: column;
+  }
 }
