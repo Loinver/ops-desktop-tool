@@ -1,6 +1,6 @@
 const { app, BrowserWindow } = require('electron')
 const { createWindow } = require('./window')
-const { registerPortsHandlers } = require('./ipc/ports')
+const { registerPortsHandlers, stopNodeServiceMonitor } = require('./ipc/ports')
 const { registerSystemHandlers } = require('./ipc/system')
 const { registerAppHandlers } = require('./ipc/app')
 const { registerQuickLaunchHandlers } = require('./ipc/quicklaunch')
@@ -51,6 +51,7 @@ if (isMcpMode) {
 
   // 应用退出时关闭 SFTP 连接
   app.on('will-quit', async () => {
+    stopNodeServiceMonitor()
     await closeSftpConnection()
   })
 }

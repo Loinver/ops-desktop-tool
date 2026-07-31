@@ -20,6 +20,10 @@
             <t-icon name="close-circle-filled" />
           </button>
         </div>
+        <button type="button" class="btn-refresh" :disabled="store.checking" @click="checkWatches">
+          <t-icon name="check-circle" :class="{ spinning: store.checking }" />
+          <span>检查关注</span>
+        </button>
         <button type="button" class="btn-refresh" :disabled="store.loading" @click="refresh">
           <t-icon name="refresh" :class="{ spinning: store.loading }" />
           <span>刷新</span>
@@ -57,16 +61,53 @@
           <div class="stat-text">UDP</div>
         </div>
       </div>
+      <div class="stat-card interactive-surface">
+        <div class="stat-icon-wrap stat-icon-watch">
+          <t-icon name="notification" />
+        </div>
+        <div class="stat-body">
+          <div class="stat-number">{{ store.watchedCount }}</div>
+          <div class="stat-text">已关注</div>
+        </div>
+      </div>
     </section>
 
     <!-- 服务列表 -->
     <section class="content-section surface-panel page-section" aria-live="polite">
+      <div class="monitor-note">
+        <div><strong>服务异常监控</strong><span>只有明确关注的端口停止监听时才会生成统一事件，恢复后自动关闭。</span></div>
+        <span>上次扫描：{{ store.lastScan }}</span>
+      </div>
+      <div v-if="store.watches.length" class="watch-list" aria-label="已关注服务">
+        <div class="watch-list-heading">
+          <strong>已关注服务</strong>
+          <span>后台每分钟检查一次，仅状态变化时生成或恢复事件。</span>
+        </div>
+        <article
+          v-for="item in store.watches"
+          :key="item.id"
+          :data-watch-key="`${item.protocol}:${item.port}`"
+          :class="['watch-item', item.lastState, { 'target-service': isTargetService(item) }]"
+        >
+          <span class="watch-state-dot"></span>
+          <div class="watch-info">
+            <strong>{{ item.protocol }} {{ item.port }}</strong>
+            <span>{{ item.commandLabel || '未记录进程命令' }}</span>
+          </div>
+          <div class="watch-state">
+            <strong>{{ item.lastState === 'offline' ? '停止监听' : item.lastState === 'online' ? '运行中' : '待检查' }}</strong>
+            <span>最近发现：{{ formatWatchTime(item.lastSeenAt) }}</span>
+          </div>
+          <button type="button" class="btn-text-danger" @click="toggleWatch(item)">取消关注</button>
+        </article>
+      </div>
+
       <div v-if="filteredServices.length === 0" class="empty-state">
         <div class="empty-icon">
           <t-icon name="ai-terminal" />
         </div>
-        <h3>暂无 Node 服务</h3>
-        <p>启动 Node 应用后点击刷新按钮</p>
+        <h3>{{ search ? '未找到运行中的 Node 服务' : '暂无 Node 服务' }}</h3>
+        <p>{{ search ? '目标端口可能已停止监听，可在上方关注列表查看状态。' : '启动 Node 应用后点击刷新按钮' }}</p>
       </div>
 
       <div v-else class="service-table-wrap" :aria-busy="store.loading">
@@ -82,7 +123,12 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="service in filteredServices" :key="service.id">
+            <tr
+              v-for="service in filteredServices"
+              :key="service.id"
+              :data-service-key="`${service.protocol}:${service.port}`"
+              :class="{ 'target-service': isTargetService(service) }"
+            >
               <td class="align-center"><span class="cell-port">{{ service.port }}</span></td>
               <td class="align-center">
                 <span :class="['protocol-tag', service.protocol === 'TCP' ? 'tcp' : 'udp']">
@@ -101,6 +147,17 @@
               </td>
               <td>
                 <div class="cell-actions">
+                  <button
+                    type="button"
+                    class="action-btn watch-action"
+                    :class="{ active: store.isWatched(service) }"
+                    :aria-label="store.isWatched(service) ? '取消关注服务' : '关注服务'"
+                    :title="store.isWatched(service) ? '取消关注，不再生成异常事件' : '关注后，端口停止监听会生成异常事件'"
+                    @click="toggleWatch(service)"
+                  >
+                    <t-icon name="notification" />
+                    <span>{{ store.isWatched(service) ? '已关注' : '关注' }}</span>
+                  </button>
                   <button type="button" class="action-btn danger" aria-label="结束进程" title="结束进程" @click="handleKill(service)">
                     <t-icon name="close-circle" />
                   </button>
@@ -120,15 +177,19 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import MessagePlugin from 'tdesign-vue-next/es/message/plugin.mjs';
 import { useNodeServicesStore } from "../../stores/nodeServices";
+import { useRoute } from 'vue-router';
 import { useConfirm } from "../../composables/useConfirm";
 
 const store = useNodeServicesStore();
+const route = useRoute();
 const { confirm } = useConfirm();
 
 const search = ref("");
+const targetPort = ref('');
+const targetProtocol = ref('');
 
 const filteredServices = computed(() => {
   if (!search.value) return store.services;
@@ -143,7 +204,8 @@ const filteredServices = computed(() => {
 });
 
 async function refresh() {
-  await store.fetchServices();
+  await store.refreshAll();
+  await focusRouteService();
   if (store.services.length > 0) {
     MessagePlugin.success({
       content: `发现 ${store.services.length} 个 Node 服务`,
@@ -152,14 +214,84 @@ async function refresh() {
   }
 }
 
+
+async function checkWatches() {
+  const result = await store.checkWatches();
+  if (result?.ok) {
+    const offline = (result.changes || []).filter(item => item.type === 'offline').length;
+    MessagePlugin[offline ? 'warning' : 'success']({
+      content: offline ? `发现 ${offline} 个关注服务异常` : '关注服务检查完成',
+      placement: 'bottom-right',
+    });
+  } else {
+    MessagePlugin.error({ content: result?.error || '关注服务检查失败', placement: 'bottom-right' });
+  }
+}
+
+async function toggleWatch(service) {
+  const watching = store.isWatched(service);
+  const result = watching ? await store.unwatchService(service) : await store.watchService(service);
+  if (result?.ok) {
+    MessagePlugin.success({ content: watching ? '已取消关注' : '已关注该服务', placement: 'bottom-right' });
+  } else {
+    MessagePlugin.error({ content: result?.error || '更新关注状态失败', placement: 'bottom-right' });
+  }
+}
+
+async function stopWatchBeforeKill(service) {
+  const watchedServices = store.services.filter(item => item.pid === service.pid && store.isWatched(item));
+  const removed = [];
+  for (const item of watchedServices) {
+    const result = await store.unwatchService(item);
+    if (!result?.ok) {
+      for (const previous of removed) await store.watchService(previous);
+      return { services: [], ok: false, error: result?.error };
+    }
+    removed.push(item);
+  }
+  return { services: removed, ok: true };
+}
+
+async function restoreWatchAfterFailure(watchState) {
+  for (const service of watchState.services || []) await store.watchService(service);
+}
+
+function isTargetService(service) {
+  if (!targetPort.value) return false;
+  return String(service.port) === targetPort.value && (!targetProtocol.value || service.protocol === targetProtocol.value);
+}
+
+function formatWatchTime(timestamp) {
+  return timestamp ? new Date(timestamp).toLocaleString('zh-CN', { hour12: false }) : '尚未发现';
+}
+
+async function focusRouteService() {
+  targetPort.value = String(route.query.port || '');
+  targetProtocol.value = String(route.query.protocol || '').toUpperCase();
+  if (!targetPort.value) return;
+  search.value = targetPort.value;
+  await nextTick();
+  const key = `${targetProtocol.value || 'TCP'}:${targetPort.value}`;
+  const target = [...document.querySelectorAll('[data-watch-key], [data-service-key]')].find(element => {
+    const current = element.dataset.watchKey || element.dataset.serviceKey || '';
+    return targetProtocol.value ? current === key : current.endsWith(`:${targetPort.value}`);
+  });
+  target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
 async function handleKill(service) {
   const confirmed = await confirm({
     title: "结束进程",
     content: `确定结束 PID ${service.pid} 吗？`,
-    detail: `${service.command} 占用端口 ${service.port}`,
+    detail: `${service.command} 占用端口 ${service.port}。该进程下已关注的端口会同时取消关注。`,
   });
   if (!confirmed) return;
 
+  const watchState = await stopWatchBeforeKill(service);
+  if (!watchState.ok) {
+    MessagePlugin.error({ content: watchState.error || '停止关注失败，已取消结束进程', placement: 'bottom-right' });
+    return;
+  }
   const result = await store.killProcess(service.pid, "SIGTERM");
   if (result.ok) {
     MessagePlugin.success({
@@ -168,6 +300,7 @@ async function handleKill(service) {
     });
     await refresh();
   } else {
+    await restoreWatchAfterFailure(watchState);
     MessagePlugin.error({
       content: result.error || "操作失败",
       placement: "bottom-right",
@@ -179,11 +312,16 @@ async function handleForceKill(service) {
   const confirmed = await confirm({
     title: "强制结束",
     content: `确定强制结束 PID ${service.pid} 吗？`,
-    detail: "强制结束不会给进程清理机会",
+    detail: "强制结束不会给进程清理机会；该进程下已关注的端口会同时取消关注。",
     theme: "warning",
   });
   if (!confirmed) return;
 
+  const watchState = await stopWatchBeforeKill(service);
+  if (!watchState.ok) {
+    MessagePlugin.error({ content: watchState.error || '停止关注失败，已取消强制结束', placement: 'bottom-right' });
+    return;
+  }
   const result = await store.killProcess(service.pid, "SIGKILL");
   if (result.ok) {
     MessagePlugin.success({
@@ -192,12 +330,15 @@ async function handleForceKill(service) {
     });
     await refresh();
   } else {
+    await restoreWatchAfterFailure(watchState);
     MessagePlugin.error({
       content: result.error || "操作失败",
       placement: "bottom-right",
     });
   }
 }
+
+watch(() => [route.query.port, route.query.protocol], () => { void focusRouteService(); });
 
 onMounted(() => {
   refresh();
@@ -313,7 +454,7 @@ onMounted(() => {
 /* 统计卡片 */
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--content-gap);
 }
 
@@ -354,6 +495,11 @@ onMounted(() => {
 .stat-icon-tcp {
   background: linear-gradient(135deg, #ecfdf5, #d1fae5);
   color: #10b981;
+}
+
+.stat-icon-watch {
+  color: var(--primary);
+  background: var(--primary-soft);
 }
 
 .stat-icon-udp {
@@ -421,6 +567,30 @@ onMounted(() => {
   font-size: 14px;
   color: var(--text-muted);
 }
+
+.monitor-note { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: var(--content-gap); padding: 10px 12px; border-radius: var(--radius); background: var(--bg-subtle); color: var(--text-muted); font-size: 12px; }
+.monitor-note > div { min-width: 0; display: flex; flex-wrap: wrap; gap: 6px 10px; }
+.monitor-note strong { color: var(--text-secondary); }
+.monitor-note > span { flex: none; white-space: nowrap; }
+
+
+.watch-list { display: grid; gap: 8px; margin-bottom: var(--content-gap); }
+.watch-list-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; color: var(--text-muted); font-size: 11px; }
+.watch-list-heading strong { color: var(--text-secondary); font-size: 12px; }
+.watch-item { display: grid; grid-template-columns: 8px minmax(140px, .7fr) minmax(150px, 1fr) auto; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card-bg); }
+.watch-item.target-service { border-color: color-mix(in srgb, var(--primary) 48%, var(--border)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 10%, transparent); }
+.watch-state-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); }
+.watch-item.online .watch-state-dot { background: var(--success); }
+.watch-item.offline .watch-state-dot { background: var(--danger); box-shadow: 0 0 0 4px color-mix(in srgb, var(--danger) 10%, transparent); }
+.watch-info,
+.watch-state { min-width: 0; display: grid; gap: 2px; }
+.watch-info strong,
+.watch-state strong { color: var(--text); font-size: 12px; }
+.watch-info span,
+.watch-state span { overflow: hidden; color: var(--text-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.watch-item.offline .watch-state strong { color: var(--danger); }
+.btn-text-danger { padding: 6px 8px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--danger); font: inherit; font-size: 11px; cursor: pointer; }
+.btn-text-danger:hover { background: var(--danger-light); }
 
 /* 服务表格 */
 .service-table-wrap {
@@ -498,7 +668,7 @@ onMounted(() => {
 }
 
 .col-actions {
-  width: 120px;
+  width: 210px;
 }
 
 .truncate-cell {
@@ -582,6 +752,10 @@ onMounted(() => {
   border-color: var(--text-muted);
 }
 
+.action-btn.watch-action { width: auto; padding: 0 9px; gap: 5px; font-size: 12px; }
+.action-btn.watch-action.active { border-color: color-mix(in srgb, var(--primary) 40%, var(--border)); background: var(--primary-soft); color: var(--primary); }
+.service-table tbody tr.target-service { background: color-mix(in srgb, var(--primary-soft) 70%, #fff); box-shadow: inset 3px 0 0 var(--primary); }
+
 .action-btn.danger:hover {
   background: var(--danger-light);
   color: var(--danger);
@@ -603,7 +777,7 @@ onMounted(() => {
 
 @media (max-width: 760px) {
   .stats-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, 1fr);
   }
 
   .node-search,
@@ -621,5 +795,12 @@ onMounted(() => {
   .content-section {
     padding-inline: var(--panel-padding);
   }
+
+  .monitor-note,
+  .watch-list-heading { align-items: flex-start; flex-direction: column; }
+  .monitor-note > span { white-space: normal; }
+  .watch-item { grid-template-columns: 8px minmax(0, 1fr) auto; }
+  .watch-state { grid-column: 2; }
+  .btn-text-danger { grid-column: 3; grid-row: 1 / span 2; }
 }
 </style>

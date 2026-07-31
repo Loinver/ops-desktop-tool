@@ -3,7 +3,7 @@ const net = require('node:net')
 const path = require('node:path')
 const { readJsonFile, writeJsonFile } = require('./json-store')
 
-const EVENT_STATE_VERSION = 2
+const EVENT_STATE_VERSION = 3
 const MAX_EVENTS = 500
 const MAX_EVENT_TIMELINE = 40
 const MAX_TASKS = 100
@@ -86,6 +86,7 @@ function normalizeStoredEvent(input = {}) {
     acknowledgedAt: Number(input.acknowledgedAt) || 0,
     resolvedAt: Number(input.resolvedAt) || (status === 'resolved' ? updatedAt : 0),
     recoveredAt: Number(input.recoveredAt) || 0,
+    readAt: Number(input.readAt) || 0,
     createdAt: firstOccurredAt,
     updatedAt,
     timeline: normalizeTimeline(input.timeline),
@@ -93,8 +94,14 @@ function normalizeStoredEvent(input = {}) {
 }
 function loadEventState(userDataPath) {
   const stored = readJsonFile(eventsPath(userDataPath), { version: EVENT_STATE_VERSION, items: [] })
+  const storedVersion = Number(stored?.version) || 1
   const normalizedItems = Array.isArray(stored?.items)
-    ? stored.items.slice(0, MAX_EVENTS).map(normalizeStoredEvent)
+    ? stored.items.slice(0, MAX_EVENTS).map(item => normalizeStoredEvent({
+      ...item,
+      readAt: item?.readAt ?? (storedVersion < EVENT_STATE_VERSION && normalizeEventStatus(item?.status) === 'resolved'
+        ? Number(item?.updatedAt || item?.resolvedAt || item?.createdAt) || Date.now()
+        : 0),
+    }))
     : []
   const itemsByFingerprint = new Map()
   for (const item of normalizedItems) {
@@ -163,6 +170,7 @@ function addOpsEvent(userDataPath, input = {}) {
     acknowledgedAt: status === 'acknowledged' ? (existing?.acknowledgedAt || occurredAt) : 0,
     resolvedAt: status === 'resolved' ? occurredAt : 0,
     recoveredAt: status === 'resolved' && input.recovered ? occurredAt : 0,
+    readAt: 0,
     updatedAt,
     timeline: appendTimeline(existing?.timeline, timelineType, timelineMessage, occurredAt),
   })
@@ -180,6 +188,7 @@ function updateOpsEvent(userDataPath, id, status, note = '') {
   const updatedAt = Date.now()
   item.status = nextStatus
   item.updatedAt = updatedAt
+  item.readAt = updatedAt
   item.acknowledgedAt = nextStatus === 'acknowledged' ? (item.acknowledgedAt || updatedAt) : item.acknowledgedAt
   item.resolvedAt = nextStatus === 'resolved' ? updatedAt : 0
   if (nextStatus !== 'resolved') item.recoveredAt = 0
@@ -198,6 +207,7 @@ function recoverOpsEvent(userDataPath, fingerprint, input = {}) {
   item.updatedAt = recoveredAt
   item.resolvedAt = recoveredAt
   item.recoveredAt = recoveredAt
+  item.readAt = 0
   item.resolutionNote = message
   item.relatedId = value(input.relatedId, 180) || item.relatedId
   item.attributes = { ...item.attributes, ...normalizeAttributes(input.attributes) }
@@ -205,6 +215,22 @@ function recoverOpsEvent(userDataPath, fingerprint, input = {}) {
   saveEventState(userDataPath, state)
   return normalizeStoredEvent(item)
 }
+function markOpsEventsRead(userDataPath, { ids = [], all = false } = {}) {
+  const state = loadEventState(userDataPath)
+  const selectedIds = new Set(Array.isArray(ids) ? ids.slice(0, MAX_EVENTS).map(id => value(id, 100)).filter(Boolean) : [])
+  if (!all && selectedIds.size === 0) return { updated: 0, readAt: 0 }
+  const readAt = Date.now()
+  let updated = 0
+  for (const item of state.items) {
+    if (!item.readAt && (all || selectedIds.has(item.id))) {
+      item.readAt = readAt
+      updated += 1
+    }
+  }
+  if (updated > 0) saveEventState(userDataPath, state)
+  return { updated, readAt: updated > 0 ? readAt : 0 }
+}
+
 function listOpsEvents(userDataPath, { status = '', sourceType = '', category = '', severity = '', level = '', query = '', limit = 100 } = {}) {
   const normalizedStatus = status ? normalizeEventStatus(status) : ''
   const normalizedSourceType = value(sourceType || category, 60)
@@ -370,6 +396,8 @@ function eventSummary(userDataPath) {
     acknowledged: items.filter(item => item.status === 'acknowledged').length,
     resolved: items.filter(item => item.status === 'resolved').length,
     recovered: items.filter(item => item.recoveredAt > 0).length,
+    unread: items.filter(item => !item.readAt).length,
+    unreadCritical: items.filter(item => !item.readAt && item.severity === 'critical').length,
     critical: active.filter(item => item.severity === 'critical').length,
     warning: active.filter(item => item.severity === 'warning').length,
   }
@@ -383,6 +411,7 @@ module.exports = {
   listOpsEvents,
   loadAutomationState,
   loadEventState,
+  markOpsEventsRead,
   recoverOpsEvent,
   runAutomationTask,
   runDueAutomationTasks,

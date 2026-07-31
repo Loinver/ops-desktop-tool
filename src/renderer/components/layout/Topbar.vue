@@ -16,6 +16,8 @@
         <kbd>{{ shortcutLabel }}</kbd>
       </button>
 
+      <OpsNotificationCenter />
+
       <div class="status-wrap">
         <button
           class="status-trigger"
@@ -79,6 +81,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getFunctionMenuItem } from '../../config/function-menu'
+import OpsNotificationCenter from './OpsNotificationCenter.vue'
 
 const emit = defineEmits(['open-command'])
 const route = useRoute()

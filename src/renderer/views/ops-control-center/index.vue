@@ -92,8 +92,8 @@
             </div>
           </div>
 
-          <div class="event-list">
-            <article v-for="item in filteredEvents" :key="item.id" :class="['event-item', item.severity || item.level, { resolved: item.status === 'resolved' }]">
+          <div ref="eventListRef" class="event-list">
+            <article v-for="item in filteredEvents" :key="item.id" :data-event-id="item.id" :class="['event-item', item.severity || item.level, { resolved: item.status === 'resolved', targeted: expandedEventId === item.id && route.query.event === item.id }]">
               <span class="event-dot" aria-hidden="true"></span>
               <div class="event-content">
                 <div class="event-title-row">
@@ -179,16 +179,20 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { MessagePlugin } from 'tdesign-vue-next'
+import { useRoute } from 'vue-router'
 import { useConfirm } from '../../composables/useConfirm'
 
 const { confirm } = useConfirm()
+const route = useRoute()
 const loading = ref(false)
 const busy = ref(false)
 const savingTask = ref(false)
 const runningTaskId = ref('')
 const expandedEventId = ref('')
+const eventListRef = ref(null)
+const lastFocusedEventId = ref('')
 const events = ref([])
 const summary = ref({})
 const tasks = ref([])
@@ -216,9 +220,30 @@ function notify(result, fallback) { if (!result?.ok) { MessagePlugin.error({ con
 function formatTime(value) { return value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '—' }
 function levelName(level) { return ({ info: '信息', warning: '警告', critical: '严重' })[level] || '信息' }
 function statusName(status) { return ({ open: '待处理', acknowledged: '已确认', resolved: '已解决' })[status] || '待处理' }
-function sourceName(source) { return ({ automation: '自动化巡检', 'model-monitor': '模型巡检', model: '模型评测', release: '系统发布', log: '日志分析', copilot: 'AI Copilot', system: '系统' })[source] || source || '系统' }
+function sourceName(source) { return ({ automation: '自动化巡检', 'node-service': 'Node 服务', 'model-monitor': '模型巡检', model: '模型评测', release: '系统发布', log: '日志分析', copilot: 'AI Copilot', system: '系统' })[source] || source || '系统' }
 function timelineName(type) { return ({ opened: '事件创建', occurred: '再次发生', reopened: '重新触发', acknowledged: '已确认', resolved: '已解决', recovered: '自动恢复' })[type] || '状态更新' }
 function toggleEvent(item) { expandedEventId.value = expandedEventId.value === item.id ? '' : item.id }
+
+async function focusRouteEvent() {
+  const eventId = String(route.query.event || '')
+  if (!eventId || lastFocusedEventId.value === eventId) return
+  const item = events.value.find(entry => entry.id === eventId)
+  if (!item) return
+  eventFilter.value = item.status === 'resolved' ? '' : 'active'
+  sourceFilter.value = ''
+  expandedEventId.value = eventId
+  lastFocusedEventId.value = eventId
+  if (!item.readAt) {
+    const result = await window.opsApi.markOpsEventsRead?.({ ids: [eventId] })
+    if (result?.ok) {
+      item.readAt = Number(result.readAt) || Date.now()
+      summary.value = result.summary || summary.value
+    }
+  }
+  await nextTick()
+  const target = [...(eventListRef.value?.querySelectorAll('[data-event-id]') || [])].find(element => element.dataset.eventId === eventId)
+  target?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+}
 
 async function load() {
   loading.value = true
@@ -231,6 +256,7 @@ async function load() {
     if (notify(eventResult, '读取事件失败')) { events.value = eventResult.items || []; summary.value = eventResult.summary || {} }
     if (notify(taskResult, '读取自动化任务失败')) tasks.value = taskResult.tasks || []
     if (aiResult?.ok) aiState.value = aiResult
+    await focusRouteEvent()
   } finally { loading.value = false }
 }
 async function askCopilot() {
@@ -254,6 +280,11 @@ function resetTaskForm() { taskForm.value = newTask() }
 async function saveTask() { savingTask.value = true; try { const result = await window.opsApi.saveAutomationTask({ ...taskForm.value }); if (notify(result, '保存任务失败')) { resetTaskForm(); await load(); MessagePlugin.success({ content: '自动化任务已保存', placement: 'bottom-right' }) } } finally { savingTask.value = false } }
 async function runTask(task) { runningTaskId.value = task.id; try { const result = await window.opsApi.runAutomationTask(task.id); if (notify(result, '运行任务失败')) { await load(); MessagePlugin[result.result?.ok ? 'success' : 'warning']({ content: result.result?.message || '任务已完成', placement: 'bottom-right' }) } } finally { runningTaskId.value = '' } }
 async function removeTask(task) { if (!await confirm({ title: '删除自动化任务', content: `确定删除“${task.title}”吗？`, theme: 'warning' })) return; const result = await window.opsApi.deleteAutomationTask(task.id); if (notify(result, '删除任务失败')) { await load(); resetTaskForm() } }
+
+watch(() => route.query.event, (eventId) => {
+  if (!eventId) lastFocusedEventId.value = ''
+  void focusRouteEvent()
+})
 
 onMounted(load)
 </script>
@@ -304,6 +335,7 @@ onMounted(load)
 .event-list { display: grid; gap: 9px; max-height: 620px; overflow: auto; padding-right: 2px; }
 .event-item { display: flex; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: #fff; }
 .event-item.resolved { background: var(--bg-subtle); }
+.event-item.targeted { border-color: color-mix(in srgb, var(--primary) 48%, var(--border)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 10%, transparent); }
 .event-dot { width: 8px; height: 8px; flex: none; margin-top: 7px; border-radius: 50%; background: #64748b; }
 .event-item.warning .event-dot { background: #f59e0b; }
 .event-item.critical .event-dot { background: #ef4444; }

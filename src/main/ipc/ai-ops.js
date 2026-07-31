@@ -33,6 +33,7 @@ const {
   eventSummary,
   listAutomationTasks,
   listOpsEvents,
+  markOpsEventsRead,
   runAutomationTask,
   runDueAutomationTasks,
   saveAutomationTask,
@@ -263,6 +264,12 @@ function registerAiOpsHandlers() {
   })
   ipcMain.handle(IPC_CHANNELS.OPS_EVENT_UPDATE, async (_event, options = {}) => {
     try { return success({ item: updateOpsEvent(userDataPath(), String(options.id || ''), options.status) }) } catch (error) { return failure(error) }
+  })
+  ipcMain.handle(IPC_CHANNELS.OPS_EVENTS_MARK_READ, async (_event, options = {}) => {
+    try {
+      const result = markOpsEventsRead(userDataPath(), options)
+      return success({ ...result, summary: eventSummary(userDataPath()) })
+    } catch (error) { return failure(error) }
   })
   ipcMain.handle(IPC_CHANNELS.OPS_AUTOMATION_GET, async () => {
     try { return success({ tasks: listAutomationTasks(userDataPath()) }) } catch (error) { return failure(error) }

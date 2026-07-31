@@ -10,6 +10,7 @@ const {
   listAutomationTasks,
   listOpsEvents,
   loadEventState,
+  markOpsEventsRead,
   recoverOpsEvent,
   runAutomationTask,
   runHttpHealthCheck,
@@ -110,6 +111,8 @@ test('统一事件按指纹去重、累计次数并自动恢复', () => {
       acknowledged: 0,
       resolved: 1,
       recovered: 1,
+      unread: 1,
+      unreadCritical: 1,
       critical: 0,
       warning: 0,
     })
@@ -128,6 +131,54 @@ test('统一事件按指纹去重、累计次数并自动恢复', () => {
     assert.equal(reopened.occurrenceCount, 3)
     assert.equal(reopened.recoveredAt, 0)
     assert.equal(reopened.timeline.at(-1).type, 'reopened')
+  } finally {
+    fs.rmSync(userDataPath, { recursive: true, force: true })
+  }
+})
+
+
+test('统一事件支持单条和全部已读，重复发生后重新变为未读', () => {
+  const userDataPath = createTempDir()
+  try {
+    const first = addOpsEvent(userDataPath, {
+      fingerprint: 'release:prod',
+      sourceType: 'release',
+      sourceId: 'prod',
+      severity: 'critical',
+      title: '生产发布失败',
+    })
+    const second = addOpsEvent(userDataPath, {
+      fingerprint: 'automation:health',
+      sourceType: 'automation',
+      sourceId: 'health',
+      severity: 'warning',
+      title: '健康检查失败',
+    })
+    assert.equal(eventSummary(userDataPath).unread, 2)
+    assert.equal(eventSummary(userDataPath).unreadCritical, 1)
+
+    const single = markOpsEventsRead(userDataPath, { ids: [first.id] })
+    assert.equal(single.updated, 1)
+    assert.ok(single.readAt > 0)
+    assert.ok(listOpsEvents(userDataPath).find(item => item.id === first.id).readAt > 0)
+    assert.equal(eventSummary(userDataPath).unread, 1)
+
+    const all = markOpsEventsRead(userDataPath, { all: true })
+    assert.equal(all.updated, 1)
+    assert.equal(eventSummary(userDataPath).unread, 0)
+
+    const repeated = addOpsEvent(userDataPath, {
+      fingerprint: 'release:prod',
+      sourceType: 'release',
+      sourceId: 'prod',
+      severity: 'critical',
+      title: '生产发布再次失败',
+    })
+    assert.equal(repeated.id, first.id)
+    assert.equal(repeated.readAt, 0)
+    assert.equal(eventSummary(userDataPath).unread, 1)
+    assert.equal(eventSummary(userDataPath).unreadCritical, 1)
+    assert.ok(listOpsEvents(userDataPath).find(item => item.id === second.id).readAt > 0)
   } finally {
     fs.rmSync(userDataPath, { recursive: true, force: true })
   }
@@ -153,7 +204,7 @@ test('旧版事件数据读取时迁移为统一事件模型', () => {
     }))
 
     const state = loadEventState(userDataPath)
-    assert.equal(state.version, 2)
+    assert.equal(state.version, 3)
     assert.equal(state.items[0].fingerprint, 'legacy:key')
     assert.equal(state.items[0].sourceType, 'release')
     assert.equal(state.items[0].severity, 'critical')

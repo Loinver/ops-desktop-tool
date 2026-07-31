@@ -9,6 +9,10 @@ const IPC_CHANNELS = {
   PORTS_FIND: 'ports:find',
   PORTS_KILL_PORT: 'ports:killPort',
   PORTS_KILL_PID: 'ports:killPid',
+  NODE_MONITOR_GET: 'nodeMonitor:get',
+  NODE_MONITOR_WATCH: 'nodeMonitor:watch',
+  NODE_MONITOR_UNWATCH: 'nodeMonitor:unwatch',
+  NODE_MONITOR_CHECK: 'nodeMonitor:check',
 
   // 系统信息
   SYSTEM_INFO: 'system:info',
@@ -98,6 +102,7 @@ const IPC_CHANNELS = {
   AI_KNOWLEDGE_IMPORT: 'aiOps:importKnowledge',
   OPS_EVENTS_GET: 'ops:getEvents',
   OPS_EVENT_UPDATE: 'ops:updateEvent',
+  OPS_EVENTS_MARK_READ: 'ops:markEventsRead',
   OPS_AUTOMATION_GET: 'ops:getAutomationTasks',
   OPS_AUTOMATION_SAVE: 'ops:saveAutomationTask',
   OPS_AUTOMATION_DELETE: 'ops:deleteAutomationTask',
