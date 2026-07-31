@@ -1,12 +1,12 @@
 <template>
   <div class="page">
-    <div class="page-header">
+    <header class="page-header">
       <div class="page-heading header-left">
         <h2 class="page-title">快捷启动</h2>
         <p class="page-desc">管理常用应用和网站，并按配置一键打开多个网站</p>
       </div>
       <div class="page-actions header-actions">
-        <button
+        <button type="button"
           class="btn-open"
           :disabled="batchOpening"
           :title="store.quickOpenItems.length ? `打开已配置的 ${store.quickOpenItems.length} 个网站` : '请先配置一键打开的网站'"
@@ -15,35 +15,38 @@
           <t-icon name="rocket" />
           <span>{{ batchOpening ? '正在打开…' : `一键打开${store.quickOpenItems.length ? `（${store.quickOpenItems.length}）` : ''}` }}</span>
         </button>
-        <button class="btn-batch" title="选择一键打开的网站" @click="showQuickOpenDialog = true">
+        <button type="button" class="btn-batch" title="选择一键打开的网站" @click="showQuickOpenDialog = true">
           <t-icon name="setting" />
           <span>配置网站</span>
         </button>
-        <button class="btn-batch" title="粘贴 JSON 文本，批量添加网址快捷方式" @click="showBatchTextDialog = true">
+        <button type="button" class="btn-batch" title="粘贴 JSON 文本，批量添加网址快捷方式" @click="showBatchTextDialog = true">
           <t-icon name="edit" />
           <span>粘贴 JSON</span>
         </button>
-        <button class="btn-batch" title="从 JSON 文件批量导入网址快捷方式" @click="importWebsites">
+        <button type="button" class="btn-batch" title="从 JSON 文件批量导入网址快捷方式" @click="importWebsites">
           <t-icon name="upload" />
           <span>导入</span>
         </button>
-        <button class="btn-batch" title="导出当前网址快捷方式" @click="exportWebsites">
+        <button type="button" class="btn-batch" title="导出当前网址快捷方式" @click="exportWebsites">
           <t-icon name="download" />
           <span>导出</span>
         </button>
-        <button class="btn-add" @click="openAdd">
+        <button type="button" class="btn-add" @click="openAdd">
           <t-icon name="add" />
           <span>添加</span>
         </button>
       </div>
-    </div>
+    </header>
 
-    <div class="list-toolbar">
-      <div class="filter-bar">
-        <button
+    <main class="page-content">
+      <div class="list-toolbar">
+          <div class="filter-bar" role="tablist" aria-label="快捷方式类型筛选">
+        <button type="button"
           v-for="tab in tabs"
           :key="tab.id"
           :class="['filter-chip', { active: store.currentTab === tab.id }]"
+          role="tab"
+          :aria-selected="store.currentTab === tab.id"
           @click="store.currentTab = tab.id"
         >
           <t-icon :name="tab.icon" />
@@ -60,7 +63,7 @@
       </label>
     </div>
 
-    <div class="content">
+      <section class="content" aria-live="polite">
       <div v-if="loading" class="loading-state">
         <t-icon name="loading" />
         <span>正在加载快捷方式…</span>
@@ -79,10 +82,10 @@
         </div>
         <h3>{{ store.searchQuery ? '没有匹配的快捷方式' : '暂无快捷方式' }}</h3>
         <p>{{ store.searchQuery ? '请更换关键词，或清除搜索条件' : '点击右上角“添加”创建快捷启动，或从 JSON 文件导入网址' }}</p>
-        <button v-if="store.searchQuery" class="btn-guide" @click="store.searchQuery = ''">
+        <button type="button" v-if="store.searchQuery" class="btn-guide" @click="store.searchQuery = ''">
           清除搜索
         </button>
-        <button v-else class="btn-guide" @click="openAdd">
+        <button type="button" v-else class="btn-guide" @click="openAdd">
           <t-icon name="add" />
           立即添加
         </button>
@@ -98,7 +101,8 @@
           @delete="deleteItem"
         />
       </div>
-    </div>
+      </section>
+    </main>
 
     <LaunchDialog
       v-model="showAddDialog"

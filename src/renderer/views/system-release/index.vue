@@ -1,7 +1,7 @@
 <template>
   <div class="page">
     <!-- 页头 -->
-    <div class="page-header">
+    <header class="page-header">
       <div class="page-heading header-left">
         <h2 class="page-title">系统发布</h2>
         <p class="page-desc" v-if="connectionStatus?.success">
@@ -17,18 +17,18 @@
         <select v-if="releaseProfiles.length" v-model="activeProfileId" class="profile-select" :disabled="syncing || savingSftpSettings" @change="switchReleaseProfile">
           <option v-for="profile in releaseProfiles" :key="profile.id" :value="profile.id">{{ profile.name }}</option>
         </select>
-        <button class="btn-settings profile-add" title="新建发布环境" :disabled="syncing || savingSftpSettings" @click="startNewReleaseProfile"><t-icon name="add" /><span>新建环境</span></button>
-        <button class="btn-settings" :disabled="syncing || savingSftpSettings" @click="openReleaseHistory"><t-icon name="history" /><span>发布历史</span></button>
-        <button class="btn-settings" :disabled="syncing || savingSftpSettings" @click="openExistingSftpSettings">
+        <button type="button" class="btn-settings profile-add" title="新建发布环境" :disabled="syncing || savingSftpSettings" @click="startNewReleaseProfile"><t-icon name="add" /><span>新建环境</span></button>
+        <button type="button" class="btn-settings" :disabled="syncing || savingSftpSettings" @click="openReleaseHistory"><t-icon name="history" /><span>发布历史</span></button>
+        <button type="button" class="btn-settings" :disabled="syncing || savingSftpSettings" @click="openExistingSftpSettings">
           <t-icon name="setting" />
           <span>连接设置</span>
         </button>
-        <button class="btn-refresh" @click="refresh" :disabled="refreshing || syncing || savingSftpSettings">
+        <button type="button" class="btn-refresh" @click="refresh" :disabled="refreshing || syncing || savingSftpSettings">
           <t-icon name="refresh" :class="{ spinning: refreshing }" />
           <span>刷新</span>
         </button>
       </div>
-    </div>
+    </header>
 
     <div
       v-if="showSftpSettings"
@@ -184,20 +184,21 @@
 
     <div v-if="showReleaseHistory" class="sftp-modal-mask">
       <div class="release-history-dialog">
-        <div class="sftp-dialog-header"><div><h3>{{ activeReleaseProfileName }} · 发布历史</h3><p>仅显示当前发布环境的记录；成功发布会保留远端备份，可一键回滚。</p></div><button class="sftp-icon-button" @click="showReleaseHistory = false"><t-icon name="close" /></button></div>
+        <div class="sftp-dialog-header"><div><h3>{{ activeReleaseProfileName }} · 发布历史</h3><p>仅显示当前发布环境的记录；成功发布会保留远端备份，可一键回滚。</p></div><button type="button" class="sftp-icon-button" @click="showReleaseHistory = false"><t-icon name="close" /></button></div>
         <div class="release-history-list">
           <div v-for="item in releaseHistory" :key="item.id" class="release-history-item">
             <span class="release-status" :class="item.status"></span>
             <div><strong>{{ item.label }}</strong><p>{{ item.profileName || '默认环境' }} · {{ item.remoteDir }}</p><small>{{ formatTime(item.finishedAt) }} · {{ item.message }}</small></div>
-            <button v-if="item.status === 'success' && item.backupPath" :disabled="rollingBackId === item.id" @click="rollbackRelease(item)">{{ rollingBackId === item.id ? '回滚中…' : '一键回滚' }}</button>
+            <button type="button" v-if="item.status === 'success' && item.backupPath" :disabled="rollingBackId === item.id" @click="rollbackRelease(item)">{{ rollingBackId === item.id ? '回滚中…' : '一键回滚' }}</button>
           </div>
           <div v-if="!releaseHistory.length" class="log-empty">暂无发布历史</div>
         </div>
       </div>
     </div>
 
-    <!-- 路径栏 -->
-    <div class="path-bar">
+    <main class="page-content">
+      <!-- 路径栏 -->
+      <div class="path-bar">
       <div class="path-group">
         <label>本地</label>
         <div class="path-select">
@@ -207,14 +208,14 @@
             class="path-input"
             @keyup.enter="applyLocalDir"
           />
-          <button
+          <button type="button"
             class="browse-btn"
             title="选择并保存本地目录"
             @click="browseLocalDir()"
           >
             <t-icon name="folder-open" />
           </button>
-          <button class="go-btn" @click="applyLocalDir">应用</button>
+          <button type="button" class="go-btn" @click="applyLocalDir">应用</button>
         </div>
       </div>
       <div class="path-group">
@@ -226,7 +227,7 @@
             class="path-input"
             @keyup.enter="navigateTo(currentPath)"
           />
-          <button class="go-btn" @click="navigateTo(currentPath)">应用</button>
+          <button type="button" class="go-btn" @click="navigateTo(currentPath)">应用</button>
         </div>
       </div>
     </div>
@@ -283,7 +284,7 @@
             <!-- 状态 + 操作 -->
             <div class="col-status">
               <template v-if="row.status === 'only-local'">
-                <button
+                <button type="button"
                   class="status-btn publish"
                   @click="deploySingleFile(row.local)"
                   title="发布到服务器"
@@ -292,7 +293,7 @@
                 </button>
               </template>
               <template v-else-if="row.status === 'modified'">
-                <button
+                <button type="button"
                   class="status-btn update"
                   @click="deploySingleFile(row.local)"
                   title="更新到服务器"
@@ -301,7 +302,7 @@
                 </button>
               </template>
               <template v-else-if="row.status === 'only-remote'">
-                <button
+                <button type="button"
                   class="status-btn delete"
                   @click="confirmDelete(row.remote)"
                   :disabled="syncing"
@@ -333,7 +334,7 @@
 
             <!-- 操作 -->
             <div class="col-action">
-              <button
+              <button type="button"
                 v-if="
                   row.status === 'only-local' && row.local?.type === 'directory'
                 "
@@ -393,7 +394,7 @@
           </span>
         </div>
         <div class="actions">
-          <button
+          <button type="button"
             v-if="summary.onlyLocal > 0"
             class="action-btn publish"
             @click="publishAll"
@@ -402,7 +403,7 @@
             <t-icon name="upload" />
             发布全部新增 ({{ summary.onlyLocal }})
           </button>
-          <button
+          <button type="button"
             v-if="summary.modified > 0"
             class="action-btn update"
             @click="updateAll"
@@ -417,41 +418,52 @@
 
     <!-- 同步日志面板：运行中、等待队列与最近任务记录分层展示 -->
     <div class="log-panel" :class="{ collapsed: !showLogPanel }">
-      <div class="log-header" @click="showLogPanel = !showLogPanel">
-        <div class="log-header-left">
-          <t-icon name="file" />
-          <span>同步日志</span>
-          <span v-if="activeSyncTask" class="log-running-badge">同步中</span>
-          <span v-if="queuedSyncCount > 0" class="log-queue-badge">
-            待执行 {{ queuedSyncCount }}
-          </span>
-          <span v-if="retryableErrors.length > 0" class="log-error-badge">
-            {{ retryableErrors.length }} 个失败
-          </span>
-        </div>
+      <div class="log-header">
+        <button
+          type="button"
+          class="log-toggle"
+          :aria-expanded="showLogPanel"
+          aria-controls="release-log-panel"
+          @click="showLogPanel = !showLogPanel"
+        >
+          <div class="log-header-left">
+            <t-icon name="file" />
+            <span>同步日志</span>
+            <span v-if="activeSyncTask" class="log-running-badge">同步中</span>
+            <span v-if="queuedSyncCount > 0" class="log-queue-badge">
+              待执行 {{ queuedSyncCount }}
+            </span>
+            <span v-if="retryableErrors.length > 0" class="log-error-badge">
+              {{ retryableErrors.length }} 个失败
+            </span>
+          </div>
+          <t-icon :name="showLogPanel ? 'chevron-down' : 'chevron-up'" />
+        </button>
         <div class="log-header-right">
           <button
             v-if="retryableErrors.length > 0 && !syncing"
+            type="button"
             class="log-retry-btn"
-            @click.stop="retryFailedUploads"
             title="重新执行全部失败任务"
+            @click="retryFailedUploads"
           >
             <t-icon name="refresh" />
             <span>重试失败</span>
           </button>
           <button
             v-if="syncHistory.length > 0 || syncErrors.length > 0"
+            type="button"
             class="log-clear-btn"
-            @click.stop="clearSyncLog"
+            aria-label="清空同步记录"
             title="清空同步记录"
+            @click="clearSyncLog"
           >
             <t-icon name="delete" />
           </button>
-          <t-icon :name="showLogPanel ? 'chevron-down' : 'chevron-up'" />
         </div>
       </div>
 
-      <div v-if="showLogPanel" class="log-body">
+      <div v-if="showLogPanel" id="release-log-panel" class="log-body">
         <div
           v-if="activeSyncTask || queuedSyncCount > 0 || syncHistory.length > 0"
           class="log-timeline"
@@ -506,7 +518,7 @@
               <p class="log-timeline-message">{{ entry.message }}</p>
             </div>
             <time class="log-timeline-meta">{{ formatLogTime(entry.timestamp) }}</time>
-            <button
+            <button type="button"
               v-if="canRetryHistoryEntry(entry)"
               class="log-item-retry"
               @click="retryHistoryEntry(entry)"
@@ -524,7 +536,8 @@
           暂无同步任务；开始发布或更新后，任务进度和结果会显示在这里。
         </div>
       </div>
-    </div>
+      </div>
+    </main>
   </div>
 </template>
 
@@ -2546,17 +2559,31 @@ onMounted(async () => {
 .log-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   min-height: 40px;
-  padding: 8px 12px;
+  padding: 4px 8px 4px 12px;
   background: #f8fafc;
-  cursor: pointer;
   user-select: none;
   transition: background var(--transition);
 }
 
+.log-header:focus-within,
 .log-header:hover {
   background: #f1f5f9;
+}
+
+.log-toggle {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  text-align: left;
 }
 
 .log-header-left,
@@ -2789,4 +2816,53 @@ onMounted(async () => {
 .sftp-form-field textarea{width:100%;resize:vertical;border:1px solid var(--border);border-radius:8px;padding:10px 12px;font:12px/1.6 var(--font-mono);color:var(--text);outline:none}.sftp-form-field textarea:focus{border-color:var(--primary)}
 .release-history-dialog{width:min(760px,calc(100vw - 48px));max-height:80vh;background:#fff;border-radius:14px;box-shadow:0 24px 70px rgba(15,23,42,.24);overflow:hidden}.release-history-list{max-height:62vh;overflow:auto;padding:8px 22px 22px}.release-history-item{display:grid;grid-template-columns:12px 1fr auto;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid var(--border)}.release-history-item p,.release-history-item small{margin:3px 0 0;color:var(--text-muted);font-size:12px}.release-history-item button{border:0;border-radius:8px;background:#fff7ed;color:#c2410c;padding:8px 12px;cursor:pointer}.release-status{width:10px;height:10px;border-radius:50%;background:#94a3b8}.release-status.success{background:#10b981}.release-status.failed{background:#ef4444}.release-status.rolled-back{background:#f59e0b}
 .sftp-dialog-spacer{flex:1}.sftp-btn-danger{border:1px solid #fecaca;border-radius:8px;background:#fff;color:#dc2626;padding:9px 14px;cursor:pointer}
+
+@media (max-width: 760px) {
+  .path-bar,
+  .path-group,
+  .bottom-bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .path-bar {
+    gap: 12px;
+  }
+
+  .path-group {
+    gap: 6px;
+  }
+
+  .compare-scroll {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+  }
+
+  .compare-header,
+  .compare-body {
+    min-width: 680px;
+  }
+
+  .bottom-bar {
+    gap: 12px;
+  }
+
+  .stats,
+  .actions {
+    flex-wrap: wrap;
+  }
+
+  .actions {
+    justify-content: flex-end;
+  }
+
+  .log-timeline-item {
+    gap: 7px;
+    padding: 9px 10px;
+  }
+
+  .log-timeline-meta {
+    display: none;
+  }
+}
 </style>

@@ -11,7 +11,8 @@
       </div>
     </header>
 
-    <section class="summary-grid" aria-label="运行摘要">
+    <main class="page-content">
+      <section class="summary-grid" aria-label="运行摘要">
       <article><span>待处理事件</span><strong>{{ summary.open || 0 }}</strong><small>其中 {{ summary.critical || 0 }} 个严重</small></article>
       <article><span>风险告警</span><strong class="warning-text">{{ summary.warning || 0 }}</strong><small>日志、模型与巡检异常</small></article>
       <article><span>自动化任务</span><strong>{{ tasks.length }}</strong><small>{{ enabledTaskCount }} 个已启用</small></article>
@@ -56,7 +57,8 @@
         <div class="task-form-actions"><button class="btn-primary" type="button" :disabled="savingTask" @click="saveTask">{{ taskForm.id ? '更新任务' : '添加任务' }}</button><button v-if="taskForm.id" class="btn-text" type="button" @click="resetTaskForm">取消编辑</button></div>
       </div>
       <div class="task-list"><div v-for="task in tasks" :key="task.id" class="task-item"><div><strong>{{ task.title }}</strong><p>{{ task.type === 'tcp-port' ? `TCP ${task.target}:${task.port}` : `${task.target} · HTTP ${task.expectedStatus}` }}</p><small>{{ task.enabled ? `每 ${task.intervalMinutes} 分钟` : '已停用' }} · {{ task.lastResult ? `${task.lastResult.ok ? '最近正常' : '最近失败'}：${task.lastResult.message}` : '尚未运行' }}</small></div><div class="task-actions"><button class="btn-text" type="button" :disabled="runningTaskId === task.id" @click="runTask(task)">{{ runningTaskId === task.id ? '运行中…' : '立即运行' }}</button><button class="btn-text" type="button" @click="editTask(task)">编辑</button><button class="btn-text danger-text" type="button" @click="removeTask(task)">删除</button></div></div><div v-if="!tasks.length" class="empty-mini">暂无自动化任务。可先添加部署后的 HTTP 健康检查。</div></div>
-    </section>
+      </section>
+    </main>
   </div>
 </template>
 

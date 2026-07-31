@@ -1,6 +1,6 @@
 <template>
   <div
-    class="launch-card"
+    class="launch-card interactive-surface"
     role="button"
     tabindex="0"
     :aria-label="`启动 ${item.name}`"
@@ -30,10 +30,10 @@
     </div>
 
     <div class="card-right">
-      <button class="action-btn" title="编辑" @click.stop="$emit('edit', item)">
+      <button type="button" class="action-btn" aria-label="编辑快捷方式" title="编辑" @click.stop="$emit('edit', item)">
         <t-icon name="edit" />
       </button>
-      <button class="action-btn danger" title="删除" @click.stop="$emit('delete', item)">
+      <button type="button" class="action-btn danger" aria-label="删除快捷方式" title="删除" @click.stop="$emit('delete', item)">
         <t-icon name="delete" />
       </button>
     </div>

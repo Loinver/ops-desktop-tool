@@ -1,7 +1,7 @@
 <template>
   <div class="page">
     <!-- 页头 -->
-    <div class="page-header">
+    <header class="page-header">
       <div class="page-heading header-left">
         <h2 class="page-title">剪贴板历史</h2>
         <p class="page-desc">记录复制过的内容，点击即可快速复制</p>
@@ -15,23 +15,21 @@
             placeholder="搜索剪贴板内容..."
             class="search-input"
           />
-          <t-icon
-            v-if="search"
-            name="close-circle-filled"
-            class="search-clear"
-            @click="search = ''"
-          />
+          <button v-if="search" type="button" class="search-clear" aria-label="清除搜索" @click="search = ''">
+            <t-icon name="close-circle-filled" />
+          </button>
         </div>
-        <button class="btn-danger" @click="clearAll">
+        <button type="button" class="btn-danger" :disabled="!store.history.length" @click="clearAll">
           <t-icon name="delete" />
           <span>清空</span>
         </button>
       </div>
-    </div>
+    </header>
 
+    <main class="page-content">
     <!-- 统计卡片 -->
-    <div class="stats-grid">
-      <div class="stat-card">
+    <section class="stats-grid" aria-label="剪贴板统计">
+      <div class="stat-card interactive-surface">
         <div class="stat-icon-wrap stat-icon-total">
           <t-icon name="file-copy" />
         </div>
@@ -40,7 +38,7 @@
           <div class="stat-text">总记录</div>
         </div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card interactive-surface">
         <div class="stat-icon-wrap stat-icon-text">
           <t-icon name="file-text" />
         </div>
@@ -49,7 +47,7 @@
           <div class="stat-text">文本</div>
         </div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card interactive-surface">
         <div class="stat-icon-wrap stat-icon-image">
           <t-icon name="image" />
         </div>
@@ -58,14 +56,17 @@
           <div class="stat-text">图片</div>
         </div>
       </div>
-    </div>
+    </section>
 
     <!-- 筛选栏 -->
-    <div class="filter-bar">
+    <div class="filter-bar" role="tablist" aria-label="剪贴板类型筛选">
       <button
         v-for="tab in tabs"
         :key="tab.id"
         :class="['filter-chip', { active: currentTab === tab.id }]"
+        type="button"
+        role="tab"
+        :aria-selected="currentTab === tab.id"
         @click="currentTab = tab.id"
       >
         <t-icon :name="tab.icon" />
@@ -75,7 +76,7 @@
     </div>
 
     <!-- 历史列表 -->
-    <div class="content">
+    <section class="content surface-panel page-section" aria-live="polite">
       <div v-if="filteredHistory.length === 0" class="empty-state">
         <div class="empty-icon">
           <t-icon name="file-copy" />
@@ -89,7 +90,10 @@
           v-for="item in filteredHistory"
           :key="item.id"
           class="history-item"
+          tabindex="0"
           @click="handleCopy(item)"
+          @keydown.enter="handleCopy(item)"
+          @keydown.space.prevent="handleCopy(item)"
         >
           <div class="item-icon">
             <t-icon :name="item.type === 'image' ? 'image' : 'file-text'" />
@@ -113,16 +117,17 @@
             </div>
           </div>
           <div class="item-actions">
-            <button class="action-btn" title="复制" @click.stop="handleCopy(item)">
+            <button type="button" class="action-btn" aria-label="复制" title="复制" @click.stop="handleCopy(item)">
               <t-icon name="copy" />
             </button>
-            <button class="action-btn danger" title="删除" @click.stop="handleDelete(item)">
+            <button type="button" class="action-btn danger" aria-label="删除" title="删除" @click.stop="handleDelete(item)">
               <t-icon name="close" />
             </button>
           </div>
         </div>
       </div>
-    </div>
+    </section>
+    </main>
   </div>
 </template>
 
@@ -255,14 +260,23 @@ onUnmounted(() => {
 .search-clear {
   position: absolute;
   right: 10px;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
   color: var(--text-muted);
   font-size: 16px;
   cursor: pointer;
-  transition: color var(--transition);
+  transition: color var(--transition), background var(--transition);
 }
 
 .search-clear:hover {
-  color: var(--text-secondary);
+  background: var(--primary-light);
+  color: var(--primary);
 }
 
 /* 危险按钮 */
@@ -293,12 +307,17 @@ onUnmounted(() => {
   transform: translateY(0);
 }
 
+.btn-danger:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  transform: none;
+}
+
 /* 统计卡片 */
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 16px;
-  margin-bottom: 24px;
 }
 
 .stat-card {
@@ -374,7 +393,6 @@ onUnmounted(() => {
   background: var(--card-bg);
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-light);
-  margin-bottom: 24px;
   width: fit-content;
 }
 
@@ -543,7 +561,8 @@ onUnmounted(() => {
   transition: opacity var(--transition);
 }
 
-.history-item:hover .item-actions {
+.history-item:hover .item-actions,
+.history-item:focus-within .item-actions {
   opacity: 1;
 }
 
@@ -572,5 +591,35 @@ onUnmounted(() => {
   background: var(--danger-light);
   color: var(--danger);
   border-color: var(--danger);
+}
+
+
+@media (max-width: 760px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .filter-bar {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .filter-chip {
+    flex: 0 0 auto;
+  }
+
+  .search-box,
+  .search-input {
+    width: 100%;
+  }
+
+  .history-item {
+    align-items: flex-start;
+    padding: 14px;
+  }
+
+  .item-actions {
+    opacity: 1;
+  }
 }
 </style>

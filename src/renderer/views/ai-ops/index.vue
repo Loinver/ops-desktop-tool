@@ -15,7 +15,8 @@
       </div>
     </header>
 
-    <div class="tab-bar" role="tablist" aria-label="AI 运维功能">
+    <main class="page-content">
+      <div class="tab-bar" role="tablist" aria-label="AI 运维功能">
       <button
         v-for="tab in tabs"
         :id="`ai-ops-tab-${tab.id}`"
@@ -34,8 +35,8 @@
       </button>
     </div>
 
-    <main
-      :id="`ai-ops-panel-${activeTab}`"
+      <section
+        :id="`ai-ops-panel-${activeTab}`"
       class="tab-panel"
       role="tabpanel"
       :aria-labelledby="`ai-ops-tab-${activeTab}`"
@@ -203,6 +204,7 @@
       </section>
 
       <section v-else-if="activeTab === 'mcp'" class="panel mcp-panel"><div class="panel-title"><div><h3>MCP 本地只读服务</h3><p>供 Codex、Claude Desktop 等客户端访问本机发布历史、模型健康度和运维知识库。不会暴露密钥，也不提供发布写操作。</p></div></div><div v-if="mcpInfo" class="mcp-content"><div class="mcp-badge"><t-icon name="secured" /> stdio · 只读</div><p>可用工具：<code>{{ mcpInfo.tools.join(' · ') }}</code></p><p>{{ mcpInfo.note }}</p><label><span>启动命令</span><input :value="mcpInfo.command" readonly @focus="$event.target.select()" /></label><label><span>启动参数</span><input :value="mcpInfo.args.join(' ')" readonly @focus="$event.target.select()" /></label><pre>{{ mcpConfigExample }}</pre></div><div v-else class="empty-mini">正在读取 MCP 配置…</div></section>
+      </section>
     </main>
 
     <div v-if="loading" class="loading-overlay"><t-icon name="loading" class="spinning" /> 正在加载 AI 运维数据…</div>

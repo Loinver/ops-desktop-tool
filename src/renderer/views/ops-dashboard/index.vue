@@ -6,7 +6,7 @@
         <p class="page-desc">发布状态、模型可用率与定时巡检集中总览</p>
       </div>
       <div class="page-actions">
-        <button class="refresh-button" :disabled="loading" @click="loadDashboard">
+        <button type="button" class="refresh-button" :disabled="loading" @click="loadDashboard">
           <t-icon name="refresh" :class="{ spinning: loading }" /> 刷新
         </button>
       </div>
@@ -14,22 +14,22 @@
 
     <main class="page-content dashboard-content">
       <section class="metric-grid">
-      <article class="metric-card primary">
+      <article class="metric-card primary interactive-surface">
         <span>模型可用率</span>
         <strong>{{ availabilityText }}</strong>
         <small>最近 20 次测试</small>
       </article>
-      <article class="metric-card success">
+      <article class="metric-card success interactive-surface">
         <span>发布成功</span>
         <strong>{{ dashboard.release?.success || 0 }}</strong>
         <small>发布历史共 {{ dashboard.release?.total || 0 }} 条记录</small>
       </article>
-      <article class="metric-card danger">
+      <article class="metric-card danger interactive-surface">
         <span>发布失败</span>
         <strong>{{ dashboard.release?.failed || 0 }}</strong>
         <small>可在发布历史中重试或回滚</small>
       </article>
-      <article class="metric-card neutral">
+      <article class="metric-card neutral interactive-surface">
         <span>巡检状态</span>
         <strong>{{ dashboard.monitor?.enabled ? '运行中' : '未启用' }}</strong>
         <small>{{ monitorDescription }}</small>
@@ -59,15 +59,15 @@
         <label class="switch-row"><span>异常桌面通知</span><input v-model="monitorDraft.notifyOnFailure" type="checkbox" :disabled="saving" /></label>
         <div class="monitor-meta">巡检目标：{{ monitorTargetCount }} 个模型<button v-if="!monitorTargetCount" type="button" @click="$router.push('/model-test')">前往配置</button></div>
         <div class="panel-actions">
-          <button class="secondary" :disabled="saving || !monitorTargetCount" :title="monitorTargetCount ? '' : '请先配置巡检目标'" @click="runInspection">立即巡检</button>
-          <button class="primary-button" :disabled="saving" @click="saveMonitor">保存设置</button>
+          <button type="button" class="secondary" :disabled="saving || !monitorTargetCount" :title="monitorTargetCount ? '' : '请先配置巡检目标'" @click="runInspection">立即巡检</button>
+          <button type="button" class="primary-button" :disabled="saving" @click="saveMonitor">保存设置</button>
         </div>
       </article>
       </section>
 
       <section class="dashboard-grid history-grid">
       <article class="panel">
-        <div class="panel-title"><div><h3>最近发布</h3><p>成功、失败与回滚记录</p></div><button @click="$router.push('/system-release')">进入发布</button></div>
+        <div class="panel-title"><div><h3>最近发布</h3><p>成功、失败与回滚记录</p></div><button type="button" @click="$router.push('/system-release')">进入发布</button></div>
         <div v-if="dashboard.release?.latest?.length" class="activity-list">
           <div v-for="item in dashboard.release.latest" :key="item.id" class="activity-item">
             <span class="status-dot" :class="item.status"></span>
@@ -79,7 +79,7 @@
       </article>
 
       <article class="panel">
-        <div class="panel-title"><div><h3>最近模型巡检</h3><p>手动测试与定时巡检均会保存</p></div><button @click="$router.push('/model-test')">进入测试</button></div>
+        <div class="panel-title"><div><h3>最近模型巡检</h3><p>手动测试与定时巡检均会保存</p></div><button type="button" @click="$router.push('/model-test')">进入测试</button></div>
         <div v-if="dashboard.model?.latest" class="latest-inspection">
           <div class="inspection-score">{{ dashboard.model.latest.summary?.ok || 0 }}/{{ dashboard.model.latest.summary?.total || 0 }}</div>
           <div><strong>{{ dashboard.model.latest.label }}</strong><p>失败 {{ dashboard.model.latest.summary?.failed || 0 }} · 无法验证 {{ dashboard.model.latest.summary?.gateway || 0 }}</p><time>{{ formatDate(dashboard.model.latest.finishedAt) }}</time></div>

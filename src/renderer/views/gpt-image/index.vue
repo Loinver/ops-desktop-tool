@@ -11,15 +11,15 @@
           <span>{{ config.size }}</span>
           <span>{{ config.quality }}</span>
         </div>
-        <button class="btn-ghost" @click="openHistory">
+        <button type="button" class="btn-ghost" @click="openHistory">
           <t-icon name="history" />
           <span>历史记录</span>
         </button>
-        <button class="btn-ghost" @click="clearConversation">
+        <button type="button" class="btn-ghost" @click="clearConversation">
           <t-icon name="clear" />
           <span>新对话</span>
         </button>
-        <button class="btn-ghost primary" @click="openSettings">
+        <button type="button" class="btn-ghost primary" @click="openSettings">
           <t-icon name="setting" />
           <span>模型设置</span>
         </button>
@@ -36,7 +36,7 @@
             <h3>暂无图片</h3>
             <p>输入描述后开始生成，也可以从下面的示例开始</p>
             <div class="prompt-suggestions">
-              <button
+              <button type="button"
                 v-for="suggestion in promptSuggestions"
                 :key="suggestion"
                 @click="useSuggestion(suggestion)"
@@ -78,11 +78,11 @@
               <img :src="message.imageUrl" alt="AI 生图 生成结果" />
               <figcaption v-if="message.revisedPrompt">{{ message.revisedPrompt }}</figcaption>
               <div class="image-actions">
-                <button class="btn-download" @click="continueFromMessage(message)">
+                <button type="button" class="btn-download" @click="continueFromMessage(message)">
                   <t-icon name="edit" />
                   <span>继续调整</span>
                 </button>
-                <button
+                <button type="button"
                   class="btn-download"
                   :disabled="isDownloading(message.id)"
                   @click="downloadImage(message)"
@@ -120,7 +120,7 @@
             <h3>模型设置</h3>
             <p>配置 OpenAI 兼容图片生成接口</p>
           </div>
-          <button class="icon-button" @click="closeSettings">
+          <button type="button" class="icon-button" @click="closeSettings">
             <t-icon name="close" />
           </button>
         </div>
@@ -160,7 +160,7 @@
                   {{ model }}
                 </option>
               </select>
-              <button class="btn-ghost model-refresh" :disabled="modelLoading" @click="loadModels">
+              <button type="button" class="btn-ghost model-refresh" :disabled="modelLoading" @click="loadModels">
                 <t-icon name="refresh" :class="{ spinning: modelLoading }" />
                 <span>{{ modelLoading ? '获取中' : '刷新模型' }}</span>
               </button>
@@ -195,8 +195,8 @@
         </div>
 
         <div class="dialog-actions">
-          <button class="btn-ghost" @click="closeSettings">取消</button>
-          <button class="btn-send compact" :disabled="saving" @click="saveConfig">
+          <button type="button" class="btn-ghost" @click="closeSettings">取消</button>
+          <button type="button" class="btn-send compact" :disabled="saving" @click="saveConfig">
             <t-icon name="save" />
             <span>{{ saving ? '保存中' : '保存' }}</span>
           </button>
@@ -211,17 +211,17 @@
             <h3>历史记录</h3>
             <p>{{ historyItems.length }} 张图片</p>
           </div>
-          <button class="icon-button" @click="closeHistory">
+          <button type="button" class="icon-button" @click="closeHistory">
             <t-icon name="close" />
           </button>
         </div>
 
         <div class="history-toolbar">
-          <button class="btn-ghost" :disabled="historyLoading" @click="loadHistory">
+          <button type="button" class="btn-ghost" :disabled="historyLoading" @click="loadHistory">
             <t-icon name="refresh" :class="{ spinning: historyLoading }" />
             <span>{{ historyLoading ? '加载中' : '刷新' }}</span>
           </button>
-          <button class="btn-ghost danger" :disabled="historyItems.length === 0" @click="clearHistory">
+          <button type="button" class="btn-ghost danger" :disabled="historyItems.length === 0" @click="clearHistory">
             <t-icon name="delete" />
             <span>清空历史</span>
           </button>
@@ -233,7 +233,7 @@
         </div>
 
         <div v-else class="history-grid">
-          <button
+          <button type="button"
             v-for="item in historyItems"
             :key="item.id"
             class="history-card"

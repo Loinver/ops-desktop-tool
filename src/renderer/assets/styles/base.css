@@ -84,6 +84,10 @@
   --header-actions-gap: 8px;
   --header-control-height: 40px;
   --header-control-font-size: 14px;
+  --control-height-sm: 32px;
+  --control-height-md: 40px;
+  --control-height-lg: 44px;
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--primary) 14%, transparent);
   --content-gap: 16px;
   --panel-padding: 20px;
   --section-title-size: 16px;
@@ -194,6 +198,26 @@ body {
   gap: var(--content-gap);
 }
 
+.page-content > * {
+  min-width: 0;
+}
+
+.page-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  min-width: 0;
+}
+
+.page-toolbar__group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-sm);
+  min-width: 0;
+}
+
 .page-section {
   padding: var(--panel-padding);
 }
@@ -254,6 +278,28 @@ code {
     width: 100%;
     justify-content: flex-start;
   }
+
+  .page-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+@media (hover: none) {
+  .interactive-surface:hover {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }
 
 button,
@@ -261,6 +307,82 @@ input,
 select,
 textarea {
   font: inherit;
+}
+
+button {
+  touch-action: manipulation;
+}
+
+button:disabled,
+[aria-disabled='true'] {
+  cursor: not-allowed;
+}
+
+input:not([type='checkbox']):not([type='radio']),
+select,
+textarea {
+  color: var(--text);
+}
+
+input:not([type='checkbox']):not([type='radio']):focus,
+select:focus,
+textarea:focus {
+  border-color: var(--primary);
+  box-shadow: var(--focus-ring);
+}
+
+.icon-button {
+  width: var(--control-height-sm);
+  height: var(--control-height-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card-bg);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: border-color var(--transition), background var(--transition), color var(--transition);
+}
+
+.icon-button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--primary) 42%, var(--border));
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.interactive-surface {
+  transition: border-color var(--transition), box-shadow var(--transition), transform var(--transition);
+}
+
+.interactive-surface:hover {
+  border-color: color-mix(in srgb, var(--primary) 28%, var(--border));
+  box-shadow: var(--shadow-md);
+}
+
+.empty-state {
+  min-height: 280px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-2xl) var(--spacing-lg);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.empty-state h3 {
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.empty-state p {
+  margin-top: var(--spacing-sm);
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 20px;
 }
 
 :focus-visible {

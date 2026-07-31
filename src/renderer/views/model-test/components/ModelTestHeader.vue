@@ -53,7 +53,7 @@
           已测 {{ summary.total }}
         </span>
       </div>
-      <button
+      <button type="button"
         class="btn-ghost"
         :class="{ 'scope-active': modelFilterConfigured }"
         :disabled="loading || running || preparing"
@@ -63,7 +63,7 @@
         <t-icon name="filter" />
         <span>{{ modelFilterConfigured ? modelFilterSummary : '模型筛选' }}</span>
       </button>
-      <button
+      <button type="button"
         class="btn-ghost"
         :class="{ 'scope-active': scopeConfigured }"
         :disabled="loading || running || preparing"
@@ -78,7 +78,7 @@
         <span v-if="scopeConfigured">测试范围 {{ bulkCount }}/{{ testableCount }}</span>
         <span v-else>测试范围</span>
       </button>
-      <button
+      <button type="button"
         class="btn-ghost"
         :disabled="loading || running || preparing"
         @click="$emit('reload')"
@@ -97,7 +97,7 @@
         <t-icon name="file-copy" />
         <span>复制可用</span>
       </button>
-      <button
+      <button type="button"
         v-if="failedTaskCount && !running"
         class="btn-ghost"
         :disabled="loading || preparing"
@@ -107,7 +107,7 @@
         <t-icon name="refresh" />
         <span>重测失败 ({{ failedTaskCount }})</span>
       </button>
-      <button
+      <button type="button"
         v-if="running"
         class="btn-ghost danger"
         :disabled="stopping"
@@ -116,7 +116,7 @@
         <t-icon :name="stopping ? 'loading' : 'close-circle'" :class="{ spin: stopping }" />
         <span>{{ stopping ? "停止中…" : "停止测试" }}</span>
       </button>
-      <button
+      <button type="button"
         v-else
         class="btn-ghost primary"
         :disabled="loading || running || preparing || bulkCount === 0"

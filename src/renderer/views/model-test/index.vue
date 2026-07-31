@@ -1,5 +1,5 @@
 <template>
-  <div class="page">
+  <div class="page model-test-page">
     <ModelTestHeader
       :summary="summary"
       :result-filter="resultFilter"
@@ -25,9 +25,10 @@
       @test-all="testAll"
     />
 
-    <div class="monitor-banner">
+    <main class="page-content">
+      <div class="monitor-banner">
       <div><strong>模型监控</strong><span>当前测试范围可直接保存为后台定时巡检目标，历史和趋势在运维仪表盘查看。</span></div>
-      <button class="btn-ghost primary" :disabled="loading || running || preparing" @click="saveCurrentMonitorTargets">启用定时巡检</button>
+      <button type="button" class="btn-ghost primary" :disabled="loading || running || preparing" @click="saveCurrentMonitorTargets">启用定时巡检</button>
     </div>
 
     <div class="control-stack">
@@ -125,6 +126,8 @@
         @select="scrollToProvider"
       />
     </div>
+
+    </main>
 
     <ModelListSettingsDialog
       :open="showModelListSettings"

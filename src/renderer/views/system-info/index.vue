@@ -1,27 +1,28 @@
 <template>
   <div class="page">
     <!-- 页头 -->
-    <div class="page-header">
+    <header class="page-header">
       <div class="page-heading header-left">
         <h2 class="page-title">系统信息</h2>
         <p class="page-desc">查看当前系统运行状态和环境信息</p>
       </div>
       <div class="page-actions">
-      <button class="btn-refresh" :disabled="store.loading" @click="refresh">
+        <button type="button" class="btn-refresh" :disabled="store.loading" @click="refresh">
         <t-icon name="refresh" :class="{ spinning: store.loading }" />
         <span>刷新</span>
       </button>
       </div>
-    </div>
+    </header>
 
+    <main class="page-content">
     <!-- 基本信息 -->
-    <div class="section">
+    <section class="section">
       <h3 class="section-title">
         <t-icon name="info-circle" />
         基本信息
       </h3>
       <div class="info-grid">
-        <div class="info-card" v-for="item in basicInfo" :key="item.label">
+        <div class="info-card interactive-surface" v-for="item in basicInfo" :key="item.label">
           <div class="info-icon-wrap" :style="{ background: item.bg, color: item.color }">
             <t-icon :name="item.icon" />
           </div>
@@ -31,16 +32,16 @@
           </div>
         </div>
       </div>
-    </div>
+    </section>
 
     <!-- 硬件信息 -->
-    <div class="section">
+    <section class="section">
       <h3 class="section-title">
         <t-icon name="server" />
         硬件信息
       </h3>
       <div class="info-grid">
-        <div class="info-card" v-for="item in hardwareInfo" :key="item.label">
+        <div class="info-card interactive-surface" v-for="item in hardwareInfo" :key="item.label">
           <div class="info-icon-wrap" :style="{ background: item.bg, color: item.color }">
             <t-icon :name="item.icon" />
           </div>
@@ -50,10 +51,10 @@
           </div>
         </div>
       </div>
-    </div>
+    </section>
 
     <!-- 内存详情 -->
-    <div class="section">
+    <section class="section">
       <h3 class="section-title">
         <t-icon name="chart-area" />
         内存使用
@@ -96,7 +97,8 @@
           </div>
         </div>
       </div>
-    </div>
+    </section>
+    </main>
   </div>
 </template>
 
@@ -238,7 +240,7 @@ onMounted(() => {
 
 /* 分区 */
 .section {
-  margin-bottom: 28px;
+  margin: 0;
 }
 
 .section-title {
@@ -409,5 +411,29 @@ onMounted(() => {
 
 .memory-value.free {
   color: var(--success);
+}
+
+
+@media (max-width: 960px) {
+  .info-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .info-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .memory-card {
+    align-items: stretch;
+    flex-direction: column;
+    gap: var(--spacing-lg);
+    padding: var(--panel-padding);
+  }
+
+  .memory-visual {
+    align-self: center;
+  }
 }
 </style>

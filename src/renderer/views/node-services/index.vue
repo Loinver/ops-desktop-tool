@@ -1,7 +1,7 @@
 <template>
   <div class="page">
     <!-- 页头 -->
-    <div class="page-header">
+    <header class="page-header">
       <div class="page-heading header-left">
         <h2 class="page-title">Node 服务</h2>
         <p class="page-desc">管理本地 Node.js 进程，监控端口占用情况</p>
@@ -15,23 +15,21 @@
             placeholder="搜索端口、PID..."
             class="node-search__input"
           />
-          <t-icon
-            v-if="search"
-            name="close-circle-filled"
-            class="node-search__clear"
-            @click="search = ''"
-          />
+          <button v-if="search" type="button" class="node-search__clear" aria-label="清除搜索" @click="search = ''">
+            <t-icon name="close-circle-filled" />
+          </button>
         </div>
-        <button class="btn-refresh" :disabled="store.loading" @click="refresh">
+        <button type="button" class="btn-refresh" :disabled="store.loading" @click="refresh">
           <t-icon name="refresh" :class="{ spinning: store.loading }" />
           <span>刷新</span>
         </button>
       </div>
-    </div>
+    </header>
 
+    <main class="page-content">
     <!-- 统计卡片 -->
-    <div class="stats-grid">
-      <div class="stat-card">
+    <section class="stats-grid" aria-label="Node 服务统计">
+      <div class="stat-card interactive-surface">
         <div class="stat-icon-wrap stat-icon-total">
           <t-icon name="ai-terminal" />
         </div>
@@ -40,7 +38,7 @@
           <div class="stat-text">运行中</div>
         </div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card interactive-surface">
         <div class="stat-icon-wrap stat-icon-tcp">
           <t-icon name="link" />
         </div>
@@ -49,7 +47,7 @@
           <div class="stat-text">TCP</div>
         </div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card interactive-surface">
         <div class="stat-icon-wrap stat-icon-udp">
           <t-icon name="cloud" />
         </div>
@@ -58,10 +56,10 @@
           <div class="stat-text">UDP</div>
         </div>
       </div>
-    </div>
+    </section>
 
     <!-- 服务列表 -->
-    <div class="content-section">
+    <section class="content-section surface-panel page-section" aria-live="polite">
       <div v-if="filteredServices.length === 0" class="empty-state">
         <div class="empty-icon">
           <t-icon name="ai-terminal" />
@@ -102,10 +100,10 @@
               </td>
               <td>
                 <div class="cell-actions">
-                  <button class="action-btn danger" title="结束进程" @click="handleKill(service)">
+                  <button type="button" class="action-btn danger" aria-label="结束进程" title="结束进程" @click="handleKill(service)">
                     <t-icon name="close-circle" />
                   </button>
-                  <button class="action-btn" title="强制结束" @click="handleForceKill(service)">
+                  <button type="button" class="action-btn" aria-label="强制结束进程" title="强制结束" @click="handleForceKill(service)">
                     <t-icon name="poweroff" />
                   </button>
                 </div>
@@ -115,7 +113,8 @@
         </table>
         <div v-if="store.loading" class="table-loading">正在刷新…</div>
       </div>
-    </div>
+    </section>
+    </main>
   </div>
 </template>
 
@@ -245,14 +244,23 @@ onMounted(() => {
 .node-search__clear {
   position: absolute;
   right: 10px;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
   color: var(--text-muted);
   font-size: 16px;
   cursor: pointer;
-  transition: color var(--transition);
+  transition: color var(--transition), background var(--transition);
 }
 
 .node-search__clear:hover {
-  color: var(--text-secondary);
+  background: var(--primary-light);
+  color: var(--primary);
 }
 
 /* 刷新按钮 */
@@ -306,7 +314,6 @@ onMounted(() => {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 16px;
-  margin-bottom: 28px;
 }
 
 .stat-card {
@@ -590,5 +597,28 @@ onMounted(() => {
   color: var(--text-secondary);
   font-size: 13px;
   backdrop-filter: blur(1px);
+}
+
+
+@media (max-width: 760px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .node-search,
+  .node-search__input {
+    width: 100%;
+  }
+
+  .service-table-wrap {
+    margin-inline: calc(var(--panel-padding) * -1);
+    border-right: 0;
+    border-left: 0;
+    border-radius: 0;
+  }
+
+  .content-section {
+    padding-inline: var(--panel-padding);
+  }
 }
 </style>

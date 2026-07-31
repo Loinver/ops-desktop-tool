@@ -11,11 +11,7 @@
     ]"
   >
     <header class="provider-head provider-group-head">
-      <div
-        class="provider-title"
-        :class="{ clickable: provider.testable }"
-        @click="provider.testable && $emit('toggle')"
-      >
+      <div class="provider-title">
         <button
           class="expand-btn"
           type="button"
@@ -187,16 +183,18 @@
                   :class="['model-row', `is-${row.result.status}`]"
                 >
                   <td class="col-model">
-                    <div
+                    <button
+                      type="button"
                       class="model-name copyable"
                       :class="{ copied: copiedModel === row.model }"
                       :title="`点击复制：${row.model}`"
+                      :aria-label="`复制模型名称：${row.model}`"
                       @click="onCopyModel(row.model)"
                     >
                       <span class="model-id">{{ row.model }}</span>
                       <span v-if="row.beta1m" class="model-flag">1M</span>
                       <span class="copy-icon" aria-hidden="true"><t-icon name="file-copy" /></span>
-                    </div>
+                    </button>
                   </td>
                   <td class="col-status">
                     <span :class="['status-dot', row.result.status]"></span>
