@@ -425,6 +425,7 @@ function normalizeAutoBackupHistory(value) {
     status: item?.status === 'failed' ? 'failed' : 'success',
     error: item?.status === 'failed' ? String(item?.error || '自动备份失败').slice(0, 280) : '',
     categories: Array.isArray(item?.categories) ? item.categories.filter(category => BACKUP_GROUPS.some(group => group.id === category)) : [],
+    passwordEncrypted: item?.status === 'failed' ? '' : (typeof item?.passwordEncrypted === 'string' ? item.passwordEncrypted.slice(0, 16 * 1024) : ''),
   })).filter(item => item.id && item.createdAt && item.outputDirectory)
 }
 
@@ -435,6 +436,34 @@ function readAutoBackupHistory(userDataPath) {
   } catch {
     return []
   }
+}
+
+function autoBackupFileState(entry) {
+  if (entry.status !== 'success') return 'failed'
+  try {
+    const filePath = safeAutoBackupFilePath(entry.outputDirectory, entry.fileName)
+    const stat = fs.lstatSync(filePath)
+    return stat.isFile() && !stat.isSymbolicLink() && stat.size > 0 && stat.size <= MAX_BACKUP_BYTES ? 'available' : 'missing'
+  } catch {
+    return 'missing'
+  }
+}
+
+function safeAutoBackupHistory(entries) {
+  return normalizeAutoBackupHistory(entries).map((entry) => ({
+    id: entry.id,
+    createdAt: entry.createdAt,
+    fileName: entry.fileName,
+    sizeBytes: entry.sizeBytes,
+    status: entry.status,
+    error: entry.error,
+    categories: entry.categories,
+    availability: autoBackupFileState(entry),
+  }))
+}
+
+function getAutoBackupHistory(userDataPath) {
+  return safeAutoBackupHistory(readAutoBackupHistory(userDataPath))
 }
 
 function writeAutoBackupHistory(userDataPath, entries) {
@@ -452,6 +481,81 @@ function safeAutoBackupFilePath(outputDirectory, fileName) {
 
 function compactTimestamp(value) {
   return new Date(value).toISOString().replace(/[:.]/g, '-').replace(/Z$/, 'Z')
+}
+
+function findAutoBackupHistoryEntry(userDataPath, id) {
+  const entryId = String(id || '').slice(0, 80)
+  if (!entryId) throw new Error('自动备份标识无效')
+  const entry = readAutoBackupHistory(userDataPath).find(item => item.id === entryId)
+  if (!entry || entry.status !== 'success') throw new Error('自动备份记录不存在或不可恢复')
+  return entry
+}
+
+function readAutoBackupArchive(userDataPath, id) {
+  const entry = findAutoBackupHistoryEntry(userDataPath, id)
+  let filePath
+  let stat
+  try {
+    filePath = safeAutoBackupFilePath(entry.outputDirectory, entry.fileName)
+    stat = fs.lstatSync(filePath)
+  } catch {
+    throw new Error('自动备份文件已不存在')
+  }
+  if (!stat.isFile() || stat.isSymbolicLink() || stat.size <= 0 || stat.size > MAX_BACKUP_BYTES) {
+    throw new Error('自动备份文件不可用')
+  }
+  return { entry, filePath, archive: fs.readFileSync(filePath) }
+}
+
+function getAutoBackupPassword({ userDataPath, entry, decryptPassword }) {
+  if (typeof decryptPassword !== 'function') throw new Error('当前环境无法解密自动备份密码')
+  const settings = readAutoBackupSettings(userDataPath)
+  const encrypted = entry.passwordEncrypted || settings.passwordEncrypted
+  if (!encrypted) throw new Error('自动备份密码不可用，请重新设置后手动恢复')
+  const password = decryptPassword(encrypted)
+  assertPassword(password)
+  return password
+}
+
+function inspectAutoBackup({ userDataPath, id, decryptPassword }) {
+  const { entry, archive } = readAutoBackupArchive(userDataPath, id)
+  return {
+    fileName: entry.fileName,
+    createdAt: entry.createdAt,
+    summary: inspectBackupArchive(archive, getAutoBackupPassword({ userDataPath, entry, decryptPassword })),
+  }
+}
+
+function restoreAutoBackup({ userDataPath, id, decryptPassword, now = Date.now() }) {
+  const { entry, archive } = readAutoBackupArchive(userDataPath, id)
+  return restoreBackupArchive({
+    userDataPath,
+    archive,
+    password: getAutoBackupPassword({ userDataPath, entry, decryptPassword }),
+    now,
+  })
+}
+
+function deleteAutoBackup({ userDataPath, id }) {
+  const entry = findAutoBackupHistoryEntry(userDataPath, id)
+  let deleted = false
+  try {
+    const filePath = safeAutoBackupFilePath(entry.outputDirectory, entry.fileName)
+    const stat = fs.lstatSync(filePath)
+    if (stat.isFile() && !stat.isSymbolicLink()) {
+      fs.unlinkSync(filePath)
+      deleted = true
+    }
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error
+  }
+  writeAutoBackupHistory(userDataPath, readAutoBackupHistory(userDataPath).filter(item => item.id !== entry.id))
+  return { deleted, missing: !deleted }
+}
+
+function getAutoBackupDirectory({ userDataPath, id }) {
+  const entry = findAutoBackupHistoryEntry(userDataPath, id)
+  return assertOutputDirectory(entry.outputDirectory)
 }
 
 function pruneAutoBackups({ userDataPath, outputDirectory, retentionCount }) {
@@ -508,6 +612,7 @@ function runAutoBackup({ userDataPath, decryptPassword, appVersion = '', now = D
     sizeBytes: archive.length,
     status: 'success',
     categories: settings.categories,
+    passwordEncrypted: settings.passwordEncrypted,
   }
   writeAutoBackupHistory(userDataPath, [entry, ...readAutoBackupHistory(userDataPath)])
   pruneAutoBackups({ userDataPath, outputDirectory: settings.outputDirectory, retentionCount: settings.retentionCount })
@@ -604,16 +709,22 @@ module.exports = {
   BACKUP_VERSION,
   MAX_BACKUP_BYTES,
   createBackupArchive,
+  deleteAutoBackup,
+  getAutoBackupDirectory,
+  getAutoBackupHistory,
   getBackupOverview,
+  inspectAutoBackup,
   inspectBackupArchive,
   listRestorePoints,
   parseBackupArchive,
   readAutoBackupHistory,
   readAutoBackupSettings,
   recordAutoBackupFailure,
+  restoreAutoBackup,
   restoreBackupArchive,
   restoreRestorePoint,
   runAutoBackup,
+  safeAutoBackupHistory,
   safeAutoBackupSettings,
   saveAutoBackupSettings,
 }

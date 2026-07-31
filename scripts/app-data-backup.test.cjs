@@ -225,3 +225,90 @@ test('恢复点可回滚当前数据，并在回滚前创建新的恢复点', ()
     [{ id: 'current-before-rollback' }],
   )
 })
+
+test('自动备份历史可安全校验、使用原密码恢复并删除对应文件', () => {
+  const root = tempDir()
+  const outputDirectory = tempDir()
+  const {
+    deleteAutoBackup,
+    getAutoBackupHistory,
+    inspectAutoBackup,
+    readAutoBackupHistory,
+    restoreAutoBackup,
+    runAutoBackup,
+    saveAutoBackupSettings,
+  } = require('../src/main/utils/app-data-backup')
+  writeJson(root, 'ops-events.json', [{ id: 'auto-backup-source' }])
+  saveAutoBackupSettings({
+    userDataPath: root,
+    input: {
+      enabled: true,
+      outputDirectory,
+      categories: ['operations'],
+      password: 'original-auto-password',
+    },
+    encryptPassword: value => `enc:${value}`,
+    now: 1_000,
+  })
+  const run = runAutoBackup({
+    userDataPath: root,
+    decryptPassword: value => value.slice(4),
+    now: 2_000,
+    iterations: 1_000,
+  })
+  const entry = run.entry
+  assert.match(readAutoBackupHistory(root)[0].passwordEncrypted, /^enc:/)
+
+  const history = getAutoBackupHistory(root)
+  assert.equal(history[0].availability, 'available')
+  assert.equal('passwordEncrypted' in history[0], false)
+  const inspection = inspectAutoBackup({
+    userDataPath: root,
+    id: entry.id,
+    decryptPassword: value => value.slice(4),
+  })
+  assert.equal(inspection.summary.fileCount, 1)
+
+  saveAutoBackupSettings({
+    userDataPath: root,
+    input: { password: 'new-auto-password' },
+    encryptPassword: value => `enc:${value}`,
+    now: 3_000,
+  })
+  writeJson(root, 'ops-events.json', [{ id: 'changed-after-backup' }])
+  restoreAutoBackup({
+    userDataPath: root,
+    id: entry.id,
+    decryptPassword: value => value.slice(4),
+    now: 4_000,
+  })
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root, 'ops-events.json'), 'utf8')), [{ id: 'auto-backup-source' }])
+
+  const result = deleteAutoBackup({ userDataPath: root, id: entry.id })
+  assert.equal(result.deleted, true)
+  assert.equal(fs.existsSync(path.join(outputDirectory, entry.fileName)), false)
+  assert.deepEqual(getAutoBackupHistory(root), [])
+})
+
+test('自动备份缺失文件会标记状态，并可清理历史记录', () => {
+  const root = tempDir()
+  const outputDirectory = tempDir()
+  const {
+    deleteAutoBackup,
+    getAutoBackupHistory,
+    runAutoBackup,
+    saveAutoBackupSettings,
+  } = require('../src/main/utils/app-data-backup')
+  writeJson(root, 'ops-events.json', [{ id: 'auto-backup-source' }])
+  saveAutoBackupSettings({
+    userDataPath: root,
+    input: { enabled: true, outputDirectory, categories: ['operations'], password: 'automatic-password' },
+    encryptPassword: value => `enc:${value}`,
+    now: 1_000,
+  })
+  const { entry } = runAutoBackup({ userDataPath: root, decryptPassword: value => value.slice(4), now: 2_000, iterations: 1_000 })
+  fs.unlinkSync(path.join(outputDirectory, entry.fileName))
+  assert.equal(getAutoBackupHistory(root)[0].availability, 'missing')
+  assert.deepEqual(deleteAutoBackup({ userDataPath: root, id: entry.id }), { deleted: false, missing: true })
+  assert.deepEqual(getAutoBackupHistory(root), [])
+})

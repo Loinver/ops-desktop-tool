@@ -186,9 +186,17 @@
           <div class="recovery-column">
             <div class="subsection-heading"><strong>自动备份历史</strong><span>最近 {{ autoHistory.length }} 条</span></div>
             <div v-if="autoHistory.length" class="history-list">
-              <article v-for="item in autoHistory" :key="item.id" class="history-item" :class="{ 'history-item--failed': item.status === 'failed' }">
+              <article v-for="item in autoHistory" :key="item.id" class="history-item history-item--auto" :class="{ 'history-item--failed': item.status === 'failed', 'history-item--missing': item.availability === 'missing' }">
                 <div><strong>{{ item.status === 'success' ? item.fileName : '自动备份失败' }}</strong><small>{{ formatDate(item.createdAt) }} · {{ item.status === 'success' ? formatBytes(item.sizeBytes) : item.error }}</small></div>
-                <span>{{ item.status === 'success' ? '完成' : '失败' }}</span>
+                <div class="history-item-side">
+                  <span :class="{ 'history-status--missing': item.availability === 'missing' }">{{ autoBackupStateLabel(item) }}</span>
+                  <div v-if="item.status === 'success'" class="history-item-actions">
+                    <button class="btn-secondary" type="button" :disabled="busy" @click="openAutoBackupDirectory(item)"><t-icon name="folder-open" /> 目录</button>
+                    <button v-if="item.availability === 'available'" class="btn-secondary" type="button" :disabled="busy" @click="inspectAutoHistoryBackup(item)"><t-icon :name="busyAction === `auto-inspect-${item.id}` ? 'loading' : 'file-search'" :class="{ spinning: busyAction === `auto-inspect-${item.id}` }" /> 校验</button>
+                    <button v-if="item.availability === 'available'" class="btn-secondary" type="button" :disabled="busy" @click="restoreAutoHistoryBackup(item)"><t-icon :name="busyAction === `auto-restore-${item.id}` ? 'loading' : 'rollback'" :class="{ spinning: busyAction === `auto-restore-${item.id}` }" /> 恢复</button>
+                    <button class="btn-danger btn-danger--compact" type="button" :disabled="busy" @click="deleteAutoHistoryBackup(item)"><t-icon :name="busyAction === `auto-delete-${item.id}` ? 'loading' : 'delete'" :class="{ spinning: busyAction === `auto-delete-${item.id}` }" /> {{ item.availability === 'missing' ? '清理记录' : '删除' }}</button>
+                  </div>
+                </div>
               </article>
             </div>
             <div v-else class="restore-empty"><t-icon name="time" /> 暂无自动备份记录。</div>
@@ -252,6 +260,11 @@ function formatBytes(value) {
 function formatDate(value) {
   const timestamp = Number(value)
   return timestamp ? new Date(timestamp).toLocaleString('zh-CN', { hour12: false }) : '未知时间'
+}
+
+function autoBackupStateLabel(item) {
+  if (item.status === 'failed') return '失败'
+  return item.availability === 'available' ? '可恢复' : '文件缺失'
 }
 
 async function loadOverview() {
@@ -393,6 +406,70 @@ async function runAutoBackup() {
   }
 }
 
+async function openAutoBackupDirectory(item) {
+  busyAction.value = `auto-open-${item.id}`
+  try {
+    await window.opsApi.openAutoBackupDirectory(item.id)
+  } catch (error) {
+    MessagePlugin.error({ content: error.message || '无法打开自动备份目录', placement: 'bottom-right' })
+  } finally {
+    busyAction.value = ''
+  }
+}
+
+async function inspectAutoHistoryBackup(item) {
+  busyAction.value = `auto-inspect-${item.id}`
+  try {
+    const result = await window.opsApi.inspectAutoBackup(item.id)
+    const summary = result?.summary
+    MessagePlugin.success({ content: `校验通过：${summary?.fileCount || 0} 个数据文件，${formatBytes(summary?.sizeBytes)}`, placement: 'bottom-right' })
+  } catch (error) {
+    MessagePlugin.error({ content: error.message || '自动备份校验失败', placement: 'bottom-right' })
+    await loadAutoBackupState()
+  } finally {
+    busyAction.value = ''
+  }
+}
+
+async function restoreAutoHistoryBackup(item) {
+  const confirmed = await window.opsApi.confirm({
+    title: '确认恢复自动备份',
+    message: `将从 ${item.fileName} 恢复本地数据。`,
+    detail: '恢复前会保存当前同名文件的本机恢复点；完成后应用将立即重启。',
+  })
+  if (!confirmed) return
+  busyAction.value = `auto-restore-${item.id}`
+  try {
+    await window.opsApi.restoreAutoBackup(item.id)
+    MessagePlugin.success({ content: '自动备份已恢复，正在重启应用…', placement: 'bottom-right' })
+    await window.opsApi.relaunchApp()
+  } catch (error) {
+    MessagePlugin.error({ content: error.message || '恢复自动备份失败', placement: 'bottom-right' })
+    await loadAutoBackupState()
+  } finally {
+    busyAction.value = ''
+  }
+}
+
+async function deleteAutoHistoryBackup(item) {
+  const confirmed = await window.opsApi.confirm({
+    title: item.availability === 'missing' ? '清理自动备份记录' : '删除自动备份',
+    message: item.availability === 'missing' ? `将移除 ${item.fileName} 的缺失记录。` : `将永久删除 ${item.fileName}。`,
+    detail: '此操作不会影响当前本地数据或本机恢复点，且无法撤销。',
+  })
+  if (!confirmed) return
+  busyAction.value = `auto-delete-${item.id}`
+  try {
+    const result = await window.opsApi.deleteAutoBackup(item.id)
+    MessagePlugin.success({ content: result?.deleted ? '自动备份文件及记录已删除' : '缺失的自动备份记录已清理', placement: 'bottom-right' })
+    await loadAutoBackupState()
+  } catch (error) {
+    MessagePlugin.error({ content: error.message || '删除自动备份失败', placement: 'bottom-right' })
+  } finally {
+    busyAction.value = ''
+  }
+}
+
 async function restorePoint(point) {
   const confirmed = await window.opsApi.confirm({
     title: '确认回滚本机恢复点',
@@ -497,9 +574,17 @@ onMounted(loadDataManagementState)
 .history-item small { margin-top: 2px; overflow: hidden; color: var(--text-muted); font-size: 11px; line-height: 17px; text-overflow: ellipsis; white-space: nowrap; }
 .history-item > span { flex: 0 0 auto; color: var(--success); font-size: 11px; font-weight: 600; }
 .history-item--failed { border-color: color-mix(in srgb, var(--danger) 32%, var(--border-light)); }
-.history-item--failed > span { color: var(--danger); }
+.history-item--missing { border-color: color-mix(in srgb, var(--warning) 32%, var(--border-light)); }
+.history-item > .history-item-side { display: flex; align-items: center; justify-content: flex-end; gap: 10px; min-width: 0; }
+.history-item-side > span { flex: 0 0 auto; color: var(--success); font-size: 11px; font-weight: 600; white-space: nowrap; }
+.history-item--failed .history-item-side > span { color: var(--danger); }
+.history-item-side > .history-status--missing { color: var(--warning); }
+.history-item-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.history-item-actions .btn-secondary,.history-item-actions .btn-danger { flex: 0 0 auto; height: 30px; padding: 0 9px; font-size: 11px; }
+.history-item-actions .btn-danger--compact { border-color: color-mix(in srgb, var(--danger) 48%, var(--border)); background: var(--card-bg); color: var(--danger); }
+.history-item-actions .btn-danger--compact:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 8%, var(--card-bg)); box-shadow: none; }
 .history-item--restore-point .btn-secondary { flex: 0 0 auto; }
 .section-status--muted { color: var(--text-muted); background: var(--bg-soft); }
 @media (max-width: 900px) { .data-summary,.preview-metrics,.recovery-grid { grid-template-columns: 1fr; } .backup-group-grid { grid-template-columns: 1fr; } }
-@media (max-width: 760px) { .backup-form-grid,.auto-settings-grid { grid-template-columns: 1fr; } .path-control { flex-direction: column; } .path-control .btn-secondary { width: 100%; } .restore-controls { align-items: stretch; flex-direction: column; } .restore-password { max-width: none; } .restore-preview-heading { flex-direction: column; } .preview-time { flex-basis: auto; } .panel-actions > .btn-primary,.panel-actions > .btn-danger,.restore-controls > .btn-secondary { width: 100%; justify-content: center; } }
+@media (max-width: 760px) { .backup-form-grid,.auto-settings-grid { grid-template-columns: 1fr; } .path-control { flex-direction: column; } .path-control .btn-secondary { width: 100%; } .restore-controls { align-items: stretch; flex-direction: column; } .restore-password { max-width: none; } .restore-preview-heading,.history-item--auto,.history-item--auto > .history-item-side { align-items: stretch; flex-direction: column; } .preview-time { flex-basis: auto; } .history-item--auto .history-item-side,.history-item--auto .history-item-actions { justify-content: flex-start; } .panel-actions > .btn-primary,.panel-actions > .btn-danger,.restore-controls > .btn-secondary { width: 100%; justify-content: center; } }
 </style>

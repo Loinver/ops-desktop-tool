@@ -1,21 +1,26 @@
 const crypto = require('node:crypto')
 const fs = require('node:fs')
 const path = require('node:path')
-const { app, BrowserWindow, dialog, ipcMain } = require('electron')
+const { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } = require('electron')
 const { IPC_CHANNELS } = require('../../shared/ipc-channels')
 const {
   MAX_BACKUP_BYTES,
   createBackupArchive,
+  deleteAutoBackup,
+  getAutoBackupDirectory,
+  getAutoBackupHistory,
   getBackupOverview,
+  inspectAutoBackup,
   inspectBackupArchive,
   listRestorePoints,
-  readAutoBackupHistory,
   readAutoBackupSettings,
+  restoreAutoBackup,
   restoreBackupArchive,
   restoreRestorePoint,
   safeAutoBackupSettings,
 } = require('../utils/app-data-backup')
 const { runAutoBackupNow, saveAutoBackupSchedule } = require('../ops-auto-backup-scheduler')
+const { decryptSecret } = require('../utils/secure-secret')
 
 const pendingImports = new Map()
 const IMPORT_TTL_MS = 10 * 60 * 1000
@@ -57,8 +62,34 @@ function registerDataBackupHandlers() {
   ipcMain.handle(IPC_CHANNELS.DATA_BACKUP_AUTO_RUN, async () => runAutoBackupNow())
 
   ipcMain.handle(IPC_CHANNELS.DATA_BACKUP_HISTORY_GET, async () => (
-    readAutoBackupHistory(app.getPath('userData'))
+    getAutoBackupHistory(app.getPath('userData'))
   ))
+
+  ipcMain.handle(IPC_CHANNELS.DATA_BACKUP_AUTO_INSPECT, async (_event, options = {}) => (
+    inspectAutoBackup({
+      userDataPath: app.getPath('userData'),
+      id: options.id,
+      decryptPassword: value => decryptSecret(safeStorage, value),
+    })
+  ))
+
+  ipcMain.handle(IPC_CHANNELS.DATA_BACKUP_AUTO_RESTORE, async (_event, options = {}) => (
+    restoreAutoBackup({
+      userDataPath: app.getPath('userData'),
+      id: options.id,
+      decryptPassword: value => decryptSecret(safeStorage, value),
+    })
+  ))
+
+  ipcMain.handle(IPC_CHANNELS.DATA_BACKUP_AUTO_DELETE, async (_event, options = {}) => (
+    deleteAutoBackup({ userDataPath: app.getPath('userData'), id: options.id })
+  ))
+
+  ipcMain.handle(IPC_CHANNELS.DATA_BACKUP_AUTO_OPEN_DIRECTORY, async (_event, options = {}) => {
+    const error = await shell.openPath(getAutoBackupDirectory({ userDataPath: app.getPath('userData'), id: options.id }))
+    if (error) throw new Error(`无法打开自动备份目录：${error}`)
+    return { ok: true }
+  })
 
   ipcMain.handle(IPC_CHANNELS.DATA_BACKUP_RESTORE_POINTS_GET, async () => (
     listRestorePoints(app.getPath('userData'))
