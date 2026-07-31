@@ -6,6 +6,7 @@ const {
   recordAutoBackupFailure,
   runAutoBackup,
 } = require('./utils/app-data-backup')
+const { recordAutoBackupExecutionFailure, recoverAutoBackupExecution } = require('./utils/auto-backup-events')
 
 let runtime = null
 let timer = null
@@ -22,6 +23,13 @@ function delayUntil(timestamp) {
   return Math.max(0, Math.min(maxDelay, target - Date.now()))
 }
 
+function recordAutoBackupRunFailure(error) {
+  let settings
+  try { settings = recordAutoBackupFailure({ userDataPath: runtime.userDataPath, error }) } catch { return }
+  if (!settings?.enabled) return
+  try { recordAutoBackupExecutionFailure({ userDataPath: runtime.userDataPath }) } catch {}
+}
+
 function scheduleAutoBackup() {
   clearTimer()
   if (!runtime) return
@@ -30,14 +38,15 @@ function scheduleAutoBackup() {
   const nextRunAt = settings.nextRunAt || Date.now() + AUTO_BACKUP_INTERVALS[settings.interval]
   timer = setTimeout(() => {
     try {
-      runAutoBackup({
+      const result = runAutoBackup({
         userDataPath: runtime.userDataPath,
         decryptPassword: value => decryptSecret(safeStorage, value),
         appVersion: app.getVersion(),
       })
+      try { recoverAutoBackupExecution({ userDataPath: runtime.userDataPath, now: result.entry?.createdAt }) } catch {}
     } catch (error) {
       console.error('执行自动数据备份失败:', error)
-      try { recordAutoBackupFailure({ userDataPath: runtime.userDataPath, error }) } catch {}
+      recordAutoBackupRunFailure(error)
     } finally {
       scheduleAutoBackup()
     }
@@ -65,13 +74,15 @@ function saveAutoBackupSchedule(input) {
 function runAutoBackupNow() {
   if (!runtime) throw new Error('自动备份服务尚未初始化')
   try {
-    return runAutoBackup({
+    const result = runAutoBackup({
       userDataPath: runtime.userDataPath,
       decryptPassword: value => decryptSecret(safeStorage, value),
       appVersion: app.getVersion(),
     })
+    try { recoverAutoBackupExecution({ userDataPath: runtime.userDataPath, now: result.entry?.createdAt }) } catch {}
+    return result
   } catch (error) {
-    try { recordAutoBackupFailure({ userDataPath: runtime.userDataPath, error }) } catch {}
+    recordAutoBackupRunFailure(error)
     throw error
   } finally {
     scheduleAutoBackup()

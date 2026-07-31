@@ -220,7 +220,7 @@ function notify(result, fallback) { if (!result?.ok) { MessagePlugin.error({ con
 function formatTime(value) { return value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '—' }
 function levelName(level) { return ({ info: '信息', warning: '警告', critical: '严重' })[level] || '信息' }
 function statusName(status) { return ({ open: '待处理', acknowledged: '已确认', resolved: '已解决' })[status] || '待处理' }
-function sourceName(source) { return ({ automation: '自动化巡检', 'node-service': 'Node 服务', 'model-monitor': '模型巡检', model: '模型评测', release: '系统发布', log: '日志分析', copilot: 'AI Copilot', system: '系统' })[source] || source || '系统' }
+function sourceName(source) { return ({ automation: '自动化巡检', 'node-service': 'Node 服务', 'data-backup': '本地数据备份', 'model-monitor': '模型巡检', model: '模型评测', release: '系统发布', log: '日志分析', copilot: 'AI Copilot', system: '系统' })[source] || source || '系统' }
 function timelineName(type) { return ({ opened: '事件创建', occurred: '再次发生', reopened: '重新触发', acknowledged: '已确认', resolved: '已解决', recovered: '自动恢复' })[type] || '状态更新' }
 function toggleEvent(item) { expandedEventId.value = expandedEventId.value === item.id ? '' : item.id }
 

@@ -6,6 +6,7 @@ const SOURCE_ROUTES = {
   log: '/ai-ops',
   copilot: '/ai-ops',
   'node-service': '/node-services',
+  'data-backup': '/data-management',
 }
 
 function queryValue(input) {

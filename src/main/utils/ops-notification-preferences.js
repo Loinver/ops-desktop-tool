@@ -2,7 +2,7 @@ const path = require('node:path')
 const { readJsonFile, writeJsonFile } = require('./json-store')
 
 const PREFERENCES_VERSION = 1
-const KNOWN_SOURCES = ['release', 'model-monitor', 'model', 'automation', 'log', 'copilot', 'node-service', 'system']
+const KNOWN_SOURCES = ['release', 'model-monitor', 'model', 'automation', 'log', 'copilot', 'node-service', 'data-backup', 'system']
 const DEFAULT_NOTIFICATION_PREFERENCES = Object.freeze({
   version: PREFERENCES_VERSION,
   desktopEnabled: true,
@@ -128,6 +128,7 @@ const SOURCE_LABELS = {
   log: '日志分析',
   copilot: 'AI Copilot',
   'node-service': 'Node 服务',
+  'data-backup': '本地数据备份',
   system: '系统',
 }
 

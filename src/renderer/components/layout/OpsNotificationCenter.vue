@@ -197,7 +197,7 @@ const preferences = reactive({
   repeatIntervalMinutes: 15,
   quietHours: { enabled: false, start: '22:00', end: '08:00' },
   severities: { critical: true, warning: true, info: false },
-  sources: { release: true, 'model-monitor': true, model: true, automation: true, log: true, copilot: true, 'node-service': true, system: true },
+  sources: { release: true, 'model-monitor': true, model: true, automation: true, log: true, copilot: true, 'node-service': true, 'data-backup': true, system: true },
 })
 
 const severityOptions = [
@@ -211,6 +211,7 @@ const sourceOptions = [
   { value: 'model', label: '模型测试' },
   { value: 'automation', label: '自动化巡检' },
   { value: 'node-service', label: 'Node 服务' },
+  { value: 'data-backup', label: '本地数据备份' },
   { value: 'log', label: '日志分析' },
   { value: 'copilot', label: 'AI Copilot' },
   { value: 'system', label: '系统' },

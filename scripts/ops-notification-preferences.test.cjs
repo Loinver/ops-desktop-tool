@@ -44,13 +44,14 @@ test('通知偏好使用安全默认值并支持增量持久化', () => {
     assert.equal(initial.desktopEnabled, true)
     assert.equal(initial.severities.info, false)
     assert.equal(initial.sources['node-service'], true)
+    assert.equal(initial.sources['data-backup'], true)
 
     const saved = saveNotificationPreferences(userDataPath, {
       soundEnabled: false,
       repeatIntervalMinutes: 30,
       quietHours: { enabled: true, start: '23:30', end: '07:15' },
       severities: { info: true },
-      sources: { copilot: false },
+      sources: { copilot: false, 'data-backup': false },
     })
     assert.equal(saved.soundEnabled, false)
     assert.equal(saved.repeatIntervalMinutes, 30)
@@ -58,6 +59,7 @@ test('通知偏好使用安全默认值并支持增量持久化', () => {
     assert.equal(saved.severities.critical, true)
     assert.equal(saved.severities.info, true)
     assert.equal(saved.sources.copilot, false)
+    assert.equal(saved.sources['data-backup'], false)
     assert.deepEqual(loadNotificationPreferences(userDataPath), saved)
   } finally {
     fs.rmSync(userDataPath, { recursive: true, force: true })
