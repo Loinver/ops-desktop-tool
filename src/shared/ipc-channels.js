@@ -105,6 +105,7 @@ const IPC_CHANNELS = {
   AI_PROVIDER_DELETE: 'aiOps:deleteProvider',
   AI_PROVIDER_ACTIVATE: 'aiOps:activateProvider',
   AI_PROVIDER_TEST: 'aiOps:testProvider',
+  AI_CHAT_ASK: 'aiOps:askChat',
   AI_EVALUATION_SAVE_CASES: 'aiOps:saveEvaluationCases',
   AI_EVALUATION_RUN: 'aiOps:runEvaluation',
   AI_LOG_ANALYZE: 'aiOps:analyzeLog',

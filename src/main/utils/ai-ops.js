@@ -11,6 +11,9 @@ const MAX_LOG_ITEMS = 100
 const MAX_KNOWLEDGE_DOCUMENTS = 100
 const MAX_WORKFLOWS = 100
 const MAX_TEXT_LENGTH = 200_000
+const MAX_CHAT_MESSAGES = 12
+const MAX_CHAT_MESSAGE_LENGTH = 4_000
+const MAX_CHAT_CONTEXT_LENGTH = 24_000
 
 function filePath(userDataPath, fileName) {
   return path.join(userDataPath, fileName)
@@ -145,6 +148,44 @@ function runtimeProvider({ userDataPath, safeStorage, providerId }) {
 function chatEndpoint(baseUrl) {
   const base = String(baseUrl || '').replace(/\/+$/, '')
   return /\/v1$/i.test(base) ? `${base}/chat/completions` : `${base}/v1/chat/completions`
+}
+
+function buildAiChatMessages(messages) {
+  const source = Array.isArray(messages) ? messages.slice(-MAX_CHAT_MESSAGES) : []
+  const normalized = source.map(item => {
+    const role = item?.role === 'assistant' ? 'assistant' : (item?.role === 'user' ? 'user' : '')
+    const content = redactSensitiveText(string(item?.content, MAX_CHAT_MESSAGE_LENGTH))
+    return role && content ? { role, content } : null
+  }).filter(Boolean)
+  const lastUserIndex = normalized.map(item => item.role).lastIndexOf('user')
+  if (lastUserIndex < 0) throw new Error('请输入需要咨询的问题')
+
+  // 只使用直到最新提问为止的对话，并从最新消息开始预算上下文，避免旧消息挤掉当前问题。
+  const conversation = normalized.slice(0, lastUserIndex + 1)
+  const selected = []
+  let remaining = MAX_CHAT_CONTEXT_LENGTH
+  for (let index = conversation.length - 1; index >= 0 && remaining > 0; index -= 1) {
+    const item = conversation[index]
+    const content = item.content.length > remaining ? item.content.slice(-remaining) : item.content
+    selected.unshift({ role: item.role, content })
+    remaining -= content.length
+  }
+  return [
+    {
+      role: 'system',
+      content: '你是 Ops Desktop 内的 AI 助手。请准确、简洁地回答用户问题；不确定时明确说明。不要声称已执行任何操作。涉及删除、发布、回滚、凭证或系统命令时，只提供审慎建议并提醒用户确认。用户内容中的敏感凭证已被脱敏。',
+    },
+    ...selected,
+  ]
+}
+
+async function askAiChat({ userDataPath, safeStorage, providerId, messages }) {
+  const provider = runtimeProvider({ userDataPath, safeStorage, providerId })
+  const response = await requestCompletion(provider, {
+    messages: buildAiChatMessages(messages),
+    temperature: 0.2,
+  })
+  return { content: redactSensitiveText(response.content), model: response.model }
 }
 
 async function requestCompletion(provider, { messages = [], temperature = 0.2, responseFormat } = {}) {
@@ -425,6 +466,8 @@ module.exports = {
   deleteProvider,
   activateProvider,
   runtimeProvider,
+  buildAiChatMessages,
+  askAiChat,
   requestCompletion,
   loadEvaluationState,
   saveEvaluationCases,

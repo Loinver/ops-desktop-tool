@@ -12,6 +12,7 @@ const {
   deleteProvider,
   activateProvider,
   runtimeProvider,
+  askAiChat,
   requestCompletion,
   loadEvaluationState,
   saveEvaluationCases,
@@ -112,6 +113,17 @@ function registerAiOpsHandlers() {
       const provider = runtimeProvider({ userDataPath: userDataPath(), safeStorage, providerId })
       const result = await requestCompletion(provider, { messages: [{ role: 'user', content: '回复“连接正常”。' }], temperature: 0 })
       return success({ model: result.model, content: redactSensitiveText(result.content).slice(0, 500), usage: result.usage })
+    } catch (error) { return failure(error) }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.AI_CHAT_ASK, async (_event, options = {}) => {
+    try {
+      return success(await askAiChat({
+        userDataPath: userDataPath(),
+        safeStorage,
+        providerId: options.providerId,
+        messages: options.messages,
+      }))
     } catch (error) { return failure(error) }
   })
 

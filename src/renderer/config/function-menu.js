@@ -59,7 +59,7 @@ export const FUNCTION_MENU_GROUPS = [
         id: 'ai-ops',
         path: '/ai-ops',
         name: 'AI 能力中心',
-        description: '管理 Provider、模型评测、日志分析、知识库与安全工作流',
+        description: '管理 Provider、AI 问答、模型评测、日志分析、知识库与安全工作流',
         icon: 'gesture-pray',
       },
     ],

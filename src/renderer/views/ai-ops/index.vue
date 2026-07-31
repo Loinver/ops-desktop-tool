@@ -4,7 +4,7 @@
       <div class="page-heading">
         <div class="page-eyebrow"><t-icon name="gesture-pray" /> AI CAPABILITY CENTER</div>
         <h2 class="page-title">AI 能力中心</h2>
-        <p class="page-desc">统一管理 Provider、模型评测、脱敏日志、知识库与需要确认的安全工作流。</p>
+        <p class="page-desc">统一管理 Provider、AI 问答、模型评测、脱敏日志、知识库与需要确认的安全工作流。</p>
       </div>
       <div class="page-actions header-actions">
         <span class="safety-chip"><t-icon name="secured" /> 凭证加密 · 执行需确认</span>
@@ -115,6 +115,32 @@
         </article>
       </section>
 
+      <section v-else-if="activeTab === 'chat'" class="panel chat-panel">
+        <div class="panel-title chat-title">
+          <div>
+            <h3>AI 问答</h3>
+            <p>使用当前默认 Provider 进行多轮问答；会话仅保留在当前页面，不写入本机数据。</p>
+          </div>
+          <span class="chat-provider"><t-icon name="server" /> {{ activeProviderReady ? `${activeProvider.name} · ${activeProvider.model}` : '未配置可用 Provider' }}</span>
+        </div>
+        <p class="chat-notice"><t-icon name="secured" /> API Key 始终仅在主进程使用；发送给模型前会脱敏常见密钥、Token 和密码字段。</p>
+        <div class="chat-history" aria-live="polite">
+          <div v-if="!chatMessages.length" class="empty-mini"><t-icon name="chat" /> 输入问题后即可开始对话，例如：如何为当前项目设计安全的备份策略？</div>
+          <article v-for="message in chatMessages" :key="message.id" :class="['chat-message', `chat-message--${message.role}`]">
+            <span class="chat-message-role">{{ message.role === 'user' ? '你' : 'AI' }}</span>
+            <p>{{ message.content }}</p>
+          </article>
+          <article v-if="chatBusy" class="chat-message chat-message--assistant chat-message--pending"><span class="chat-message-role">AI</span><p><t-icon name="loading" class="spinning" /> 正在思考…</p></article>
+        </div>
+        <p v-if="chatError" class="form-error" role="alert"><t-icon name="error-circle" /> {{ chatError }}</p>
+        <label class="chat-input"><span>问题</span><textarea v-model="chatInput" rows="5" maxlength="4000" placeholder="输入你的问题。Enter 发送，Shift + Enter 换行。" :disabled="chatBusy || !activeProviderReady" @keydown.enter.exact.prevent="sendAiChat" /></label>
+        <div class="actions chat-actions">
+          <button class="btn-secondary" type="button" :disabled="chatBusy || !chatMessages.length" @click="clearAiChat"><t-icon name="clear" /> 清空会话</button>
+          <button class="btn-primary" type="button" :disabled="chatBusy || !activeProviderReady || !chatInput.trim()" @click="sendAiChat"><t-icon :name="chatBusy ? 'loading' : 'chat'" :class="{ spinning: chatBusy }" /> {{ chatBusy ? '回答中…' : '发送问题' }}</button>
+        </div>
+        <p v-if="!activeProviderReady" class="inline-hint"><t-icon name="info-circle" /> 请先在 Provider 页保存 API Key、启用并设为默认 Provider。</p>
+      </section>
+
       <section v-else-if="activeTab === 'evaluation'" class="stack">
         <article class="panel">
           <div class="panel-title">
@@ -221,6 +247,7 @@ import { useConfirm } from '../../composables/useConfirm'
 const { confirm } = useConfirm()
 const tabs = [
   { id: 'providers', name: 'Provider', icon: 'server' },
+  { id: 'chat', name: 'AI 问答', icon: 'chat' },
   { id: 'evaluation', name: '模型评测', icon: 'chart-bar' },
   { id: 'logs', name: '日志分析', icon: 'search' },
   { id: 'knowledge', name: '知识库', icon: 'folder-open' },
@@ -243,6 +270,10 @@ const logState = ref({ items: [] })
 const knowledgeState = ref({ documents: [] })
 const workflowState = ref({ history: [] })
 const mcpInfo = ref(null)
+const chatMessages = ref([])
+const chatInput = ref('')
+const chatBusy = ref(false)
+const chatError = ref('')
 
 const newProvider = () => ({ id: '', name: '', baseUrl: '', model: '', apiKey: '', enabled: true, clearApiKey: false })
 const newCase = () => ({ id: '', name: '', prompt: '', systemPrompt: '', expectedKeywords: '', expectJson: false })
@@ -577,6 +608,47 @@ async function answerKnowledge() {
     }
   } finally {
     busy.value = false
+  }
+}
+
+function clearAiChat() {
+  chatMessages.value = []
+  chatInput.value = ''
+  chatError.value = ''
+}
+
+async function sendAiChat() {
+  const prompt = chatInput.value.trim()
+  if (!prompt || chatBusy.value) return
+  if (!activeProviderReady.value) {
+    chatError.value = '请先配置、启用并设为默认 Provider'
+    return
+  }
+  const userMessage = { id: `user-${Date.now()}-${Math.random().toString(16).slice(2)}`, role: 'user', content: prompt }
+  const messages = [...chatMessages.value, userMessage]
+  chatMessages.value = messages
+  chatInput.value = ''
+  chatError.value = ''
+  chatBusy.value = true
+  try {
+    const result = await window.opsApi.askAiChat({
+      providerId: providerState.value.activeProviderId,
+      messages: messages.map(item => ({ role: item.role, content: item.content })),
+    })
+    if (!notify(result, 'AI 问答失败')) {
+      chatError.value = result?.error || 'AI 问答失败'
+      return
+    }
+    chatMessages.value = [...chatMessages.value, {
+      id: `assistant-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      role: 'assistant',
+      content: result.content,
+    }]
+  } catch (error) {
+    chatError.value = error?.message || 'AI 问答失败，请重试'
+    MessagePlugin.error({ content: chatError.value, placement: 'bottom-right' })
+  } finally {
+    chatBusy.value = false
   }
 }
 
@@ -1472,6 +1544,23 @@ button:disabled {
   font-weight: 650;
 }
 
+.chat-panel { max-width: 960px; }
+.chat-title { align-items: flex-start; }
+.chat-provider { flex: 0 1 auto; max-width: 300px; overflow: hidden; color: var(--primary); font-size: 12px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.chat-notice { display: flex; align-items: flex-start; gap: 7px; margin: 14px 0; color: var(--text-muted); font-size: 12px; line-height: 1.6; }
+.chat-history { display: grid; max-height: 460px; min-height: 180px; gap: 10px; overflow: auto; padding: 12px; border: 1px solid var(--border-light); border-radius: var(--radius-md); background: var(--bg-subtle); }
+.chat-history .empty-mini { align-self: center; }
+.chat-message { display: grid; gap: 5px; max-width: min(88%, 720px); padding: 10px 12px; border: 1px solid var(--border-light); border-radius: var(--radius-md); background: var(--card-bg); }
+.chat-message--user { justify-self: end; border-color: color-mix(in srgb, var(--primary) 32%, var(--border)); background: var(--primary-soft); }
+.chat-message--assistant { justify-self: start; }
+.chat-message--pending { color: var(--text-muted); }
+.chat-message-role { color: var(--text-muted); font-size: 11px; font-weight: 700; }
+.chat-message--user .chat-message-role { color: var(--primary); }
+.chat-message p { margin: 0; color: var(--text); font-size: 13px; line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
+.chat-input { display: grid; gap: 7px; margin-top: 14px; color: var(--text-secondary); font-size: 13px; font-weight: 600; }
+.chat-input textarea { min-height: 110px; }
+.chat-actions { justify-content: space-between; }
+
 .mcp-panel {
   max-width: 860px;
 }
@@ -1553,6 +1642,9 @@ button:disabled {
   .provider-url-row small {
     max-width: 440px;
   }
+
+  .chat-title { align-items: flex-start; flex-direction: column; }
+  .chat-provider { max-width: 100%; }
 }
 
 @media (max-width: 640px) {
