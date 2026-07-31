@@ -67,6 +67,7 @@ const menuGroups = computed(() => [
     { path: '/system-info', name: '系统信息', icon: 'chart-area' },
   ] },
   { name: 'AI 工作台', items: [
+    { path: '/ops-control-center', name: 'AI 运维指挥中心', icon: 'dashboard' },
     { path: '/ai-ops', name: 'AI 运维中心', icon: 'chat' },
     { path: '/model-test', name: '模型测试', icon: 'api' },
     { path: '/gpt-image', name: 'AI 生图', icon: 'image' },

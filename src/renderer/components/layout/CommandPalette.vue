@@ -42,6 +42,7 @@ const commandGroups = [
     { id: 'dashboard', name: '运维仪表盘', description: '发布、模型与巡检的集中总览', icon: 'dashboard', path: '/ops-dashboard' },
     { id: 'release', name: '系统发布', description: '切换环境、同步文件与查看发布历史', icon: 'folder-open', path: '/system-release' },
     { id: 'model-test', name: '模型测试', description: '测试模型连通性并配置定时巡检', icon: 'api', path: '/model-test' },
+    { id: 'ops-control-center', name: 'AI 运维指挥中心', description: 'Copilot、事件中心与自动化巡检', icon: 'chat', path: '/ops-control-center' },
     { id: 'ai-ops', name: 'AI 运维中心', description: 'Provider、评测、知识库与 AI 工作流', icon: 'chat', path: '/ai-ops' },
   ] },
   { name: '效率工具', items: [

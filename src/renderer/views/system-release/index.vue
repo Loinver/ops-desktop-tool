@@ -139,6 +139,23 @@
                 required
               />
             </label>
+            <div class="sftp-settings-section-title">发布后健康检查</div>
+            <label class="sftp-form-field sftp-field-ignore sftp-check-row">
+              <span><input v-model="profileSettings.healthCheckEnabled" type="checkbox" /> 发布后执行 HTTP 健康检查</span>
+              <small>失败时可保留备份供手动回滚，或自动回滚到发布前版本。</small>
+            </label>
+            <label v-if="profileSettings.healthCheckEnabled" class="sftp-form-field sftp-field-local-dir">
+              <span>检查地址 <em>*</em></span>
+              <input v-model.trim="profileSettings.healthCheckUrl" type="url" placeholder="https://example.com/health" />
+            </label>
+            <label v-if="profileSettings.healthCheckEnabled" class="sftp-form-field sftp-field-remote-dir">
+              <span>期望状态 / 超时</span>
+              <div class="sftp-path-field">
+                <input v-model.number="profileSettings.healthCheckStatus" type="number" min="100" max="599" placeholder="200" />
+                <input v-model.number="profileSettings.healthCheckTimeout" type="number" min="1000" max="60000" placeholder="8000 ms" />
+              </div>
+              <div class="sftp-clear-secret"><input v-model="profileSettings.healthCheckAutoRollback" type="checkbox" /><span>失败后自动回滚</span></div>
+            </label>
             <div class="sftp-settings-section-title">忽略规则</div>
             <label class="sftp-form-field sftp-field-ignore">
               <span>每行一条，支持 *、**、? 和 ! 反向规则</span>
@@ -545,7 +562,7 @@ const showReleaseHistory = ref(false);
 const releaseHistory = ref([]);
 const rollingBackId = ref("");
 const creatingProfile = ref(false);
-const profileSettings = reactive({ id: "", name: "默认环境", ignoreText: ".DS_Store\nThumbs.db\n.git/\nnode_modules/\n*.log" });
+const profileSettings = reactive({ id: "", name: "默认环境", ignoreText: ".DS_Store\nThumbs.db\n.git/\nnode_modules/\n*.log", healthCheckEnabled: false, healthCheckUrl: "", healthCheckStatus: 200, healthCheckTimeout: 8000, healthCheckAutoRollback: false });
 const activeIgnoreRules = ref([".DS_Store", "Thumbs.db", ".git/", "node_modules/", "*.log"]);
 const activeReleaseProfileName = computed(() =>
   releaseProfiles.value.find((item) => item.id === activeProfileId.value)?.name || "当前环境",
@@ -897,7 +914,7 @@ async function startNewReleaseProfile() {
   }
   creatingProfile.value = true;
   await openSftpSettings();
-  Object.assign(profileSettings, { id: "", name: `新环境 ${releaseProfiles.value.length + 1}` });
+  Object.assign(profileSettings, { id: "", name: `新环境 ${releaseProfiles.value.length + 1}`, healthCheckEnabled: false, healthCheckUrl: "", healthCheckStatus: 200, healthCheckTimeout: 8000, healthCheckAutoRollback: false });
   Object.assign(sftpSettings, { password: "", hasPassword: false, passwordMasked: "", clearPassword: false });
 }
 
@@ -931,6 +948,11 @@ async function openSftpSettings() {
     id: activeProfile?.id || "",
     name: activeProfile?.name || "默认环境",
     ignoreText: (activeProfile?.ignoreRules || activeIgnoreRules.value).join("\n"),
+    healthCheckEnabled: Boolean(activeProfile?.healthCheck?.enabled),
+    healthCheckUrl: activeProfile?.healthCheck?.url || "",
+    healthCheckStatus: Number(activeProfile?.healthCheck?.expectedStatus) || 200,
+    healthCheckTimeout: Number(activeProfile?.healthCheck?.timeoutMs) || 8000,
+    healthCheckAutoRollback: Boolean(activeProfile?.healthCheck?.autoRollback),
   });
   try {
     const result = await window.opsApi.getSftpConfig();
@@ -999,6 +1021,13 @@ async function saveSftpSettings() {
         .split(/\r?\n/)
         .map((rule) => rule.trim())
         .filter(Boolean),
+      healthCheck: {
+        enabled: Boolean(profileSettings.healthCheckEnabled),
+        url: String(profileSettings.healthCheckUrl || ""),
+        expectedStatus: Number(profileSettings.healthCheckStatus) || 200,
+        timeoutMs: Number(profileSettings.healthCheckTimeout) || 8000,
+        autoRollback: Boolean(profileSettings.healthCheckAutoRollback),
+      },
     };
     const result = typeof window.opsApi?.saveSftpProfile === "function"
       ? await window.opsApi.saveSftpProfile(profilePayload)

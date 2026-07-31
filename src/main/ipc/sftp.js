@@ -12,6 +12,7 @@ const {
   listReleaseProfiles, getActiveReleaseProfile, saveReleaseProfile, activateReleaseProfile,
   deleteReleaseProfile, loadReleaseHistory, appendReleaseHistory, markReleaseRolledBack,
 } = require('../utils/release-store')
+const { addOpsEvent, runHttpHealthCheck } = require('../utils/ops-automation')
 
 // SFTP 配置 - 可从配置文件或环境变量读取
 let sftpConfig = null
@@ -33,6 +34,18 @@ function createSerialQueue() {
 }
 
 const runZipDeploymentSerially = createSerialQueue()
+
+function recordReleaseEvent(input = {}) {
+  try {
+    addOpsEvent(app.getPath('userData'), {
+      category: 'release',
+      ...input,
+    })
+  } catch (error) {
+    // 事件中心不可用不能影响真实发布、回滚结果。
+    console.error('记录发布运维事件失败:', error)
+  }
+}
 // 发布任务会复用活动环境的连接与配置；在任务入队到完成的整个期间锁住环境变更。
 let zipDeploymentPendingCount = 0
 
@@ -1041,7 +1054,33 @@ function registerSftpHandlers() {
         })
       })
 
-      appendReleaseHistory({
+      const healthConfig = deploymentProfile?.healthCheck
+      let healthCheck = null
+      let autoRollback = null
+      if (healthConfig?.enabled) {
+        healthCheck = await runHttpHealthCheck({
+          type: 'http-health',
+          target: healthConfig.url,
+          expectedStatus: healthConfig.expectedStatus,
+          timeoutMs: healthConfig.timeoutMs,
+        })
+        if (!healthCheck.ok && healthConfig.autoRollback && result.backupPath && result.archiveRoots?.length) {
+          const rollbackBackup = `${result.backupPath}-auto-${formatTimestamp()}`
+          try {
+            await execRemoteCommand(buildRemoteRollbackCommand({
+              remoteDir: result.remoteDir,
+              backupPath: result.backupPath,
+              rollbackBackup,
+              archiveRoots: result.archiveRoots.map(assertSafeArchiveName),
+            }))
+            autoRollback = { ok: true, backupPath: rollbackBackup }
+          } catch (error) {
+            autoRollback = { ok: false, message: String(error?.message || '自动回滚失败').slice(0, 500) }
+          }
+        }
+      }
+
+      const historyEntry = appendReleaseHistory({
         id: releaseId,
         profileId: deploymentProfileId,
         profileName: deploymentProfile?.name || '',
@@ -1052,14 +1091,58 @@ function registerSftpHandlers() {
         backupPath: result.backupPath,
         entryCount: result.entryCount,
         zipSize: result.zipSize,
-        message: '发布成功',
+        message: healthCheck?.ok === false
+          ? `发布完成，但健康检查失败：${healthCheck.message}${autoRollback?.ok ? '；已自动回滚' : ''}`
+          : (healthCheck ? `发布成功；健康检查通过：${healthCheck.message}` : '发布成功'),
         startedAt,
         finishedAt: Date.now(),
       })
+      if (autoRollback?.ok) {
+        markReleaseRolledBack(historyEntry.id)
+        appendReleaseHistory({
+          profileId: deploymentProfileId,
+          profileName: deploymentProfile?.name || '',
+          action: 'rollback',
+          status: 'success',
+          label: `自动回滚：${historyEntry.label}`,
+          remoteDir: result.remoteDir,
+          archiveRoots: result.archiveRoots,
+          backupPath: autoRollback.backupPath,
+          sourceReleaseId: historyEntry.id,
+          message: `健康检查失败后自动回滚：${healthCheck.message}`,
+          startedAt,
+          finishedAt: Date.now(),
+        })
+      }
+      if (healthCheck?.ok === false) {
+        recordReleaseEvent({
+          sourceKey: `release:${releaseId}`,
+          level: autoRollback?.ok ? 'warning' : 'critical',
+          status: autoRollback?.ok ? 'resolved' : 'open',
+          title: autoRollback?.ok ? `发布健康检查失败，已自动回滚：${historyEntry.label}` : `发布健康检查失败：${historyEntry.label}`,
+          description: `${healthCheck.message}${autoRollback?.message ? `；自动回滚失败：${autoRollback.message}` : ''}`,
+          relatedId: releaseId,
+        })
+        return {
+          success: false,
+          error: autoRollback?.ok
+            ? `发布后的健康检查失败，已自动回滚：${healthCheck.message}`
+            : `发布后的健康检查失败：${healthCheck.message}`,
+          data: { ...result, healthCheck, autoRollback },
+        }
+      }
+      recordReleaseEvent({
+        sourceKey: `release:${releaseId}`,
+        level: 'info',
+        status: 'resolved',
+        title: `发布成功：${historyEntry.label}`,
+        description: healthCheck ? `健康检查通过：${healthCheck.message}` : `已同步 ${normalizedEntries.length} 项到 ${result.remoteDir}`,
+        relatedId: releaseId,
+      })
       return {
         success: true,
-        message: `已通过 zip 同步 ${normalizedEntries.length} 项到 ${result.remoteDir}`,
-        data: result,
+        message: `已通过 zip 同步 ${normalizedEntries.length} 项到 ${result.remoteDir}${healthCheck ? `；健康检查：${healthCheck.message}` : ''}`,
+        data: { ...result, healthCheck, autoRollback },
       }
     } catch (err) {
       console.error('SFTP zip 部署失败:', err)
@@ -1076,6 +1159,14 @@ function registerSftpHandlers() {
           finishedAt: Date.now(),
         })
       } catch {}
+      recordReleaseEvent({
+        sourceKey: `release:${releaseId}`,
+        level: 'critical',
+        status: 'open',
+        title: `发布失败：${payload?.label || '发布任务'}`,
+        description: String(err?.message || '未知发布错误').slice(0, 1000),
+        relatedId: releaseId,
+      })
       return { success: false, error: err.message }
     } finally {
       zipDeploymentPendingCount = Math.max(0, zipDeploymentPendingCount - 1)
@@ -1383,6 +1474,14 @@ function registerSftpHandlers() {
           console.error('记录回滚失败历史失败:', historyError)
         }
       }
+      recordReleaseEvent({
+        sourceKey: `release-rollback:${releaseId}:${startedAt}`,
+        level: 'critical',
+        status: 'open',
+        title: `回滚失败：${target?.label || releaseId}`,
+        description: String(err?.message || '未知回滚错误').slice(0, 1000),
+        relatedId: releaseId,
+      })
       return { success: false, error: err.message }
     }
 
@@ -1397,6 +1496,14 @@ function registerSftpHandlers() {
     } catch (historyError) {
       // 远端已经成功回滚，不能因为本地审计失败而把实际成功结果误报为失败。
       console.error('更新回滚发布历史失败:', historyError)
+      recordReleaseEvent({
+        sourceKey: `release-rollback:${releaseId}:${startedAt}`,
+        level: 'warning',
+        status: 'resolved',
+        title: `回滚成功但本地审计失败：${target.label}`,
+        description: '远端已回滚到发布前版本；本地发布历史更新失败，请核查历史记录。',
+        relatedId: releaseId,
+      })
       return {
         success: true,
         message: '已回滚到发布前版本，但本地发布历史更新失败，请核查历史记录',
@@ -1404,6 +1511,14 @@ function registerSftpHandlers() {
       }
     }
 
+    recordReleaseEvent({
+      sourceKey: `release-rollback:${releaseId}:${startedAt}`,
+      level: 'info',
+      status: 'resolved',
+      title: `回滚成功：${target.label}`,
+      description: '已回滚到发布前版本',
+      relatedId: releaseId,
+    })
     return { success: true, message: '已回滚到发布前版本' }
   })
 

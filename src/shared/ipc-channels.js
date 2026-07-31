@@ -94,6 +94,14 @@ const IPC_CHANNELS = {
   AI_KNOWLEDGE_ANSWER: 'aiOps:answerKnowledge',
   AI_WORKFLOW_PLAN: 'aiOps:planWorkflow',
   AI_WORKFLOW_EXECUTE: 'aiOps:executeWorkflow',
+  AI_COPILOT_ASK: 'aiOps:askCopilot',
+  AI_KNOWLEDGE_IMPORT: 'aiOps:importKnowledge',
+  OPS_EVENTS_GET: 'ops:getEvents',
+  OPS_EVENT_UPDATE: 'ops:updateEvent',
+  OPS_AUTOMATION_GET: 'ops:getAutomationTasks',
+  OPS_AUTOMATION_SAVE: 'ops:saveAutomationTask',
+  OPS_AUTOMATION_DELETE: 'ops:deleteAutomationTask',
+  OPS_AUTOMATION_RUN: 'ops:runAutomationTask',
   AI_MCP_INFO: 'aiOps:getMcpInfo',
 }
 

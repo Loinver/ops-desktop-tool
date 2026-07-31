@@ -56,6 +56,12 @@ const routes = [
         meta: { title: '模型测试', keepAlive: true }
       },
       {
+        path: 'ops-control-center',
+        name: 'OpsControlCenter',
+        component: () => import('../views/ops-control-center/index.vue'),
+        meta: { title: 'AI 运维指挥中心', keepAlive: true }
+      },
+      {
         path: 'ai-ops',
         name: 'AiOps',
         component: () => import('../views/ai-ops/index.vue'),

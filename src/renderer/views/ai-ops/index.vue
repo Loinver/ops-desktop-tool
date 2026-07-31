@@ -193,7 +193,7 @@
       </section>
 
       <section v-else-if="activeTab === 'knowledge'" class="panel-grid knowledge-layout">
-        <article class="panel form-panel"><div class="panel-title"><div><h3>本地运维知识库</h3><p>可保存发布规范、故障复盘、服务器说明和排障手册；检索结果显示具体行号。</p></div></div><div class="form-grid"><label><span>标题</span><input v-model="knowledgeForm.title" placeholder="例如：正式环境发布 SOP" /></label><label><span>标签</span><input v-model="knowledgeForm.tags" placeholder="发布, 正式环境, 回滚" /></label><label class="full"><span>内容</span><textarea v-model="knowledgeForm.content" rows="13" maxlength="200000" placeholder="粘贴本地文档内容。保存前会脱敏。"></textarea></label></div><div class="actions"><button class="btn-primary" type="button" :disabled="busy || !knowledgeForm.content.trim()" @click="saveKnowledge"><t-icon name="save" /> 保存到知识库</button></div><div class="knowledge-list"><div v-for="doc in knowledgeDocuments" :key="doc.id" class="knowledge-doc"><div><strong>{{ doc.title }}</strong><p>{{ doc.tags?.join(' · ') || '无标签' }} · {{ formatTime(doc.updatedAt) }}</p></div><button class="btn-text danger-text" type="button" @click="removeKnowledge(doc.id)">删除</button></div><div v-if="!knowledgeDocuments.length" class="empty-mini">暂无知识文档，保存内容后可在右侧检索。</div></div></article>
+        <article class="panel form-panel"><div class="panel-title"><div><h3>本地运维知识库</h3><p>可保存发布规范、故障复盘、服务器说明和排障手册；检索结果显示具体行号。</p></div></div><div class="form-grid"><label><span>标题</span><input v-model="knowledgeForm.title" placeholder="例如：正式环境发布 SOP" /></label><label><span>标签</span><input v-model="knowledgeForm.tags" placeholder="发布, 正式环境, 回滚" /></label><label class="full"><span>内容</span><textarea v-model="knowledgeForm.content" rows="13" maxlength="200000" placeholder="粘贴本地文档内容。保存前会脱敏。"></textarea></label></div><div class="actions"><button class="btn-primary" type="button" :disabled="busy || !knowledgeForm.content.trim()" @click="saveKnowledge"><t-icon name="save" /> 保存到知识库</button><button class="btn-secondary" type="button" :disabled="busy" @click="importKnowledge"><t-icon name="upload" /> 导入本地文档</button></div><div class="knowledge-list"><div v-for="doc in knowledgeDocuments" :key="doc.id" class="knowledge-doc"><div><strong>{{ doc.title }}</strong><p>{{ doc.tags?.join(' · ') || '无标签' }} · {{ doc.source?.type === 'file' ? `来源：${doc.source.name}` : '手动录入' }} · {{ formatTime(doc.updatedAt) }}</p></div><button class="btn-text danger-text" type="button" @click="removeKnowledge(doc.id)">删除</button></div><div v-if="!knowledgeDocuments.length" class="empty-mini">暂无知识文档，保存内容后可在右侧检索。</div></div></article>
         <article class="panel search-panel"><div class="panel-title"><div><h3>检索与问答</h3><p>默认仅返回本地证据片段；开启 AI 后会要求答案标注来源编号。</p></div></div><div class="search-row"><input v-model="knowledgeQuery" placeholder="例如：正式环境如何回滚？" @keyup.enter="searchKnowledge" /><button class="btn-secondary" type="button" :disabled="busy" @click="searchKnowledge"><t-icon name="search" /> 检索</button></div><label class="check"><input v-model="knowledgeUseAi" type="checkbox" :disabled="!activeProviderReady" /> 使用当前 AI Provider 基于检索结果回答</label><p v-if="!activeProviderReady" class="inline-hint"><t-icon name="info-circle" /> 配置已启用且包含密钥的默认 Provider 后可生成 AI 回答。</p><button class="btn-primary answer-btn" type="button" :disabled="busy || !knowledgeQuery.trim()" @click="answerKnowledge"><t-icon name="chat" /> 生成带引用的回答</button><div v-if="knowledgeAnswer" class="answer-box"><strong>回答</strong><pre>{{ knowledgeAnswer }}</pre></div><div v-if="knowledgeResults.length" class="search-results"><div v-for="(item, index) in knowledgeResults" :key="`${item.documentId}-${item.startLine}`" class="search-result"><strong>[{{ index + 1 }}] {{ item.title }}</strong><span>第 {{ item.startLine }}–{{ item.endLine }} 行 · 匹配 {{ item.score }}</span><pre>{{ item.content }}</pre></div></div><div v-else-if="searched" class="empty-mini">没有检索到匹配知识。</div></article>
       </section>
 
@@ -496,6 +496,25 @@ async function saveKnowledge() {
       knowledgeState.value = { ...knowledgeState.value, documents: [result.document, ...knowledgeDocuments.value.filter(item => item.id !== result.document.id)] }
       knowledgeForm.value = { title: '', tags: '', content: '' }
       MessagePlugin.success({ content: '知识文档已脱敏保存', placement: 'bottom-right' })
+    }
+  } finally {
+    busy.value = false
+  }
+}
+
+async function importKnowledge() {
+  busy.value = true
+  try {
+    const filePath = await window.opsApi.browseFile({
+      filters: [
+        { name: '支持的知识文档', extensions: ['md', 'txt', 'log', 'json', 'yml', 'yaml', 'conf'] },
+      ],
+    })
+    if (!filePath) return
+    const result = await window.opsApi.importAiKnowledge(filePath)
+    if (notify(result, '导入知识文档失败')) {
+      knowledgeState.value = { ...knowledgeState.value, documents: [result.document, ...knowledgeDocuments.value] }
+      MessagePlugin.success({ content: '文档已脱敏导入，回答时会展示来源与行号', placement: 'bottom-right' })
     }
   } finally {
     busy.value = false

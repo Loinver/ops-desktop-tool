@@ -15,6 +15,32 @@ function historyPath() {
   return path.join(app.getPath('userData'), 'release-history.json')
 }
 
+function normalizeHealthCheck(value = {}) {
+  const raw = value && typeof value === 'object' ? value : {}
+  const url = String(raw.url || '').trim().slice(0, 2048)
+  const enabled = Boolean(raw.enabled) && Boolean(url)
+  return {
+    enabled,
+    url,
+    expectedStatus: Math.max(100, Math.min(599, Number(raw.expectedStatus) || 200)),
+    timeoutMs: Math.max(1000, Math.min(60_000, Number(raw.timeoutMs) || 8000)),
+    autoRollback: enabled && Boolean(raw.autoRollback),
+  }
+}
+
+function assertValidHealthCheck(value = {}) {
+  const raw = value && typeof value === 'object' ? value : {}
+  if (!raw.enabled) return normalizeHealthCheck(raw)
+  const normalized = normalizeHealthCheck(raw)
+  if (!normalized.url) throw new Error('启用发布后健康检查时必须填写 HTTP/HTTPS 地址')
+  let parsed
+  try { parsed = new URL(normalized.url) } catch { throw new Error('健康检查地址格式无效') }
+  if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) {
+    throw new Error('健康检查仅支持不含账号密码的 HTTP/HTTPS 地址')
+  }
+  return { ...normalized, url: parsed.toString() }
+}
+
 function normalizeProfileRecord(profile = {}) {
   return {
     id: String(profile.id || crypto.randomUUID()),
@@ -26,6 +52,7 @@ function normalizeProfileRecord(profile = {}) {
     localDir: String(profile.localDir || '').trim().slice(0, 4096),
     remoteDir: String(profile.remoteDir || '').trim().slice(0, 4096),
     ignoreRules: normalizeRuleLines(profile.ignoreRules?.length ? profile.ignoreRules : DEFAULT_RELEASE_IGNORE_RULES),
+    healthCheck: normalizeHealthCheck(profile.healthCheck),
     createdAt: Number(profile.createdAt) || Date.now(),
     updatedAt: Number(profile.updatedAt) || Date.now(),
   }
@@ -92,9 +119,11 @@ function saveReleaseProfile(input = {}) {
   if (input.clearPassword) passwordEncrypted = ''
   else if (suppliedPassword) passwordEncrypted = encryptSecret(safeStorage, suppliedPassword)
 
+  const healthCheck = assertValidHealthCheck(input.healthCheck === undefined ? existing?.healthCheck : input.healthCheck)
   const profile = normalizeProfileRecord({
     ...existing,
     ...input,
+    healthCheck,
     id: existing?.id || input.id || crypto.randomUUID(),
     passwordEncrypted,
     createdAt: existing?.createdAt || Date.now(),
@@ -186,5 +215,5 @@ module.exports = {
   loadReleaseHistory,
   appendReleaseHistory,
   markReleaseRolledBack,
-  __testables: { filterReleaseHistoryByProfile },
+  __testables: { filterReleaseHistoryByProfile, normalizeHealthCheck },
 }

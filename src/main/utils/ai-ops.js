@@ -294,13 +294,31 @@ function terms(text) {
   return Array.from(new Set(items)).slice(0, 500)
 }
 
+function normalizeKnowledgeSource(value = {}) {
+  const source = value && typeof value === 'object' ? value : {}
+  const type = ['manual', 'file'].includes(source.type) ? source.type : 'manual'
+  return {
+    type,
+    name: redactSensitiveText(string(source.name, 180)) || (type === 'file' ? '本地文件' : '手动录入'),
+    // 不保存本地绝对路径，避免知识库导出时泄露用户目录结构。
+    importedAt: type === 'file' ? (Number(source.importedAt) || Date.now()) : 0,
+  }
+}
+
 function normalizeKnowledgeDocument(value = {}) {
   const content = redactSensitiveText(String(value.content || '').trim().slice(0, MAX_TEXT_LENGTH))
   if (!content) throw new Error('知识内容不能为空')
   const tags = Array.from(new Set((Array.isArray(value.tags) ? value.tags : String(value.tags || '').split(/[，,]/))
     .map(item => redactSensitiveText(string(item, 40)))
     .filter(Boolean))).slice(0, 20)
-  return { id: string(value.id || crypto.randomUUID(), 100), title: redactSensitiveText(string(value.title || '未命名知识', 160)) || '未命名知识', content, tags, updatedAt: Date.now() }
+  return {
+    id: string(value.id || crypto.randomUUID(), 100),
+    title: redactSensitiveText(string(value.title || '未命名知识', 160)) || '未命名知识',
+    content,
+    tags,
+    source: normalizeKnowledgeSource(value.source),
+    updatedAt: Date.now(),
+  }
 }
 
 function loadKnowledgeState(userDataPath) {

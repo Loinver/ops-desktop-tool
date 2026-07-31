@@ -24,6 +24,7 @@ const {
 } = require('../utils/model-list-settings')
 const { loadReleaseHistory, getActiveReleaseProfile } = require('../utils/release-store')
 const { buildOpsDashboardData } = require('../utils/ops-dashboard')
+const { addOpsEvent } = require('../utils/ops-automation')
 
 const DEFAULT_TIMEOUT_MS = 30_000
 /**
@@ -1080,6 +1081,22 @@ async function runScheduledInspection() {
     if (!writeJsonFile(monitorSettingsPath(), nextSettings)) throw new Error('更新巡检运行时间失败')
     completionRecorded = true
     const anomalyCount = countMonitorAnomalies(snapshot.summary)
+    if (anomalyCount > 0) {
+      try {
+        const level = snapshot.summary.failed > 0 ? 'critical' : 'warning'
+        addOpsEvent(app.getPath('userData'), {
+          sourceKey: `model-inspection:${snapshot.id}`,
+          category: 'model-monitor',
+          level,
+          title: `模型巡检异常：${snapshot.label}`,
+          description: `${snapshot.summary.failed} 个失败，${snapshot.summary.gateway} 个无法验证，${snapshot.summary.ok}/${snapshot.summary.total} 正常`,
+          relatedId: snapshot.id,
+          createdAt: snapshot.finishedAt,
+        })
+      } catch (eventError) {
+        console.error('记录模型巡检事件失败:', eventError)
+      }
+    }
     if (latestSettings.notifyOnFailure && anomalyCount > 0 && Notification.isSupported()) {
       try {
         new Notification({
@@ -1108,6 +1125,18 @@ async function runScheduledInspection() {
       } catch (recordError) {
         console.error('记录模型巡检失败状态失败:', recordError)
       }
+    }
+    try {
+      addOpsEvent(app.getPath('userData'), {
+        sourceKey: `model-inspection-failure:${startedAt}`,
+        category: 'model-monitor',
+        level: 'critical',
+        title: '模型定时巡检执行失败',
+        description: String(error?.message || '未知错误').slice(0, 1000),
+        createdAt: Date.now(),
+      })
+    } catch (eventError) {
+      console.error('记录模型巡检失败事件失败:', eventError)
     }
     throw error
   } finally {

@@ -1,4 +1,5 @@
 const path = require('node:path')
+const fs = require('node:fs')
 const { app, ipcMain, safeStorage, shell } = require('electron')
 const { IPC_CHANNELS } = require('../../shared/ipc-channels')
 const { readJsonFile } = require('../utils/json-store')
@@ -26,6 +27,19 @@ const {
   planWorkflow,
   saveWorkflowPlan,
 } = require('../utils/ai-ops')
+const {
+  addOpsEvent,
+  deleteAutomationTask,
+  eventSummary,
+  listAutomationTasks,
+  listOpsEvents,
+  runAutomationTask,
+  runDueAutomationTasks,
+  saveAutomationTask,
+  updateOpsEvent,
+} = require('../utils/ops-automation')
+
+let automationTimer = null
 
 function userDataPath() { return app.getPath('userData') }
 function success(value = {}) { return { ok: true, ...value } }
@@ -38,6 +52,30 @@ function safeState() {
     logs: loadLogState(userDataPath()),
     knowledge: loadKnowledgeState(userDataPath()),
     workflows: loadWorkflowState(userDataPath()),
+    events: { items: listOpsEvents(userDataPath(), { limit: 100 }), summary: eventSummary(userDataPath()) },
+    automation: { tasks: listAutomationTasks(userDataPath()) },
+  }
+}
+
+function startAutomationTimer() {
+  if (automationTimer) return
+  automationTimer = setInterval(() => {
+    runDueAutomationTasks(userDataPath()).catch(error => console.error('自动化巡检失败:', error))
+  }, 60_000)
+  automationTimer.unref?.()
+}
+
+function copilotContext(prompt) {
+  const knowledge = searchKnowledge(userDataPath(), prompt, 5)
+  const events = listOpsEvents(userDataPath(), { limit: 12 })
+  const logs = loadLogState(userDataPath()).items.slice(0, 5)
+  return {
+    knowledge,
+    text: [
+      `近期事件：${events.map(item => `[${item.level}/${item.status}] ${item.title}：${item.description}`).join('\n') || '无'}`,
+      `近期日志分析：${logs.map(item => `[${item.level}] ${item.title}：${item.headline}`).join('\n') || '无'}`,
+      `知识证据：${knowledge.map((item, index) => `[${index + 1}] ${item.title}（第 ${item.startLine}-${item.endLine} 行）\n${item.content}`).join('\n\n') || '无'}`,
+    ].join('\n\n').slice(0, 30_000),
   }
 }
 
@@ -54,6 +92,7 @@ async function generateOptionalAnalysis({ providerId, prompt }) {
 }
 
 function registerAiOpsHandlers() {
+  startAutomationTimer()
   ipcMain.handle(IPC_CHANNELS.AI_OPS_GET_STATE, async () => {
     try { return success(safeState()) } catch (error) { return failure(error) }
   })
@@ -79,7 +118,18 @@ function registerAiOpsHandlers() {
     try { return success({ cases: saveEvaluationCases(userDataPath(), cases) }) } catch (error) { return failure(error) }
   })
   ipcMain.handle(IPC_CHANNELS.AI_EVALUATION_RUN, async (_event, options) => {
-    try { return success({ run: await runEvaluation({ userDataPath: userDataPath(), safeStorage, providerId: options?.providerId, caseIds: options?.caseIds }) }) } catch (error) { return failure(error) }
+    try {
+      const run = await runEvaluation({ userDataPath: userDataPath(), safeStorage, providerId: options?.providerId, caseIds: options?.caseIds })
+      addOpsEvent(userDataPath(), {
+        sourceKey: `evaluation:${run.id}`,
+        category: 'model',
+        level: run.summary.failed ? 'warning' : 'info',
+        title: run.summary.failed ? `模型评测发现 ${run.summary.failed} 项异常` : '模型评测全部通过',
+        description: `${run.providerName} · ${run.model} · ${run.summary.passed}/${run.summary.total} 通过`,
+        relatedId: run.id,
+      })
+      return success({ run })
+    } catch (error) { return failure(error) }
   })
 
   ipcMain.handle(IPC_CHANNELS.AI_LOG_ANALYZE, async (_event, options) => {
@@ -93,13 +143,44 @@ function registerAiOpsHandlers() {
           prompt: `请分析以下日志的本地统计结果和节选，给出：1. 已确认事实；2. 最可能原因（标记为推测）；3. 不含破坏性命令的下一步检查建议。\n\n统计：${JSON.stringify(local.findings)}\n\n日志节选：\n${local.excerpt}`,
         })
       }
-      return success({ item: saveLogAnalysis(userDataPath(), { title, text: options?.text, aiSummary }) })
+      const item = saveLogAnalysis(userDataPath(), { title, text: options?.text, aiSummary })
+      if (item.level === 'high' || item.level === 'medium') {
+        addOpsEvent(userDataPath(), {
+          sourceKey: `log:${item.id}`,
+          category: 'log',
+          level: item.level === 'high' ? 'critical' : 'warning',
+          title: `日志分析发现风险：${item.title}`,
+          description: item.headline,
+          relatedId: item.id,
+        })
+      }
+      return success({ item })
     } catch (error) { return failure(error) }
   })
 
   ipcMain.handle(IPC_CHANNELS.AI_KNOWLEDGE_SAVE, async (_event, document) => {
     try { return success({ document: saveKnowledgeDocument(userDataPath(), document) }) } catch (error) { return failure(error) }
   })
+  ipcMain.handle(IPC_CHANNELS.AI_KNOWLEDGE_IMPORT, async (_event, inputPath) => {
+    try {
+      const candidate = String(inputPath || '').trim()
+      if (!candidate) throw new Error('请先选择要导入的文档')
+      const stat = fs.statSync(candidate)
+      if (!stat.isFile()) throw new Error('只能导入普通文件')
+      if (stat.size > 1_000_000) throw new Error('单个知识文档不能超过 1 MB')
+      const extension = path.extname(candidate).toLowerCase()
+      if (!['.md', '.txt', '.log', '.json', '.yml', '.yaml', '.conf'].includes(extension)) throw new Error('仅支持 Markdown、文本、日志、JSON、YAML 或配置文件')
+      const content = fs.readFileSync(candidate, 'utf8')
+      const document = saveKnowledgeDocument(userDataPath(), {
+        title: path.basename(candidate, extension) || path.basename(candidate),
+        tags: ['导入文档', extension.replace('.', '')].filter(Boolean),
+        content,
+        source: { type: 'file', name: path.basename(candidate), importedAt: Date.now() },
+      })
+      return success({ document })
+    } catch (error) { return failure(error) }
+  })
+
   ipcMain.handle(IPC_CHANNELS.AI_KNOWLEDGE_DELETE, async (_event, id) => {
     try { return success({ documents: deleteKnowledgeDocument(userDataPath(), id) }) } catch (error) { return failure(error) }
   })
@@ -145,6 +226,53 @@ function registerAiOpsHandlers() {
       }
       return success({ completed })
     } catch (error) { return failure(error) }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.AI_COPILOT_ASK, async (_event, options = {}) => {
+    try {
+      const prompt = String(options.prompt || '').trim().slice(0, 4000)
+      if (!prompt) throw new Error('请输入需要分析的运维问题')
+      const context = copilotContext(prompt)
+      const quickLaunch = readQuickLaunchState(readJsonFile(path.join(userDataPath(), 'quick-launch.json'), null))
+      const plan = saveWorkflowPlan(userDataPath(), planWorkflow({ prompt, quickLaunchItems: quickLaunch.items }))
+      let answer = ''
+      if (options.useAi) {
+        answer = await generateOptionalAnalysis({
+          providerId: options.providerId,
+          prompt: `用户问题：${prompt}\n\n请仅依据以下本地材料回答。输出：1. 已确认事实；2. 推测（明确标注）；3. 建议的只读检查；4. 如有工作流，提醒用户确认后执行。每个知识结论标注 [编号]。\n\n${context.text}`,
+        })
+      } else {
+        answer = `已收集 ${context.knowledge.length} 条知识证据、${listOpsEvents(userDataPath(), { limit: 12 }).length} 条近期事件。请查看下方证据和确认式工作流；配置 Provider 后可生成 AI 总结。`
+      }
+      addOpsEvent(userDataPath(), {
+        sourceKey: `copilot:${plan.id}`,
+        category: 'copilot',
+        level: 'info',
+        title: 'AI Copilot 已生成运维建议',
+        description: prompt.slice(0, 300),
+        relatedId: plan.id,
+      })
+      return success({ answer, sources: context.knowledge, plan })
+    } catch (error) { return failure(error) }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.OPS_EVENTS_GET, async (_event, options = {}) => {
+    try { return success({ items: listOpsEvents(userDataPath(), options), summary: eventSummary(userDataPath()) }) } catch (error) { return failure(error) }
+  })
+  ipcMain.handle(IPC_CHANNELS.OPS_EVENT_UPDATE, async (_event, options = {}) => {
+    try { return success({ item: updateOpsEvent(userDataPath(), String(options.id || ''), options.status) }) } catch (error) { return failure(error) }
+  })
+  ipcMain.handle(IPC_CHANNELS.OPS_AUTOMATION_GET, async () => {
+    try { return success({ tasks: listAutomationTasks(userDataPath()) }) } catch (error) { return failure(error) }
+  })
+  ipcMain.handle(IPC_CHANNELS.OPS_AUTOMATION_SAVE, async (_event, task) => {
+    try { return success({ task: saveAutomationTask(userDataPath(), task) }) } catch (error) { return failure(error) }
+  })
+  ipcMain.handle(IPC_CHANNELS.OPS_AUTOMATION_DELETE, async (_event, id) => {
+    try { return success({ tasks: deleteAutomationTask(userDataPath(), String(id || '')) }) } catch (error) { return failure(error) }
+  })
+  ipcMain.handle(IPC_CHANNELS.OPS_AUTOMATION_RUN, async (_event, id) => {
+    try { return success(await runAutomationTask(userDataPath(), String(id || ''))) } catch (error) { return failure(error) }
   })
 
   ipcMain.handle(IPC_CHANNELS.AI_MCP_INFO, async () => {

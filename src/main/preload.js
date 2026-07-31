@@ -76,6 +76,14 @@ const CHANNELS = Object.freeze({
   AI_KNOWLEDGE_ANSWER: 'aiOps:answerKnowledge',
   AI_WORKFLOW_PLAN: 'aiOps:planWorkflow',
   AI_WORKFLOW_EXECUTE: 'aiOps:executeWorkflow',
+  AI_COPILOT_ASK: 'aiOps:askCopilot',
+  AI_KNOWLEDGE_IMPORT: 'aiOps:importKnowledge',
+  OPS_EVENTS_GET: 'ops:getEvents',
+  OPS_EVENT_UPDATE: 'ops:updateEvent',
+  OPS_AUTOMATION_GET: 'ops:getAutomationTasks',
+  OPS_AUTOMATION_SAVE: 'ops:saveAutomationTask',
+  OPS_AUTOMATION_DELETE: 'ops:deleteAutomationTask',
+  OPS_AUTOMATION_RUN: 'ops:runAutomationTask',
   AI_MCP_INFO: 'aiOps:getMcpInfo',
 })
 
@@ -155,5 +163,13 @@ contextBridge.exposeInMainWorld('opsApi', Object.freeze({
   answerAiKnowledge: options => invoke(CHANNELS.AI_KNOWLEDGE_ANSWER, options),
   planAiWorkflow: prompt => invoke(CHANNELS.AI_WORKFLOW_PLAN, prompt),
   executeAiWorkflow: options => invoke(CHANNELS.AI_WORKFLOW_EXECUTE, options),
+  askAiCopilot: options => invoke(CHANNELS.AI_COPILOT_ASK, options),
+  importAiKnowledge: filePath => invoke(CHANNELS.AI_KNOWLEDGE_IMPORT, filePath),
+  getOpsEvents: options => invoke(CHANNELS.OPS_EVENTS_GET, options),
+  updateOpsEvent: (id, status) => invoke(CHANNELS.OPS_EVENT_UPDATE, { id, status }),
+  getAutomationTasks: () => invoke(CHANNELS.OPS_AUTOMATION_GET),
+  saveAutomationTask: task => invoke(CHANNELS.OPS_AUTOMATION_SAVE, task),
+  deleteAutomationTask: id => invoke(CHANNELS.OPS_AUTOMATION_DELETE, id),
+  runAutomationTask: id => invoke(CHANNELS.OPS_AUTOMATION_RUN, id),
   getAiMcpInfo: () => invoke(CHANNELS.AI_MCP_INFO),
 }))
