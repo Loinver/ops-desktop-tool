@@ -78,6 +78,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { getFunctionMenuItem } from '../../config/function-menu'
 
 const emit = defineEmits(['open-command'])
 const route = useRoute()
@@ -88,20 +89,8 @@ const loading = ref(false)
 const dashboard = ref(null)
 const serviceCount = ref(0)
 
-const routeGroups = {
-  '/ops-dashboard': '概览',
-  '/system-release': '运维',
-  '/node-services': '运维',
-  '/system-info': '运维',
-  '/ai-ops': 'AI 工作台',
-  '/model-test': 'AI 工作台',
-  '/gpt-image': 'AI 工作台',
-  '/quick-launch': '效率工具',
-  '/clipboard-history': '效率工具',
-}
-
 const currentTitle = computed(() => route.meta?.title || 'Ops Desktop')
-const currentGroup = computed(() => routeGroups[route.path] || '工作台')
+const currentGroup = computed(() => getFunctionMenuItem(route.path)?.groupName || '工作台')
 const shortcutLabel = computed(() => navigator.platform?.toLowerCase().includes('mac') ? '⌘ K' : 'Ctrl K')
 const releaseFailed = computed(() => Number(dashboard.value?.release?.failed) || 0)
 const monitorEnabled = computed(() => Boolean(dashboard.value?.monitor?.enabled))

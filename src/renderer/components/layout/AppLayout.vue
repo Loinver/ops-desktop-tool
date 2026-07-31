@@ -6,7 +6,7 @@
       <main class="workspace">
         <router-view v-slot="{ Component }">
           <transition name="page-fade" mode="out-in">
-            <keep-alive :include="['SystemRelease', 'ModelTest', 'AiOps']">
+            <keep-alive :include="['SystemRelease', 'ModelTest', 'OpsControlCenter', 'AiOps']">
               <component :is="Component" />
             </keep-alive>
           </transition>

@@ -46,6 +46,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useNodeServicesStore } from '../../stores/nodeServices'
+import { FUNCTION_MENU_GROUPS } from '../../config/function-menu'
 
 const props = defineProps({ collapsed: { type: Boolean, default: false } })
 defineEmits(['toggle'])
@@ -57,26 +58,13 @@ const platform = ref('检测中…')
 const version = ref('—')
 const currentRoute = computed(() => route.path)
 
-const menuGroups = computed(() => [
-  { name: '概览', items: [
-    { path: '/ops-dashboard', name: '运维仪表盘', icon: 'dashboard' },
-  ] },
-  { name: '运维', items: [
-    { path: '/system-release', name: '系统发布', icon: 'folder-open' },
-    { path: '/node-services', name: 'Node 服务', icon: 'code', badge: nodeServicesStore.services.length || null },
-    { path: '/system-info', name: '系统信息', icon: 'chart-area' },
-  ] },
-  { name: 'AI 工作台', items: [
-    { path: '/ops-control-center', name: 'AI 运维指挥中心', icon: 'dashboard' },
-    { path: '/ai-ops', name: 'AI 运维中心', icon: 'chat' },
-    { path: '/model-test', name: '模型测试', icon: 'api' },
-    { path: '/gpt-image', name: 'AI 生图', icon: 'image' },
-  ] },
-  { name: '效率工具', items: [
-    { path: '/quick-launch', name: '快捷启动', icon: 'rocket' },
-    { path: '/clipboard-history', name: '剪贴板历史', icon: 'file-copy' },
-  ] },
-])
+const menuGroups = computed(() => FUNCTION_MENU_GROUPS.map(group => ({
+  ...group,
+  items: group.items.map(item => ({
+    ...item,
+    badge: item.badge === 'services' ? nodeServicesStore.services.length || null : null,
+  })),
+})))
 
 function handleMenuChange(path) {
   if (path !== route.path) router.push(path)
