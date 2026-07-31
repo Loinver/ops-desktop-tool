@@ -118,13 +118,21 @@ body {
 }
 
 
-/* 统一工作区基础：业务页可以沿用 .page / .page-header，而不必各自重新定义背景与节奏。 */
+/* 统一工作区基础：.workspace 负责页面级滚动，页面只负责内容结构与节奏。 */
 .page {
+  min-width: 0;
+  min-height: 100%;
+  padding: var(--page-padding-y) var(--page-padding-x);
+  background: transparent;
+}
+
+/* 仅供内置对话/编辑工作区使用：内部组件自行管理局部滚动。 */
+.page--workspace {
   height: 100%;
   min-height: 0;
-  padding: var(--page-padding-y) var(--page-padding-x);
-  overflow-y: auto;
-  background: transparent;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .page-header {
@@ -135,7 +143,23 @@ body {
   margin-bottom: var(--page-header-gap);
 }
 
+.page-heading {
+  min-width: 0;
+}
+
+.page-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: var(--spacing-xs);
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
 .page-title {
+  margin: 0;
   color: var(--text);
   font-size: var(--page-title-size);
   font-weight: 700;
@@ -144,6 +168,52 @@ body {
 }
 
 .page-desc {
+  margin-top: var(--spacing-xs);
+  color: var(--text-muted);
+  font-size: var(--page-desc-size);
+  line-height: var(--page-desc-line-height);
+}
+
+.page-actions,
+.header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--header-actions-gap);
+  min-width: 0;
+}
+
+.page-actions:empty {
+  display: none;
+}
+
+.page-content {
+  display: grid;
+  min-width: 0;
+  gap: var(--content-gap);
+}
+
+.page-section {
+  padding: var(--panel-padding);
+}
+
+.section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+}
+
+.section-title {
+  color: var(--text);
+  font-size: var(--section-title-size);
+  font-weight: 600;
+  line-height: var(--section-title-line-height);
+}
+
+.section-desc {
   margin-top: var(--spacing-xs);
   color: var(--text-muted);
   font-size: var(--page-desc-size);
@@ -162,6 +232,28 @@ body {
 pre,
 code {
   font-family: var(--font-mono);
+}
+
+@media (max-width: 760px) {
+  .page {
+    padding: var(--spacing-lg) var(--spacing-md);
+  }
+
+  .page-header,
+  .section-heading {
+    flex-direction: column;
+  }
+
+  .page-title {
+    font-size: 22px;
+    line-height: 30px;
+  }
+
+  .page-actions,
+  .header-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
 }
 
 button,

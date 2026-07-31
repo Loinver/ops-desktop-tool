@@ -1,11 +1,11 @@
 <template>
   <div class="page">
     <div class="page-header">
-      <div class="header-left">
+      <div class="page-heading header-left">
         <h2 class="page-title">快捷启动</h2>
         <p class="page-desc">管理常用应用和网站，并按配置一键打开多个网站</p>
       </div>
-      <div class="header-actions">
+      <div class="page-actions header-actions">
         <button
           class="btn-open"
           :disabled="batchOpening"
@@ -319,37 +319,6 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.page {
-  min-height: 100%;
-  padding: var(--page-padding-y) var(--page-padding-x);
-  overflow-y: auto;
-  background: transparent;
-}
-
-/* 页头 */
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: var(--page-header-gap);
-  gap: var(--spacing-md);
-}
-
-.page-title {
-  font-size: var(--page-title-size);
-  line-height: var(--page-title-line-height);
-  font-weight: 700;
-  color: var(--text);
-  letter-spacing: var(--page-title-letter-spacing);
-}
-
-.page-desc {
-  font-size: var(--page-desc-size);
-  line-height: var(--page-desc-line-height);
-  color: var(--text-muted);
-  margin-top: var(--spacing-xs);
-}
-
 @media (max-width: 1180px) {
   .page-header {
     flex-direction: column;
@@ -358,13 +327,6 @@ onMounted(async () => {
   .header-actions {
     flex-wrap: wrap;
   }
-}
-
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
 }
 
 .btn-add,

@@ -1,10 +1,11 @@
 <template>
   <header class="page-header">
-    <div>
+    <div class="page-heading">
       <h2 class="page-title">
         <span v-if="icon" class="header-icon">{{ icon }}</span>
         {{ title }}
       </h2>
+      <p v-if="description" class="page-desc">{{ description }}</p>
       <slot name="subtitle" />
     </div>
     <div class="page-actions">
@@ -19,6 +20,10 @@ defineProps({
     type: String,
     required: true
   },
+  description: {
+    type: String,
+    default: ''
+  },
   icon: {
     type: String,
     default: ''
@@ -27,27 +32,7 @@ defineProps({
 </script>
 
 <style scoped>
-.page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 24px;
-}
-
-.page-title {
-  margin: 0;
-  color: var(--text);
-  font-size: 24px;
-  line-height: 1.4;
-}
-
 .header-icon {
-  margin-right: 8px;
-}
-
-.page-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  margin-right: var(--spacing-sm);
 }
 </style>

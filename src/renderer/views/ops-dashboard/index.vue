@@ -1,16 +1,19 @@
 <template>
-  <div class="dashboard-page">
-    <header class="dashboard-header">
-      <div>
-        <h2>运维仪表盘</h2>
-        <p>发布状态、模型可用率与定时巡检集中总览</p>
+  <div class="page dashboard-page">
+    <header class="page-header dashboard-header">
+      <div class="page-heading">
+        <h2 class="page-title">运维仪表盘</h2>
+        <p class="page-desc">发布状态、模型可用率与定时巡检集中总览</p>
       </div>
-      <button class="refresh-button" :disabled="loading" @click="loadDashboard">
-        <t-icon name="refresh" :class="{ spinning: loading }" /> 刷新
-      </button>
+      <div class="page-actions">
+        <button class="refresh-button" :disabled="loading" @click="loadDashboard">
+          <t-icon name="refresh" :class="{ spinning: loading }" /> 刷新
+        </button>
+      </div>
     </header>
 
-    <section class="metric-grid">
+    <main class="page-content dashboard-content">
+      <section class="metric-grid">
       <article class="metric-card primary">
         <span>模型可用率</span>
         <strong>{{ availabilityText }}</strong>
@@ -31,9 +34,9 @@
         <strong>{{ dashboard.monitor?.enabled ? '运行中' : '未启用' }}</strong>
         <small>{{ monitorDescription }}</small>
       </article>
-    </section>
+      </section>
 
-    <section class="dashboard-grid">
+      <section class="dashboard-grid">
       <article class="panel trend-panel">
         <div class="panel-title"><div><h3>模型可用趋势</h3><p>绿色正常、红色失败、橙色无法验证</p></div></div>
         <div v-if="trend.length" class="trend-chart">
@@ -60,9 +63,9 @@
           <button class="primary-button" :disabled="saving" @click="saveMonitor">保存设置</button>
         </div>
       </article>
-    </section>
+      </section>
 
-    <section class="dashboard-grid history-grid">
+      <section class="dashboard-grid history-grid">
       <article class="panel">
         <div class="panel-title"><div><h3>最近发布</h3><p>成功、失败与回滚记录</p></div><button @click="$router.push('/system-release')">进入发布</button></div>
         <div v-if="dashboard.release?.latest?.length" class="activity-list">
@@ -83,7 +86,8 @@
         </div>
         <div v-else class="empty-panel">暂无模型测试历史</div>
       </article>
-    </section>
+      </section>
+    </main>
   </div>
 </template>
 
@@ -165,39 +169,6 @@ onMounted(loadDashboard)
 </script>
 
 <style scoped>
-.dashboard-page {
-  min-height: 100%;
-  box-sizing: border-box;
-  overflow-y: auto;
-  padding: var(--page-padding-y) var(--page-padding-x);
-  background: transparent;
-  color: var(--text);
-}
-
-.dashboard-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: var(--spacing-md);
-  margin-bottom: var(--page-header-gap);
-}
-
-.dashboard-header h2 {
-  margin: 0;
-  color: var(--text);
-  font-size: var(--page-title-size);
-  font-weight: 700;
-  line-height: var(--page-title-line-height);
-  letter-spacing: var(--page-title-letter-spacing);
-}
-
-.dashboard-header p {
-  margin: var(--spacing-xs) 0 0;
-  color: var(--text-muted);
-  font-size: var(--page-desc-size);
-  line-height: var(--page-desc-line-height);
-}
-
 .refresh-button,
 .panel-title button,
 .secondary,
@@ -242,7 +213,6 @@ input:disabled {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
-  margin-bottom: 12px;
 }
 
 .metric-card,
@@ -290,7 +260,6 @@ input:disabled {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr);
   gap: 12px;
-  margin-bottom: 12px;
 }
 
 .history-grid {

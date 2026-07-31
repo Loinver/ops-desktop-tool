@@ -1,0 +1,4 @@
+interface:
+  display_name: "应用页面布局"
+  short_description: "统一 Ops Desktop 页面结构、间距与响应式样式"
+  default_prompt: "Use $app-page-layout to audit and unify an Ops Desktop page layout."

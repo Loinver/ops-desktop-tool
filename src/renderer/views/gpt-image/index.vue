@@ -1,11 +1,11 @@
 <template>
-  <div class="page">
+  <div class="page page--workspace">
     <div class="page-header">
-      <div class="header-left">
+      <div class="page-heading header-left">
         <h2 class="page-title">AI 生图</h2>
         <p class="page-desc">通过聊天窗口生成图片</p>
       </div>
-      <div class="header-actions">
+      <div class="page-actions header-actions">
         <div class="model-summary">
           <span>{{ config.model || '未设置模型' }}</span>
           <span>{{ config.size }}</span>
@@ -716,46 +716,6 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.page {
-  height: 100%;
-  padding: var(--page-padding-y) var(--page-padding-x);
-  overflow: hidden;
-  background: var(--bg);
-  display: flex;
-  flex-direction: column;
-}
-
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: var(--spacing-md);
-  margin-bottom: var(--page-header-gap);
-}
-
-.page-title {
-  font-size: var(--page-title-size);
-  line-height: var(--page-title-line-height);
-  font-weight: 700;
-  color: var(--text);
-  letter-spacing: var(--page-title-letter-spacing);
-}
-
-.page-desc {
-  font-size: var(--page-desc-size);
-  line-height: var(--page-desc-line-height);
-  color: var(--text-muted);
-  margin-top: var(--spacing-xs);
-}
-
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--header-actions-gap);
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
 .model-summary {
   display: flex;
   align-items: center;
@@ -1394,17 +1354,18 @@ onMounted(() => {
 }
 
 @media (max-width: 980px) {
-  .page {
+  .page--workspace {
+    min-height: 100%;
+    height: auto;
     padding: 22px;
-    overflow-y: auto;
+    overflow: visible;
   }
 
   .page-header {
-    flex-direction: column;
     align-items: stretch;
   }
 
-  .header-actions {
+  .page-actions {
     justify-content: flex-start;
   }
 

@@ -1,12 +1,12 @@
 <template>
   <div class="page-header">
-    <div class="header-left">
+    <div class="page-heading header-left">
       <h2 class="page-title">模型测试</h2>
       <p class="page-desc">
         读取 cc-switch 中转站配置，按模型筛选规则加载并发送极短真实请求验证可用性
       </p>
     </div>
-    <div class="header-actions">
+    <div class="page-actions header-actions">
       <div v-if="summary.total || summary.idle" class="summary">
         <button
           type="button"

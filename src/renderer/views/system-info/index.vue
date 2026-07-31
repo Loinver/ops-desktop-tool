@@ -2,14 +2,16 @@
   <div class="page">
     <!-- 页头 -->
     <div class="page-header">
-      <div class="header-left">
+      <div class="page-heading header-left">
         <h2 class="page-title">系统信息</h2>
         <p class="page-desc">查看当前系统运行状态和环境信息</p>
       </div>
+      <div class="page-actions">
       <button class="btn-refresh" :disabled="store.loading" @click="refresh">
         <t-icon name="refresh" :class="{ spinning: store.loading }" />
         <span>刷新</span>
       </button>
+      </div>
     </div>
 
     <!-- 基本信息 -->
@@ -197,37 +199,6 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.page {
-  height: 100%;
-  padding: var(--page-padding-y) var(--page-padding-x);
-  overflow-y: auto;
-  background: var(--bg);
-}
-
-/* 页头 */
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: var(--page-header-gap);
-  gap: var(--spacing-md);
-}
-
-.page-title {
-  font-size: var(--page-title-size);
-  line-height: var(--page-title-line-height);
-  font-weight: 700;
-  color: var(--text);
-  letter-spacing: var(--page-title-letter-spacing);
-}
-
-.page-desc {
-  font-size: var(--page-desc-size);
-  line-height: var(--page-desc-line-height);
-  color: var(--text-muted);
-  margin-top: var(--spacing-xs);
-}
-
 .btn-refresh {
   display: inline-flex;
   align-items: center;

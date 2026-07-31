@@ -1,12 +1,12 @@
 <template>
   <div class="page ai-ops-page">
     <header class="page-header">
-      <div>
-        <div class="eyebrow"><t-icon name="gesture-pray" /> AI OPS CENTER</div>
-        <h2>AI 运维中心</h2>
-        <p>评测模型、分析脱敏日志、检索本地知识，并把自然语言需求变成可确认的运维工作流。</p>
+      <div class="page-heading">
+        <div class="page-eyebrow eyebrow"><t-icon name="gesture-pray" /> AI OPS CENTER</div>
+        <h2 class="page-title">AI 运维中心</h2>
+        <p class="page-desc">评测模型、分析脱敏日志、检索本地知识，并把自然语言需求变成可确认的运维工作流。</p>
       </div>
-      <div class="header-actions">
+      <div class="page-actions header-actions">
         <span class="safety-chip"><t-icon name="secured" /> 凭证加密 · 执行需确认</span>
         <button class="btn-secondary refresh-btn" type="button" :disabled="loading || refreshing" @click="loadState">
           <t-icon name="refresh" :class="{ spinning: refreshing }" />
@@ -600,9 +600,7 @@ onMounted(loadState)
   padding-bottom: 28px;
 }
 
-.page-header,
 .panel-title,
-.header-actions,
 .actions,
 .provider-card,
 .provider-name-row,
@@ -623,12 +621,6 @@ onMounted(loadState)
   align-items: center;
 }
 
-.page-header {
-  justify-content: space-between;
-  gap: 24px;
-  margin-bottom: 20px;
-}
-
 .eyebrow {
   display: inline-flex;
   align-items: center;
@@ -639,25 +631,11 @@ onMounted(loadState)
   letter-spacing: 0.12em;
 }
 
-.page-header h2 {
-  margin: 6px 0 5px;
-  color: var(--text);
-  font-size: 28px;
-  letter-spacing: -0.03em;
-}
-
-.page-header p,
 .panel-title p {
   margin: 0;
   color: var(--text-muted);
   font-size: 13px;
   line-height: 1.65;
-}
-
-.header-actions {
-  justify-content: flex-end;
-  gap: 10px;
-  flex-wrap: wrap;
 }
 
 .safety-chip,
@@ -1558,12 +1536,12 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
-  .page-header {
+  .ai-ops-page .page-header {
     align-items: flex-start;
     flex-direction: column;
   }
 
-  .header-actions {
+  .ai-ops-page .page-actions {
     justify-content: flex-start;
   }
 
@@ -1575,10 +1553,6 @@ button:disabled {
 @media (max-width: 640px) {
   .panel {
     padding: 16px;
-  }
-
-  .page-header h2 {
-    font-size: 24px;
   }
 
   .tab-bar {

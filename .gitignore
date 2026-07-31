@@ -15,8 +15,10 @@ out/
 *.swo
 *~
 
- # Local tooling settings
- .claude/
+# Local tooling settings
+.claude/*
+!.claude/skills/
+!.claude/skills/app-page-layout
 
 # OS files
 .DS_Store
@@ -46,4 +48,3 @@ pnpm-debug.log*
 tmp/
 temp/
 .vite/
-.claude/

@@ -2,11 +2,11 @@
   <div class="page">
     <!-- 页头 -->
     <div class="page-header">
-      <div class="header-left">
+      <div class="page-heading header-left">
         <h2 class="page-title">Node 服务</h2>
         <p class="page-desc">管理本地 Node.js 进程，监控端口占用情况</p>
       </div>
-      <div class="header-actions">
+      <div class="page-actions header-actions">
         <div class="node-search">
           <t-icon name="search" class="node-search__icon" />
           <input
@@ -205,43 +205,6 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.page {
-  height: 100%;
-  padding: var(--page-padding-y) var(--page-padding-x);
-  overflow-y: auto;
-  background: var(--bg);
-}
-
-/* 页头 */
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: var(--page-header-gap);
-  gap: var(--spacing-md);
-}
-
-.page-title {
-  font-size: var(--page-title-size);
-  line-height: var(--page-title-line-height);
-  font-weight: 700;
-  color: var(--text);
-  letter-spacing: var(--page-title-letter-spacing);
-}
-
-.page-desc {
-  font-size: var(--page-desc-size);
-  line-height: var(--page-desc-line-height);
-  color: var(--text-muted);
-  margin-top: var(--spacing-xs);
-}
-
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--header-actions-gap);
-}
-
 /* 搜索框 */
 .node-search {
   position: relative;
