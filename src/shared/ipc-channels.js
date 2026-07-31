@@ -30,6 +30,7 @@ const IPC_CHANNELS = {
   DATA_BACKUP_AUTO_SAVE: 'dataBackup:saveAutoSettings',
   DATA_BACKUP_AUTO_RUN: 'dataBackup:runAutoBackup',
   DATA_BACKUP_HISTORY_GET: 'dataBackup:getAutoHistory',
+  DATA_BACKUP_AUTO_HEALTH_GET: 'dataBackup:getAutoHealth',
   DATA_BACKUP_AUTO_INSPECT: 'dataBackup:inspectAutoBackup',
   DATA_BACKUP_AUTO_RESTORE: 'dataBackup:restoreAutoBackup',
   DATA_BACKUP_AUTO_DELETE: 'dataBackup:deleteAutoBackup',

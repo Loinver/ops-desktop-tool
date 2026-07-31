@@ -166,9 +166,15 @@
           <span>下次执行：{{ autoSettings.enabled && autoSettings.nextRunAt ? formatDate(autoSettings.nextRunAt) : '保存并启用后生成计划' }}</span>
           <span>{{ autoSettings.hasPassword ? '密码已由系统安全存储保护' : '尚未保存密码' }}</span>
         </div>
+        <div class="auto-health" :class="`auto-health--${autoHealth.status}`" aria-live="polite">
+          <t-icon :name="autoHealthIcon(autoHealth)" />
+          <div><strong>{{ autoHealthLabel(autoHealth) }}</strong><p>{{ autoHealth.summary }}</p></div>
+          <span v-if="autoHealth.freeBytes">可用空间 {{ formatBytes(autoHealth.freeBytes) }}</span>
+        </div>
         <div class="panel-actions">
           <p>建议选择只用于本应用备份的目录；保留策略只清理本应用自动生成的备份文件。</p>
           <div class="panel-action-buttons">
+            <button class="btn-secondary" type="button" :disabled="busy" @click="checkAutoBackupHealth"><t-icon :name="busyAction === 'auto-health' ? 'loading' : 'check-circle'" :class="{ spinning: busyAction === 'auto-health' }" /> 检查健康度</button>
             <button class="btn-secondary" type="button" :disabled="busy" @click="saveAutoBackup"><t-icon :name="busyAction === 'auto-save' ? 'loading' : 'save'" :class="{ spinning: busyAction === 'auto-save' }" /> 保存计划</button>
             <button class="btn-primary" type="button" :disabled="busy || !canRunAutoBackup" @click="runAutoBackup"><t-icon :name="busyAction === 'auto-run' ? 'loading' : 'play-circle'" :class="{ spinning: busyAction === 'auto-run' }" /> 立即备份</button>
           </div>
@@ -237,6 +243,7 @@ const backupPreview = ref(null)
 const autoSettings = ref({ enabled: false, outputDirectory: '', interval: 'weekly', retentionCount: 7, categories: [], hasPassword: false, lastRunAt: 0, nextRunAt: 0 })
 const autoPassword = ref('')
 const autoHistory = ref([])
+const autoHealth = ref({ status: 'disabled', summary: '自动备份计划未启用', freeBytes: 0 })
 const restorePoints = ref([])
 
 const busy = computed(() => Boolean(busyAction.value))
@@ -265,6 +272,14 @@ function formatDate(value) {
 function autoBackupStateLabel(item) {
   if (item.status === 'failed') return '失败'
   return item.availability === 'available' ? '可恢复' : '文件缺失'
+}
+
+function autoHealthLabel(health) {
+  return ({ healthy: '备份健康', warning: '需要关注', error: '备份异常', disabled: '计划未启用' })[health?.status] || '健康状态未知'
+}
+
+function autoHealthIcon(health) {
+  return ({ healthy: 'check-circle', warning: 'error-circle', error: 'error-circle', disabled: 'info-circle' })[health?.status] || 'info-circle'
 }
 
 async function loadOverview() {
@@ -341,12 +356,14 @@ async function restoreBackup() {
 
 async function loadAutoBackupState() {
   try {
-    const [settings, history] = await Promise.all([
+    const [settings, history, health] = await Promise.all([
       window.opsApi.getAutoBackupSettings(),
       window.opsApi.getAutoBackupHistory(),
+      window.opsApi.getAutoBackupHealth(),
     ])
     autoSettings.value = { ...autoSettings.value, ...(settings || {}) }
     autoHistory.value = Array.isArray(history) ? history : []
+    autoHealth.value = { ...autoHealth.value, ...(health || {}) }
   } catch (error) {
     MessagePlugin.error({ content: error.message || '无法读取自动备份状态', placement: 'bottom-right' })
   }
@@ -370,6 +387,20 @@ async function chooseAutoBackupDirectory() {
   if (directory) autoSettings.value.outputDirectory = directory
 }
 
+async function checkAutoBackupHealth() {
+  busyAction.value = 'auto-health'
+  try {
+    const health = await window.opsApi.getAutoBackupHealth()
+    autoHealth.value = { ...autoHealth.value, ...(health || {}) }
+    const notify = autoHealth.value.status === 'error' ? MessagePlugin.error : (autoHealth.value.status === 'warning' ? MessagePlugin.warning : MessagePlugin.success)
+    notify({ content: autoHealth.value.summary, placement: 'bottom-right' })
+  } catch (error) {
+    MessagePlugin.error({ content: error.message || '自动备份健康检查失败', placement: 'bottom-right' })
+  } finally {
+    busyAction.value = ''
+  }
+}
+
 async function saveAutoBackup() {
   busyAction.value = 'auto-save'
   try {
@@ -384,6 +415,7 @@ async function saveAutoBackup() {
     autoSettings.value = { ...autoSettings.value, ...(result?.settings || {}) }
     autoPassword.value = ''
     MessagePlugin.success({ content: autoSettings.value.enabled ? '自动备份计划已保存' : '自动备份计划已关闭', placement: 'bottom-right' })
+    await loadAutoBackupState()
   } catch (error) {
     MessagePlugin.error({ content: error.message || '保存自动备份计划失败', placement: 'bottom-right' })
   } finally {
@@ -561,6 +593,19 @@ onMounted(loadDataManagementState)
 .toggle-field small { margin-top: 2px; color: var(--text-muted); font-size: 11px; line-height: 16px; }
 .backup-group-grid--auto { margin-top: var(--spacing-lg); }
 .auto-status-line { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: var(--spacing-md); color: var(--text-muted); font-size: 12px; line-height: 18px; }
+.auto-health { display: flex; align-items: flex-start; gap: 10px; margin-top: var(--spacing-md); padding: 10px 12px; border: 1px solid var(--border-light); border-radius: var(--radius-md); background: var(--bg-soft); color: var(--text-secondary); }
+.auto-health > .t-icon { flex: 0 0 auto; margin-top: 2px; color: var(--text-muted); }
+.auto-health div { min-width: 0; }
+.auto-health strong,.auto-health p { display: block; }
+.auto-health strong { color: var(--text); font-size: 12px; line-height: 18px; }
+.auto-health p { margin-top: 1px; color: var(--text-muted); font-size: 12px; line-height: 18px; }
+.auto-health > span { flex: 0 0 auto; margin-left: auto; color: var(--text-muted); font-size: 11px; line-height: 18px; white-space: nowrap; }
+.auto-health--healthy { border-color: color-mix(in srgb, var(--success) 28%, var(--border-light)); background: color-mix(in srgb, var(--success) 6%, var(--card-bg)); }
+.auto-health--healthy > .t-icon { color: var(--success); }
+.auto-health--warning { border-color: color-mix(in srgb, var(--warning) 32%, var(--border-light)); background: color-mix(in srgb, var(--warning) 7%, var(--card-bg)); }
+.auto-health--warning > .t-icon { color: var(--warning); }
+.auto-health--error { border-color: color-mix(in srgb, var(--danger) 32%, var(--border-light)); background: color-mix(in srgb, var(--danger) 6%, var(--card-bg)); }
+.auto-health--error > .t-icon { color: var(--danger); }
 .panel-action-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
 .recovery-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--spacing-lg); margin-top: var(--spacing-md); }
 .recovery-column { min-width: 0; }
@@ -586,5 +631,5 @@ onMounted(loadDataManagementState)
 .history-item--restore-point .btn-secondary { flex: 0 0 auto; }
 .section-status--muted { color: var(--text-muted); background: var(--bg-soft); }
 @media (max-width: 900px) { .data-summary,.preview-metrics,.recovery-grid { grid-template-columns: 1fr; } .backup-group-grid { grid-template-columns: 1fr; } }
-@media (max-width: 760px) { .backup-form-grid,.auto-settings-grid { grid-template-columns: 1fr; } .path-control { flex-direction: column; } .path-control .btn-secondary { width: 100%; } .restore-controls { align-items: stretch; flex-direction: column; } .restore-password { max-width: none; } .restore-preview-heading,.history-item--auto,.history-item--auto > .history-item-side { align-items: stretch; flex-direction: column; } .preview-time { flex-basis: auto; } .history-item--auto .history-item-side,.history-item--auto .history-item-actions { justify-content: flex-start; } .panel-actions > .btn-primary,.panel-actions > .btn-danger,.restore-controls > .btn-secondary { width: 100%; justify-content: center; } }
+@media (max-width: 760px) { .backup-form-grid,.auto-settings-grid { grid-template-columns: 1fr; } .path-control { flex-direction: column; } .path-control .btn-secondary { width: 100%; } .restore-controls { align-items: stretch; flex-direction: column; } .restore-password { max-width: none; } .restore-preview-heading,.history-item--auto,.history-item--auto > .history-item-side,.auto-health { align-items: stretch; flex-direction: column; } .preview-time { flex-basis: auto; } .history-item--auto .history-item-side,.history-item--auto .history-item-actions { justify-content: flex-start; } .auto-health > span { margin-left: 0; } .panel-actions > .btn-primary,.panel-actions > .btn-danger,.restore-controls > .btn-secondary { width: 100%; justify-content: center; } }
 </style>

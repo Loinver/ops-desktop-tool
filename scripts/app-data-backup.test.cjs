@@ -312,3 +312,38 @@ test('自动备份缺失文件会标记状态，并可清理历史记录', () =>
   assert.deepEqual(deleteAutoBackup({ userDataPath: root, id: entry.id }), { deleted: false, missing: true })
   assert.deepEqual(getAutoBackupHistory(root), [])
 })
+
+test('自动备份健康检查会报告首次备份、缺失文件和不可用目录', () => {
+  const root = tempDir()
+  const outputDirectory = tempDir()
+  const {
+    getAutoBackupHealth,
+    runAutoBackup,
+    saveAutoBackupSettings,
+  } = require('../src/main/utils/app-data-backup')
+  assert.equal(getAutoBackupHealth(root, { now: 100 }).status, 'disabled')
+
+  writeJson(root, 'ops-events.json', [{ id: 'health-check' }])
+  saveAutoBackupSettings({
+    userDataPath: root,
+    input: { enabled: true, outputDirectory, categories: ['operations'], password: 'automatic-password' },
+    encryptPassword: value => `enc:${value}`,
+    now: 1_000,
+  })
+  const beforeFirstRun = getAutoBackupHealth(root, { now: 1_500 })
+  assert.equal(beforeFirstRun.status, 'warning')
+  assert.ok(beforeFirstRun.issues.some(issue => issue.id === 'first-backup'))
+
+  const { entry } = runAutoBackup({ userDataPath: root, decryptPassword: value => value.slice(4), now: 2_000, iterations: 1_000 })
+  fs.unlinkSync(path.join(outputDirectory, entry.fileName))
+  const missing = getAutoBackupHealth(root, { now: 2_500 })
+  assert.equal(missing.status, 'warning')
+  assert.equal(missing.missingCount, 1)
+  assert.ok(missing.issues.some(issue => issue.id === 'missing-files'))
+
+  const movedDirectory = `${outputDirectory}-unavailable`
+  fs.renameSync(outputDirectory, movedDirectory)
+  const unavailable = getAutoBackupHealth(root, { now: 3_000 })
+  assert.equal(unavailable.status, 'error')
+  assert.ok(unavailable.issues.some(issue => issue.id === 'directory'))
+})

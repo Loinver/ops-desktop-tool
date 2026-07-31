@@ -8,6 +8,7 @@ const {
   createBackupArchive,
   deleteAutoBackup,
   getAutoBackupDirectory,
+  getAutoBackupHealth,
   getAutoBackupHistory,
   getBackupOverview,
   inspectAutoBackup,
@@ -63,6 +64,10 @@ function registerDataBackupHandlers() {
 
   ipcMain.handle(IPC_CHANNELS.DATA_BACKUP_HISTORY_GET, async () => (
     getAutoBackupHistory(app.getPath('userData'))
+  ))
+
+  ipcMain.handle(IPC_CHANNELS.DATA_BACKUP_AUTO_HEALTH_GET, async () => (
+    getAutoBackupHealth(app.getPath('userData'))
   ))
 
   ipcMain.handle(IPC_CHANNELS.DATA_BACKUP_AUTO_INSPECT, async (_event, options = {}) => (

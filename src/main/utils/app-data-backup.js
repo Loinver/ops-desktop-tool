@@ -310,6 +310,7 @@ const AUTO_BACKUP_SETTINGS_FILE = 'ops-auto-backup-settings.json'
 const AUTO_BACKUP_HISTORY_FILE = 'ops-auto-backup-history.json'
 const AUTO_BACKUP_DIRECTORY_NAME = 'ops-auto-backups'
 const AUTO_BACKUP_HISTORY_LIMIT = 50
+const AUTO_BACKUP_MIN_FREE_BYTES = 512 * 1024 * 1024
 const AUTO_BACKUP_INTERVALS = Object.freeze({ daily: 24 * 60 * 60 * 1000, weekly: 7 * 24 * 60 * 60 * 1000 })
 
 function autoBackupSettingsPath(userDataPath) { return path.join(userDataPath, AUTO_BACKUP_SETTINGS_FILE) }
@@ -464,6 +465,64 @@ function safeAutoBackupHistory(entries) {
 
 function getAutoBackupHistory(userDataPath) {
   return safeAutoBackupHistory(readAutoBackupHistory(userDataPath))
+}
+
+function availableDiskBytes(directory) {
+  if (typeof fs.statfsSync !== 'function') return 0
+  try {
+    const stats = fs.statfsSync(directory)
+    const blockSize = Number(stats.bsize) || 0
+    const availableBlocks = Number(stats.bavail ?? stats.bfree) || 0
+    const available = blockSize * availableBlocks
+    return Number.isSafeInteger(available) && available > 0 ? available : 0
+  } catch {
+    return 0
+  }
+}
+
+function getAutoBackupHealth(userDataPath, { now = Date.now() } = {}) {
+  const settings = readAutoBackupSettings(userDataPath)
+  const history = readAutoBackupHistory(userDataPath).sort((a, b) => b.createdAt - a.createdAt)
+  const successful = history.filter(entry => entry.status === 'success')
+  const latest = history[0]
+  const missingCount = successful.filter(entry => autoBackupFileState(entry) === 'missing').length
+  const result = {
+    status: 'disabled',
+    checkedAt: Number(now) || Date.now(),
+    summary: '自动备份计划未启用',
+    lastSuccessfulAt: successful[0]?.createdAt || 0,
+    latestRunAt: latest?.createdAt || 0,
+    freeBytes: 0,
+    missingCount,
+    issues: [],
+  }
+  if (!settings.enabled) return result
+
+  const issues = []
+  let directory = ''
+  try {
+    directory = assertOutputDirectory(settings.outputDirectory)
+    fs.accessSync(directory, fs.constants.R_OK | fs.constants.W_OK)
+  } catch (error) {
+    issues.push({ id: 'directory', level: 'error', message: error?.message || '自动备份目录不可访问或不可写入' })
+  }
+  if (!settings.passwordEncrypted) issues.push({ id: 'password', level: 'error', message: '自动备份密码不可用，请重新设置' })
+  if (!settings.categories.length) issues.push({ id: 'categories', level: 'error', message: '尚未选择自动备份分类' })
+  if (!successful.length) issues.push({ id: 'first-backup', level: 'warning', message: '尚未成功创建自动备份，建议立即执行一次' })
+  if (latest?.status === 'failed') issues.push({ id: 'last-run', level: 'warning', message: `最近一次自动备份失败：${latest.error}` })
+  if (missingCount) issues.push({ id: 'missing-files', level: 'warning', message: `${missingCount} 个自动备份文件已缺失，可在历史中清理记录` })
+  if (directory) {
+    result.freeBytes = availableDiskBytes(directory)
+    if (result.freeBytes && result.freeBytes < AUTO_BACKUP_MIN_FREE_BYTES) {
+      issues.push({ id: 'disk-space', level: 'warning', message: '自动备份目录可用空间不足 512 MB，建议及时清理或更换目录' })
+    }
+  }
+  const error = issues.find(item => item.level === 'error')
+  const warning = issues.find(item => item.level === 'warning')
+  result.status = error ? 'error' : (warning ? 'warning' : 'healthy')
+  result.summary = error?.message || warning?.message || '自动备份目录、密码和历史文件状态正常'
+  result.issues = issues
+  return result
 }
 
 function writeAutoBackupHistory(userDataPath, entries) {
@@ -711,6 +770,7 @@ module.exports = {
   createBackupArchive,
   deleteAutoBackup,
   getAutoBackupDirectory,
+  getAutoBackupHealth,
   getAutoBackupHistory,
   getBackupOverview,
   inspectAutoBackup,
