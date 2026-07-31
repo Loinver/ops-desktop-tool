@@ -44,7 +44,20 @@ function latestModelEntry(item) {
   }
 }
 
-function buildOpsDashboardData({ modelHistory = [], releaseHistory = [], monitor = {}, generatedAt = Date.now() } = {}) {
+function backupSummary({ health = {}, settings = {} } = {}) {
+  const status = ['healthy', 'warning', 'error', 'disabled'].includes(health.status) ? health.status : 'disabled'
+  return {
+    enabled: Boolean(settings.enabled),
+    status,
+    summary: String(health.summary || (status === 'disabled' ? '自动备份计划未启用' : '自动备份状态未知')),
+    lastSuccessfulAt: Number(health.lastSuccessfulAt) || 0,
+    nextRunAt: Number(settings.nextRunAt) || 0,
+    missingCount: Math.max(0, Number(health.missingCount) || 0),
+    freeBytes: Math.max(0, Number(health.freeBytes) || 0),
+  }
+}
+
+function buildOpsDashboardData({ modelHistory = [], releaseHistory = [], monitor = {}, backup = {}, generatedAt = Date.now() } = {}) {
   const recentModel = Array.isArray(modelHistory) ? modelHistory.slice(0, 20) : []
   const releases = Array.isArray(releaseHistory) ? releaseHistory : []
   // 回滚成功也会写入发布历史，但不应被首页的「发布成功/失败」指标误计为一次发布。
@@ -76,6 +89,7 @@ function buildOpsDashboardData({ modelHistory = [], releaseHistory = [], monitor
       }),
     },
     monitor: monitorSummary(monitor),
+    backup: backupSummary(backup),
   }
 }
 

@@ -127,3 +127,37 @@ test('首页发布成功与失败指标不把回滚记录算作发布', () => {
     ],
   })
 })
+
+test('首页备份摘要只返回健康状态与时间，不暴露路径、密码或问题详情', () => {
+  const dashboard = buildOpsDashboardData({
+    backup: {
+      health: {
+        status: 'warning',
+        summary: '1 个自动备份文件已缺失，可在历史中清理记录',
+        lastSuccessfulAt: 100,
+        missingCount: 1,
+        freeBytes: 1024,
+        issues: [{ id: 'missing-files', message: '不应发送完整问题详情' }],
+      },
+      settings: {
+        enabled: true,
+        nextRunAt: 200,
+        outputDirectory: '/private/backup-directory',
+        passwordEncrypted: 'secret-ciphertext',
+      },
+    },
+  })
+
+  assert.deepEqual(dashboard.backup, {
+    enabled: true,
+    status: 'warning',
+    summary: '1 个自动备份文件已缺失，可在历史中清理记录',
+    lastSuccessfulAt: 100,
+    nextRunAt: 200,
+    missingCount: 1,
+    freeBytes: 1024,
+  })
+  assert.equal(Object.hasOwn(dashboard.backup, 'outputDirectory'), false)
+  assert.equal(Object.hasOwn(dashboard.backup, 'passwordEncrypted'), false)
+  assert.equal(Object.hasOwn(dashboard.backup, 'issues'), false)
+})

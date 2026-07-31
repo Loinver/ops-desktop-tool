@@ -4,7 +4,7 @@
       <div class="page-heading">
         <div class="page-eyebrow"><t-icon name="dashboard" /> OPS DASHBOARD</div>
         <h2 class="page-title">运维仪表盘</h2>
-        <p class="page-desc">统一查看发布、模型可靠性、自动化巡检与待处理事件</p>
+        <p class="page-desc">统一查看发布、模型可靠性、自动化巡检、数据备份与待处理事件</p>
       </div>
       <div class="page-actions">
         <button type="button" class="refresh-button" :disabled="loading" @click="loadDashboard">
@@ -35,6 +35,37 @@
         <strong>{{ dashboard.monitor?.enabled ? '运行中' : '未启用' }}</strong>
         <small>{{ monitorDescription }}</small>
       </article>
+      </section>
+
+      <section class="dashboard-grid backup-grid">
+        <article class="panel backup-panel" :class="`backup-panel--${backupStatus}`">
+          <div class="panel-title backup-panel-title">
+            <div>
+              <h3>数据备份</h3>
+              <p>{{ backup.summary || '正在读取自动备份状态' }}</p>
+            </div>
+            <div class="backup-title-actions">
+              <span class="backup-status" :class="`is-${backupStatus}`">
+                <t-icon :name="backupStatusIcon" /> {{ backupStatusLabel }}
+              </span>
+              <button type="button" @click="$router.push('/data-management')">管理备份</button>
+            </div>
+          </div>
+          <div class="backup-stats">
+            <div class="backup-stat">
+              <span>上次成功</span>
+              <strong>{{ formatDate(backup.lastSuccessfulAt) }}</strong>
+            </div>
+            <div class="backup-stat">
+              <span>下次计划</span>
+              <strong>{{ backup.enabled ? formatDate(backup.nextRunAt) : '未启用' }}</strong>
+            </div>
+            <div class="backup-stat">
+              <span>缺失文件</span>
+              <strong :class="{ 'has-warning': backup.missingCount }">{{ backup.missingCount ? `${backup.missingCount} 个` : '无' }}</strong>
+            </div>
+          </div>
+        </article>
       </section>
 
       <section class="dashboard-grid">
@@ -108,6 +139,10 @@ const availabilityText = computed(() => dashboard.model?.availability == null ? 
 const monitorDescription = computed(() => dashboard.monitor?.enabled
   ? `每 ${dashboard.monitor.intervalMinutes} 分钟`
   : monitorTargetCount.value ? '已暂停' : '尚未配置巡检目标')
+const backup = computed(() => dashboard.backup || {})
+const backupStatus = computed(() => ['healthy', 'warning', 'error', 'disabled'].includes(backup.value.status) ? backup.value.status : 'disabled')
+const backupStatusLabel = computed(() => ({ healthy: '备份健康', warning: '需要关注', error: '备份异常', disabled: '计划未启用' })[backupStatus.value])
+const backupStatusIcon = computed(() => ({ healthy: 'check-circle', warning: 'error-circle', error: 'error-circle', disabled: 'info-circle' })[backupStatus.value])
 
 function formatDate(value) { return value ? new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).format(value) : '—' }
 function shortDate(value) { return value ? new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric' }).format(value) : '' }
@@ -261,6 +296,101 @@ input:disabled {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr);
   gap: var(--content-gap);
+}
+
+.backup-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.backup-panel {
+  border-left: 3px solid var(--text-muted);
+}
+
+.backup-panel--healthy {
+  border-left-color: var(--success);
+}
+
+.backup-panel--warning {
+  border-left-color: var(--warning);
+}
+
+.backup-panel--error {
+  border-left-color: var(--danger);
+}
+
+.backup-panel-title {
+  align-items: flex-start;
+}
+
+.backup-title-actions {
+  display: flex;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.backup-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.backup-status.is-healthy {
+  color: var(--success);
+}
+
+.backup-status.is-warning {
+  color: #b45309;
+}
+
+.backup-status.is-error {
+  color: var(--danger);
+}
+
+.backup-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--spacing-md);
+}
+
+.backup-stat {
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+}
+
+.backup-stat span,
+.backup-stat strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.backup-stat span {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.backup-stat strong {
+  margin-top: 2px;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.backup-stat strong.has-warning {
+  color: #b45309;
 }
 
 .history-grid {
@@ -492,6 +622,21 @@ input:disabled {
 
   .dashboard-grid,
   .history-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .backup-panel-title,
+  .backup-title-actions {
+    align-items: flex-start;
+  }
+
+  .backup-title-actions {
+    justify-content: flex-start;
+  }
+
+  .backup-stats {
     grid-template-columns: 1fr;
   }
 }

@@ -22,6 +22,7 @@ const {
   isModelAllowedForProtocol,
 } = require('../utils/model-list-settings')
 const { loadReleaseHistory, getActiveReleaseProfile } = require('../utils/release-store')
+const { getAutoBackupHealth, readAutoBackupSettings } = require('../utils/app-data-backup')
 const { buildOpsDashboardData } = require('../utils/ops-dashboard')
 const { addOpsEvent, recoverOpsEvent } = require('../utils/ops-automation')
 
@@ -1188,6 +1189,10 @@ function dashboardData() {
     // 首页发布指标必须与系统发布页一样，严格限定在当前活动环境。
     releaseHistory: loadReleaseHistory({ profileId: activeProfile?.id }),
     monitor: loadMonitorSettings(),
+    backup: {
+      health: getAutoBackupHealth(app.getPath('userData')),
+      settings: readAutoBackupSettings(app.getPath('userData')),
+    },
   })
 }
 
