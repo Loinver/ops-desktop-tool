@@ -66,6 +66,7 @@
             <label class="check"><input v-model="providerForm.enabled" type="checkbox" /> 启用此 Provider</label>
             <label v-if="providerForm.id && providerForm.hasApiKey" class="check"><input v-model="providerForm.clearApiKey" type="checkbox" /> 清除已保存的 API Key</label>
           </div>
+          <p v-if="providerSaveError" class="form-error" role="alert"><t-icon name="error-circle" /> {{ providerSaveError }}</p>
           <div class="actions">
             <button class="btn-primary" type="button" :disabled="savingProvider" @click="saveProvider">
               <t-icon :name="savingProvider ? 'loading' : 'save'" :class="{ spinning: savingProvider }" />
@@ -214,6 +215,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import MessagePlugin from 'tdesign-vue-next/es/message/plugin.mjs'
+import { validateProviderForm } from '../../utils/ai-provider-form.mjs'
 import { useConfirm } from '../../composables/useConfirm'
 
 const { confirm } = useConfirm()
@@ -232,6 +234,7 @@ const refreshing = ref(false)
 const hasLoaded = ref(false)
 const busy = ref(false)
 const savingProvider = ref(false)
+const providerSaveError = ref('')
 const testingProviderId = ref('')
 const activatingProviderId = ref('')
 const providerState = ref({ activeProviderId: '', providers: [] })
@@ -364,25 +367,41 @@ async function loadState() {
 
 function resetProviderForm() {
   providerForm.value = newProvider()
+  providerSaveError.value = ''
 }
 
 function editProvider(provider) {
   providerForm.value = { ...newProvider(), ...provider, apiKey: '', clearApiKey: false }
+  providerSaveError.value = ''
   activeTab.value = 'providers'
 }
 
 async function saveProvider() {
+  const validationError = validateProviderForm(providerForm.value)
+  if (validationError) {
+    providerSaveError.value = validationError
+    MessagePlugin.warning({ content: validationError, placement: 'bottom-right' })
+    return
+  }
+
   savingProvider.value = true
+  providerSaveError.value = ''
   try {
-    const result = await window.opsApi.saveAiProvider(providerForm.value)
-    if (notify(result, '保存 Provider 失败')) {
-      providerState.value = result.activeProviderId
-        ? { ...providerState.value, activeProviderId: result.activeProviderId, providers: providers.value.filter(item => item.id !== result.provider.id).concat(result.provider) }
-        : providerState.value
-      await loadState()
-      resetProviderForm()
-      MessagePlugin.success({ content: 'AI Provider 已加密保存', placement: 'bottom-right' })
+    const result = await window.opsApi.saveAiProvider({ ...providerForm.value })
+    if (!notify(result, '保存 Provider 失败')) {
+      providerSaveError.value = result?.error || '保存 Provider 失败'
+      return
     }
+    providerState.value = result.activeProviderId
+      ? { ...providerState.value, activeProviderId: result.activeProviderId, providers: providers.value.filter(item => item.id !== result.provider.id).concat(result.provider) }
+      : providerState.value
+    await loadState()
+    resetProviderForm()
+    MessagePlugin.success({ content: 'AI Provider 已加密保存', placement: 'bottom-right' })
+  } catch (error) {
+    const message = error?.message || '保存 Provider 失败，请重试'
+    providerSaveError.value = message
+    MessagePlugin.error({ content: message, placement: 'bottom-right' })
   } finally {
     savingProvider.value = false
   }
@@ -929,6 +948,7 @@ button:disabled {
   font-size: 12px;
 }
 
+.form-error { display: flex; align-items: center; gap: 6px; margin: 0 0 var(--spacing-sm); color: var(--danger); font-size: 12px; line-height: 18px; }
 .form-context strong {
   color: var(--primary);
 }
