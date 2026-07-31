@@ -1357,7 +1357,6 @@ onMounted(() => {
   .page--workspace {
     min-height: 100%;
     height: auto;
-    padding: 22px;
     overflow: visible;
   }
 

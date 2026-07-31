@@ -263,14 +263,14 @@ onMounted(() => {
 .info-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
+  gap: var(--content-gap);
 }
 
 .info-card {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 20px;
+  gap: var(--spacing-md);
+  padding: var(--panel-padding);
   background: var(--card-bg);
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-light);
@@ -324,8 +324,8 @@ onMounted(() => {
 .memory-card {
   display: flex;
   align-items: center;
-  gap: 40px;
-  padding: 28px 32px;
+  gap: var(--spacing-xl);
+  padding: var(--panel-padding);
   background: var(--card-bg);
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-light);
@@ -377,7 +377,7 @@ onMounted(() => {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--spacing-md);
 }
 
 .memory-row {

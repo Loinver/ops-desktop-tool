@@ -313,14 +313,14 @@ onMounted(() => {
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
+  gap: var(--content-gap);
 }
 
 .stat-card {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 20px 24px;
+  gap: var(--spacing-md);
+  padding: var(--panel-padding);
   background: var(--card-bg);
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-light);

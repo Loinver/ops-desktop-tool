@@ -595,13 +595,6 @@ onMounted(loadState)
 </script>
 
 <style scoped>
-.ai-ops-page {
-  position: relative;
-  max-width: 1440px;
-  margin: 0 auto;
-  padding-bottom: 28px;
-}
-
 .panel-title,
 .actions,
 .provider-card,
@@ -670,7 +663,7 @@ onMounted(loadState)
   gap: 4px;
   overflow-x: auto;
   padding: 5px;
-  margin: 0 0 18px;
+  margin: 0;
   border: 1px solid var(--border-light);
   border-radius: var(--radius-lg);
   background: color-mix(in srgb, var(--bg-subtle) 76%, #fff);
@@ -722,7 +715,7 @@ textarea:focus-visible {
 
 .panel-grid {
   display: grid;
-  gap: 18px;
+  gap: var(--content-gap);
 }
 
 .providers-layout,
@@ -734,12 +727,12 @@ textarea:focus-visible {
 
 .stack {
   display: grid;
-  gap: 18px;
+  gap: var(--content-gap);
 }
 
 .panel {
   min-width: 0;
-  padding: 20px;
+  padding: var(--panel-padding);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-lg);
   background: rgba(255, 255, 255, 0.96);
@@ -748,8 +741,8 @@ textarea:focus-visible {
 
 .panel-title {
   justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 16px;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
 }
 
 .panel-title h3 {
@@ -1554,7 +1547,7 @@ button:disabled {
 
 @media (max-width: 640px) {
   .panel {
-    padding: 16px;
+    padding: var(--panel-padding);
   }
 
   .tab-bar {

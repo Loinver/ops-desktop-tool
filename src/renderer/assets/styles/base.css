@@ -194,6 +194,7 @@ body {
 
 .page-content {
   display: grid;
+  align-content: start;
   min-width: 0;
   gap: var(--content-gap);
 }
@@ -259,6 +260,10 @@ code {
 }
 
 @media (max-width: 760px) {
+  :root {
+    --panel-padding: var(--spacing-md);
+  }
+
   .page {
     padding: var(--spacing-lg) var(--spacing-md);
   }

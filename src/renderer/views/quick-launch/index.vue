@@ -388,8 +388,8 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: var(--content-gap);
+  margin: 0;
 }
 
 .filter-bar {
@@ -502,7 +502,7 @@ onMounted(async () => {
 .launch-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
+  gap: var(--content-gap);
 }
 
 .loading-state {
@@ -620,10 +620,6 @@ onMounted(async () => {
 }
 
 @media (max-width: 760px) {
-  .header-actions {
-    width: 100%;
-  }
-
   .btn-add,
   .btn-batch,
   .btn-open {

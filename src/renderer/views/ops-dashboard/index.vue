@@ -212,7 +212,7 @@ input:disabled {
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--content-gap);
 }
 
 .metric-card,
@@ -224,7 +224,7 @@ input:disabled {
 }
 
 .metric-card {
-  padding: 16px;
+  padding: var(--panel-padding);
   border-top: 3px solid #6366f1;
 }
 
@@ -259,7 +259,7 @@ input:disabled {
 .dashboard-grid {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr);
-  gap: 12px;
+  gap: var(--content-gap);
 }
 
 .history-grid {
@@ -267,7 +267,7 @@ input:disabled {
 }
 
 .panel {
-  padding: 16px;
+  padding: var(--panel-padding);
 }
 
 .panel-title {
@@ -275,7 +275,7 @@ input:disabled {
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--spacing-md);
-  margin-bottom: 12px;
+  margin-bottom: var(--spacing-md);
 }
 
 .panel-title h3 {
