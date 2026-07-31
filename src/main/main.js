@@ -9,6 +9,7 @@ const { registerSftpHandlers, closeSftpConnection } = require('./ipc/sftp')
 const { registerGptImageHandlers } = require('./ipc/gpt-image')
 const { registerModelTestHandlers } = require('./ipc/model-test')
 const { registerAiOpsHandlers } = require('./ipc/ai-ops')
+const { registerDataBackupHandlers } = require('./ipc/data-backup')
 const { initializeOpsNotificationService, stopOpsNotificationService } = require('./ops-notification-service')
 
 const isMcpMode = process.argv.includes('--mcp')
@@ -23,6 +24,7 @@ function registerAllHandlers() {
   registerGptImageHandlers()
   registerModelTestHandlers()
   registerAiOpsHandlers()
+  registerDataBackupHandlers()
 }
 
 if (isMcpMode) {

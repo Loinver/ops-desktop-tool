@@ -271,5 +271,4 @@ Vite 只构建 Renderer 到 `dist/renderer`，Electron Main 和 Shared 源文件
 
 - 评估 TypeScript 渐进迁移
 - 增加主进程开发热重载或迁移到 electron-vite
-- 增加配置导入、导出和加密备份能力
 - 为大规模目录比较和上传增加取消、限速与更细粒度进度

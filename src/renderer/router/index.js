@@ -62,6 +62,12 @@ const routes = [
         meta: { title: '系统信息' }
       },
       {
+        path: 'data-management',
+        name: 'DataManagement',
+        component: () => import('../views/data-management/index.vue'),
+        meta: { title: '本地数据管理' }
+      },
+      {
         path: 'gpt-image',
         name: 'GptImage',
         component: () => import('../views/gpt-image/index.vue'),

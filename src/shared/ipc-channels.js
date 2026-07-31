@@ -21,6 +21,11 @@ const IPC_CHANNELS = {
   APP_INFO: 'app:info',
   APP_CONFIRM: 'app:confirm',
   APP_BROWSE_FILE: 'app:browseFile',
+  APP_RELAUNCH: 'app:relaunch',
+  DATA_BACKUP_OVERVIEW: 'dataBackup:getOverview',
+  DATA_BACKUP_EXPORT: 'dataBackup:export',
+  DATA_BACKUP_INSPECT: 'dataBackup:inspect',
+  DATA_BACKUP_RESTORE: 'dataBackup:restore',
 
   // 快捷启动
   QUICKLAUNCH_GET: 'quicklaunch:get',

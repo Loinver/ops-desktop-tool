@@ -90,6 +90,13 @@ export const FUNCTION_MENU_GROUPS = [
         description: '查看设备、运行环境与资源信息',
         icon: 'chart-area',
       },
+      {
+        id: 'data-management',
+        path: '/data-management',
+        name: '本地数据管理',
+        description: '导出加密备份、校验并恢复本机功能数据',
+        icon: 'save',
+      },
     ],
   },
   {
