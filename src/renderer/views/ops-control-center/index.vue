@@ -2,9 +2,9 @@
   <div class="page ops-control-page">
     <header class="page-header">
       <div class="page-heading">
-        <div class="page-eyebrow"><t-icon name="chat" /> AI OPS CONTROL CENTER</div>
-        <h2 class="page-title">AI 运维指挥中心</h2>
-        <p class="page-desc">汇总事件、以本地证据辅助排障，并通过确认式计划执行安全的运维操作。</p>
+        <div class="page-eyebrow"><t-icon name="chat" /> OPS CENTER</div>
+        <h2 class="page-title">运维中心</h2>
+        <p class="page-desc">集中处理事件、执行自动化巡检，并使用 AI Copilot 基于本地证据辅助排障。</p>
       </div>
       <div class="page-actions">
       <button class="btn-secondary" type="button" :disabled="loading" @click="load"><t-icon :name="loading ? 'loading' : 'refresh'" :class="{ spinning: loading }" /> 刷新</button>
@@ -114,7 +114,7 @@ async function executePlan() {
   const result = await window.opsApi.executeAiWorkflow({ plan, confirmed: true })
   if (notify(result, '执行工作流失败')) MessagePlugin.success({ content: '工作流已执行', placement: 'bottom-right' })
 }
-function openKnowledge(source) { window.location.hash = `#/ai-ops`; MessagePlugin.info({ content: `请在 AI 运维中心知识库查看「${source.title}」第 ${source.startLine}-${source.endLine} 行。`, placement: 'bottom-right' }) }
+function openKnowledge(source) { window.location.hash = `#/ai-ops`; MessagePlugin.info({ content: `请在 AI 能力中心知识库查看「${source.title}」第 ${source.startLine}-${source.endLine} 行。`, placement: 'bottom-right' }) }
 async function updateEvent(item, status) { const result = await window.opsApi.updateOpsEvent(item.id, status); if (notify(result, '更新事件失败')) await load() }
 function editTask(task) { taskForm.value = { ...newTask(), ...task } }
 function resetTaskForm() { taskForm.value = newTask() }

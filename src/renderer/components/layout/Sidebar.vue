@@ -5,7 +5,7 @@
         <div class="brand-icon"><t-icon name="setting" /></div>
         <div v-show="!collapsed" class="brand-text">
           <h1>Ops Desktop</h1>
-          <p>智能运维工作台</p>
+          <p>本机 AI 运维工作台</p>
         </div>
       </div>
       <button class="collapse-button" type="button" :title="collapsed ? '展开菜单' : '收起菜单'" :aria-label="collapsed ? '展开菜单' : '收起菜单'" @click="$emit('toggle')">

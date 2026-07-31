@@ -1,10 +1,10 @@
 <template>
   <div class="page-header">
     <div class="page-heading header-left">
-      <div class="page-eyebrow"><t-icon name="api" /> MODEL TEST</div>
-      <h2 class="page-title">模型测试</h2>
+      <div class="page-eyebrow"><t-icon name="api" /> MODEL RELIABILITY</div>
+      <h2 class="page-title">模型可靠性</h2>
       <p class="page-desc">
-        读取 cc-switch 中转站配置，按模型筛选规则加载并发送极短真实请求验证可用性
+        读取 cc-switch 中转站配置，按范围持续验证模型可用性并沉淀巡检历史
       </p>
     </div>
     <div class="page-actions header-actions">

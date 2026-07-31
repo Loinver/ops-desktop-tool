@@ -2,9 +2,9 @@
   <div class="page page--workspace">
     <div class="page-header">
       <div class="page-heading header-left">
-        <div class="page-eyebrow"><t-icon name="image" /> AI IMAGE</div>
-        <h2 class="page-title">AI 生图</h2>
-        <p class="page-desc">通过聊天窗口生成图片</p>
+        <div class="page-eyebrow"><t-icon name="image" /> AI IMAGE LAB</div>
+        <h2 class="page-title">AI 图像实验</h2>
+        <p class="page-desc">调用 OpenAI 兼容图像模型生成、管理和保存图片</p>
       </div>
       <div class="page-actions header-actions">
         <div class="model-summary">

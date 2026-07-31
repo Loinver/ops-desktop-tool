@@ -37,7 +37,7 @@ function updateMonitorSettings(currentValue = {}, changes = {}, savedAt = Date.n
   // 显式启用仍应给出清晰错误；仅清空目标时则自动关闭，避免留下
   // “enabled=true 但没有目标”的不可运行状态。
   if (has('enabled') && requestedEnabled && targets.length === 0) {
-    throw new Error('请先在模型测试页配置巡检目标')
+    throw new Error('请先在模型可靠性页配置巡检目标')
   }
   const enabled = requestedEnabled && targets.length > 0
 

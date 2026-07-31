@@ -4,7 +4,7 @@
       <div class="page-heading">
         <div class="page-eyebrow"><t-icon name="dashboard" /> OPS DASHBOARD</div>
         <h2 class="page-title">运维仪表盘</h2>
-        <p class="page-desc">发布状态、模型可用率与定时巡检集中总览</p>
+        <p class="page-desc">统一查看发布、模型可靠性、自动化巡检与待处理事件</p>
       </div>
       <div class="page-actions">
         <button type="button" class="refresh-button" :disabled="loading" @click="loadDashboard">
@@ -55,7 +55,7 @@
 
       <article class="panel monitor-panel">
         <div class="panel-title"><div><h3>定时巡检</h3><p>应用运行期间由主进程后台执行</p></div></div>
-        <label class="switch-row" :title="monitorTargetCount ? '' : '请先在模型测试页配置巡检目标'"><span>启用巡检</span><input v-model="monitorDraft.enabled" type="checkbox" :disabled="saving || !monitorTargetCount" /></label>
+        <label class="switch-row" :title="monitorTargetCount ? '' : '请先在模型可靠性页配置巡检目标'"><span>启用巡检</span><input v-model="monitorDraft.enabled" type="checkbox" :disabled="saving || !monitorTargetCount" /></label>
         <label class="field-row"><span>间隔（分钟）</span><input v-model.number="monitorDraft.intervalMinutes" type="number" min="5" max="1440" :disabled="saving" /></label>
         <label class="switch-row"><span>异常桌面通知</span><input v-model="monitorDraft.notifyOnFailure" type="checkbox" :disabled="saving" /></label>
         <div class="monitor-meta">巡检目标：{{ monitorTargetCount }} 个模型<button v-if="!monitorTargetCount" type="button" @click="$router.push('/model-test')">前往配置</button></div>
@@ -131,7 +131,7 @@ async function loadDashboard() {
 
 async function saveMonitor() {
   if (monitorDraft.enabled && !monitorTargetCount.value) {
-    MessagePlugin.warning({ content: '请先在模型测试页配置巡检目标', placement: 'bottom-right' })
+    MessagePlugin.warning({ content: '请先在模型可靠性页配置巡检目标', placement: 'bottom-right' })
     return
   }
   saving.value = true

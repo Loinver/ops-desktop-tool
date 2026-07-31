@@ -4,28 +4,28 @@
  */
 export const FUNCTION_MENU_GROUPS = [
   {
-    id: 'operations',
-    name: '核心运维',
+    id: 'overview',
+    name: '总览',
     items: [
       {
         id: 'ops-dashboard',
         path: '/ops-dashboard',
         name: '运维仪表盘',
-        description: '集中查看发布、模型、巡检与服务运行摘要',
+        description: '统一查看发布、模型可靠性、自动化巡检与待处理事件',
         icon: 'dashboard',
       },
       {
         id: 'ops-control-center',
         path: '/ops-control-center',
-        name: 'AI 运维指挥中心',
-        description: '使用 Copilot 处理事件并编排自动化巡检',
+        name: '运维中心',
+        description: '集中处理事件、运行巡检并使用 AI Copilot 辅助排障',
         icon: 'chat',
       },
     ],
   },
   {
-    id: 'delivery',
-    name: '发布与服务',
+    id: 'operations',
+    name: '核心运维',
     items: [
       {
         id: 'system-release',
@@ -35,39 +35,32 @@ export const FUNCTION_MENU_GROUPS = [
         icon: 'folder-open',
       },
       {
+        id: 'model-test',
+        path: '/model-test',
+        name: '模型可靠性',
+        description: '测试模型可用性，管理范围、历史趋势与定时巡检',
+        icon: 'api',
+      },
+      {
         id: 'node-services',
         path: '/node-services',
         name: 'Node 服务',
-        description: '查看本机端口占用和正在监听的服务',
+        description: '查看本机 Node.js 监听端口并安全结束占用进程',
         icon: 'code',
         badge: 'services',
       },
     ],
   },
   {
-    id: 'ai',
-    name: 'AI 能力',
+    id: 'intelligence',
+    name: 'AI 与知识',
     items: [
       {
         id: 'ai-ops',
         path: '/ai-ops',
-        name: 'AI 运维中心',
-        description: '配置 Provider、评测、日志分析、知识库与工作流',
-        icon: 'chat',
-      },
-      {
-        id: 'model-test',
-        path: '/model-test',
-        name: '模型测试',
-        description: '验证模型可用性，并配置定时健康巡检',
-        icon: 'api',
-      },
-      {
-        id: 'gpt-image',
-        path: '/gpt-image',
-        name: 'AI 生图',
-        description: '调用图像模型生成、管理和保存图片',
-        icon: 'image',
+        name: 'AI 能力中心',
+        description: '管理 Provider、模型评测、日志分析、知识库与安全工作流',
+        icon: 'gesture-pray',
       },
     ],
   },
@@ -96,6 +89,19 @@ export const FUNCTION_MENU_GROUPS = [
         name: '系统信息',
         description: '查看设备、运行环境与资源信息',
         icon: 'chart-area',
+      },
+    ],
+  },
+  {
+    id: 'experiments',
+    name: '实验功能',
+    items: [
+      {
+        id: 'gpt-image',
+        path: '/gpt-image',
+        name: 'AI 图像实验',
+        description: '调用兼容图像模型生成、管理和保存图片',
+        icon: 'image',
       },
     ],
   },

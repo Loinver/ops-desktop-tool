@@ -53,7 +53,7 @@ test('巡检仍启用时按最新间隔安排下一次运行', () => {
 test('没有有效巡检目标时不能启用定时巡检', () => {
   assert.throws(
     () => updateMonitorSettings({ enabled: false, targets: [] }, { enabled: true }, 1_800_000_000_000),
-    /请先在模型测试页配置巡检目标/,
+    /请先在模型可靠性页配置巡检目标/,
   )
 })
 

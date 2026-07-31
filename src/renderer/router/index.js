@@ -14,10 +14,34 @@ const routes = [
         meta: { title: '运维仪表盘' }
       },
       {
+        path: 'ops-control-center',
+        name: 'OpsControlCenter',
+        component: () => import('../views/ops-control-center/index.vue'),
+        meta: { title: '运维中心', keepAlive: true }
+      },
+      {
+        path: 'system-release',
+        name: 'SystemRelease',
+        component: () => import('../views/system-release/index.vue'),
+        meta: { title: '系统发布', keepAlive: true }
+      },
+      {
+        path: 'model-test',
+        name: 'ModelTest',
+        component: () => import('../views/model-test/index.vue'),
+        meta: { title: '模型可靠性', keepAlive: true }
+      },
+      {
         path: 'node-services',
         name: 'NodeServices',
         component: () => import('../views/node-services/index.vue'),
         meta: { title: 'Node 服务' }
+      },
+      {
+        path: 'ai-ops',
+        name: 'AiOps',
+        component: () => import('../views/ai-ops/index.vue'),
+        meta: { title: 'AI 能力中心', keepAlive: true }
       },
       {
         path: 'quick-launch',
@@ -38,34 +62,10 @@ const routes = [
         meta: { title: '系统信息' }
       },
       {
-        path: 'system-release',
-        name: 'SystemRelease',
-        component: () => import('../views/system-release/index.vue'),
-        meta: { title: '系统发布', keepAlive: true }
-      },
-      {
         path: 'gpt-image',
         name: 'GptImage',
         component: () => import('../views/gpt-image/index.vue'),
-        meta: { title: 'AI 生图' }
-      },
-      {
-        path: 'model-test',
-        name: 'ModelTest',
-        component: () => import('../views/model-test/index.vue'),
-        meta: { title: '模型测试', keepAlive: true }
-      },
-      {
-        path: 'ops-control-center',
-        name: 'OpsControlCenter',
-        component: () => import('../views/ops-control-center/index.vue'),
-        meta: { title: 'AI 运维指挥中心', keepAlive: true }
-      },
-      {
-        path: 'ai-ops',
-        name: 'AiOps',
-        component: () => import('../views/ai-ops/index.vue'),
-        meta: { title: 'AI 运维中心', keepAlive: true }
+        meta: { title: 'AI 图像实验' }
       }
     ]
   }

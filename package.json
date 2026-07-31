@@ -1,7 +1,7 @@
 {
   "name": "ops-desktop-tool",
   "version": "1.0.0",
-  "description": "电脑管理工具 - 系统运维助手",
+  "description": "本机优先的 AI 运维桌面工作台",
   "main": "src/main/main.js",
   "scripts": {
     "dev": "vite",

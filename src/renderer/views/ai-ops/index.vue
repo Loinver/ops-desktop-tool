@@ -2,9 +2,9 @@
   <div class="page ai-ops-page">
     <header class="page-header">
       <div class="page-heading">
-        <div class="page-eyebrow"><t-icon name="gesture-pray" /> AI OPS CENTER</div>
-        <h2 class="page-title">AI 运维中心</h2>
-        <p class="page-desc">评测模型、分析脱敏日志、检索本地知识，并把自然语言需求变成可确认的运维工作流。</p>
+        <div class="page-eyebrow"><t-icon name="gesture-pray" /> AI CAPABILITY CENTER</div>
+        <h2 class="page-title">AI 能力中心</h2>
+        <p class="page-desc">统一管理 Provider、模型评测、脱敏日志、知识库与需要确认的安全工作流。</p>
       </div>
       <div class="page-actions header-actions">
         <span class="safety-chip"><t-icon name="secured" /> 凭证加密 · 执行需确认</span>
@@ -16,7 +16,7 @@
     </header>
 
     <main class="page-content">
-      <div class="tab-bar" role="tablist" aria-label="AI 运维功能">
+      <div class="tab-bar" role="tablist" aria-label="AI 能力功能">
       <button
         v-for="tab in tabs"
         :id="`ai-ops-tab-${tab.id}`"
