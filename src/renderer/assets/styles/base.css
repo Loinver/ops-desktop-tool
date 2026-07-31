@@ -120,7 +120,8 @@ body {
 
 /* 统一工作区基础：业务页可以沿用 .page / .page-header，而不必各自重新定义背景与节奏。 */
 .page {
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
   padding: var(--page-padding-y) var(--page-padding-x);
   overflow-y: auto;
   background: transparent;

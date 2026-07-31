@@ -1724,7 +1724,9 @@ onMounted(async () => {
 <style scoped>
 .page {
   height: 100%;
+  min-height: 0;
   padding: var(--page-padding-y) var(--page-padding-x);
+  overflow-y: auto;
   background: transparent;
   display: flex;
   flex-direction: column;
