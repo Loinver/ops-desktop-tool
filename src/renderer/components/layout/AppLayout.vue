@@ -40,7 +40,7 @@ function toggleSidebar() {
 <style scoped>
 .app-layout { width: 100vw; height: 100vh; display: flex; overflow: hidden; background: var(--shell-bg); }
 .app-shell { min-width: 0; flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--shell-bg); }
-.workspace { min-width: 0; min-height: 0; flex: 1; overflow: hidden; position: relative; }
+.workspace { position: relative; z-index: 0; min-width: 0; min-height: 0; flex: 1; overflow: hidden; }
 .workspace::before { position: absolute; z-index: 0; inset: 0; pointer-events: none; content: ''; background-image: radial-gradient(circle at 83% -10%, rgba(99,102,241,.08), transparent 25%), radial-gradient(circle at 6% 100%, rgba(14,165,233,.055), transparent 23%); }
 .workspace :deep(> *) { position: relative; z-index: 1; }
 .page-fade-enter-active,.page-fade-leave-active { transition: opacity .18s ease, transform .18s ease; }.page-fade-enter-from { opacity: 0; transform: translateY(6px); }.page-fade-leave-to { opacity: 0; transform: translateY(-3px); }

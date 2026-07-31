@@ -154,6 +154,8 @@ onUnmounted(() => document.removeEventListener('click', handleDocumentClick))
 
 <style scoped>
 .topbar {
+  position: relative;
+  z-index: 40;
   height: var(--topbar-height);
   min-height: var(--topbar-height);
   display: flex;
@@ -225,7 +227,7 @@ kbd { margin-left: auto; padding: 2px 5px; border-radius: 5px; background: var(-
 .status-indicator { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: var(--success); box-shadow: 0 0 0 4px color-mix(in srgb, var(--success) 13%, transparent); }
 .status-indicator.warning { background: var(--warning); box-shadow: 0 0 0 4px color-mix(in srgb, var(--warning) 15%, transparent); }
 
-.status-popover { position: absolute; z-index: 50; top: calc(100% + 10px); right: 0; width: 336px; padding: 16px; border: 1px solid var(--shell-border); border-radius: 14px; background: var(--shell-surface-raised); box-shadow: var(--shadow-xl); }
+.status-popover { position: absolute; z-index: 60; top: calc(100% + 10px); right: 0; width: 336px; padding: 16px; border: 1px solid var(--shell-border); border-radius: 14px; background: var(--shell-surface-raised); box-shadow: var(--shadow-xl); }
 .status-popover-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .status-popover-header h2 { margin-top: 1px; color: var(--text); font-size: 15px; line-height: 22px; }
 .icon-button { width: 30px; height: 30px; display: inline-grid; place-items: center; border: 0; border-radius: 8px; background: transparent; color: var(--text-secondary); cursor: pointer; }
