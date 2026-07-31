@@ -2,7 +2,7 @@
   <div class="page ai-ops-page">
     <header class="page-header">
       <div class="page-heading">
-        <div class="page-eyebrow eyebrow"><t-icon name="gesture-pray" /> AI OPS CENTER</div>
+        <div class="page-eyebrow"><t-icon name="gesture-pray" /> AI OPS CENTER</div>
         <h2 class="page-title">AI 运维中心</h2>
         <p class="page-desc">评测模型、分析脱敏日志、检索本地知识，并把自然语言需求变成可确认的运维工作流。</p>
       </div>
@@ -614,16 +614,6 @@ onMounted(loadState)
 .inline-hint {
   display: flex;
   align-items: center;
-}
-
-.eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--primary);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
 }
 
 .panel-title p {

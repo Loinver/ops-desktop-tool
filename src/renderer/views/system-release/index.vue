@@ -3,6 +3,7 @@
     <!-- 页头 -->
     <header class="page-header">
       <div class="page-heading header-left">
+        <div class="page-eyebrow"><t-icon name="folder-open" /> SYSTEM RELEASE</div>
         <h2 class="page-title">系统发布</h2>
         <p class="page-desc" v-if="connectionStatus?.success">
           <t-icon name="check-circle-filled" class="status-icon success" />

@@ -2,6 +2,7 @@
   <div class="page page--workspace">
     <div class="page-header">
       <div class="page-heading header-left">
+        <div class="page-eyebrow"><t-icon name="image" /> AI IMAGE</div>
         <h2 class="page-title">AI 生图</h2>
         <p class="page-desc">通过聊天窗口生成图片</p>
       </div>

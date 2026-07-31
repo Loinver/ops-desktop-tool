@@ -3,6 +3,7 @@
     <!-- 页头 -->
     <header class="page-header">
       <div class="page-heading header-left">
+        <div class="page-eyebrow"><t-icon name="file-copy" /> CLIPBOARD HISTORY</div>
         <h2 class="page-title">剪贴板历史</h2>
         <p class="page-desc">记录复制过的内容，点击即可快速复制</p>
       </div>

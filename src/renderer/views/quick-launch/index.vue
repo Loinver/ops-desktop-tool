@@ -2,6 +2,7 @@
   <div class="page">
     <header class="page-header">
       <div class="page-heading header-left">
+        <div class="page-eyebrow"><t-icon name="rocket" /> QUICK LAUNCH</div>
         <h2 class="page-title">快捷启动</h2>
         <p class="page-desc">管理常用应用和网站，并按配置一键打开多个网站</p>
       </div>

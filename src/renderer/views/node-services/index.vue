@@ -3,6 +3,7 @@
     <!-- 页头 -->
     <header class="page-header">
       <div class="page-heading header-left">
+        <div class="page-eyebrow"><t-icon name="code" /> NODE SERVICES</div>
         <h2 class="page-title">Node 服务</h2>
         <p class="page-desc">管理本地 Node.js 进程，监控端口占用情况</p>
       </div>

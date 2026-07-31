@@ -3,6 +3,7 @@
     <!-- 页头 -->
     <header class="page-header">
       <div class="page-heading header-left">
+        <div class="page-eyebrow"><t-icon name="chart-area" /> SYSTEM INFORMATION</div>
         <h2 class="page-title">系统信息</h2>
         <p class="page-desc">查看当前系统运行状态和环境信息</p>
       </div>

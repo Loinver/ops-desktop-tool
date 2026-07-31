@@ -2,6 +2,7 @@
   <div class="page dashboard-page">
     <header class="page-header dashboard-header">
       <div class="page-heading">
+        <div class="page-eyebrow"><t-icon name="dashboard" /> OPS DASHBOARD</div>
         <h2 class="page-title">运维仪表盘</h2>
         <p class="page-desc">发布状态、模型可用率与定时巡检集中总览</p>
       </div>
