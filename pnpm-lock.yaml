@@ -8,24 +8,12 @@ importers:
 
   .:
     dependencies:
-      pinia:
-        specifier: ^3.0.4
-        version: 3.0.4(typescript@5.9.3)(vue@3.5.35(typescript@5.9.3))
       ssh2:
         specifier: ^1.17.0
         version: 1.17.0
       ssh2-sftp-client:
         specifier: ^11.0.0
         version: 11.0.0
-      tdesign-vue-next:
-        specifier: ^1.20.1
-        version: 1.20.1(vue@3.5.35(typescript@5.9.3))
-      vue:
-        specifier: ^3.4.38
-        version: 3.5.35(typescript@5.9.3)
-      vue-router:
-        specifier: ^4.6.4
-        version: 4.6.4(vue@3.5.35(typescript@5.9.3))
     devDependencies:
       '@vitejs/plugin-vue':
         specifier: ^5.1.2
@@ -39,9 +27,21 @@ importers:
       electron-builder:
         specifier: ^25.1.8
         version: 25.1.8(electron-builder-squirrel-windows@25.1.8)
+      pinia:
+        specifier: ^3.0.4
+        version: 3.0.4(typescript@5.9.3)(vue@3.5.35(typescript@5.9.3))
+      tdesign-vue-next:
+        specifier: ^1.20.1
+        version: 1.20.1(vue@3.5.35(typescript@5.9.3))
       vite:
         specifier: ^5.4.0
         version: 5.4.21(@types/node@20.19.42)
+      vue:
+        specifier: ^3.4.38
+        version: 3.5.35(typescript@5.9.3)
+      vue-router:
+        specifier: ^4.6.4
+        version: 4.6.4(vue@3.5.35(typescript@5.9.3))
 
 packages:
 
