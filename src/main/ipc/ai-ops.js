@@ -101,7 +101,7 @@ function registerAiOpsHandlers() {
   })
 
   ipcMain.handle(IPC_CHANNELS.AI_PROVIDER_SOURCE_LIST, async () => {
-    try { return success({ sources: await listProviderSources() }) } catch (error) { return failure(error) }
+    try { return success({ sources: await listProviderSources({ userDataPath: userDataPath() }) }) } catch (error) { return failure(error) }
   })
   ipcMain.handle(IPC_CHANNELS.AI_PROVIDER_SOURCE_ADD, async (_event, input) => {
     try { return success(await addProviderFromModelReliability({ userDataPath: userDataPath(), input })) } catch (error) { return failure(error) }

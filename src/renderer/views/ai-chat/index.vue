@@ -16,29 +16,6 @@
 
     <main class="page-content chat-page-content">
       <section class="surface-panel chat-workspace" aria-label="AI 对话工作区">
-        <header class="chat-workspace__header">
-          <div class="assistant-identity">
-            <span class="assistant-identity__icon"><t-icon name="chat" /></span>
-            <div>
-              <div class="assistant-identity__title-row">
-                <h3>智能助手</h3>
-                <span :class="['connection-status', { 'connection-status--ready': activeProviderReady }]">
-                  <i></i>{{ activeProviderReady ? '已连接' : '需要配置' }}
-                </span>
-              </div>
-              <p>
-                <template v-if="activeProvider">
-                  {{ activeProvider.name }} <span aria-hidden="true">·</span> {{ activeProvider.model }}
-                </template>
-                <template v-else>配置默认 Provider 后即可开始对话</template>
-              </p>
-            </div>
-          </div>
-          <button v-if="activeProvider" class="provider-switch" type="button" @click="switchProvider">
-            <t-icon name="refresh" /> 切换模型
-          </button>
-        </header>
-
         <div v-if="activeProviderReady" class="knowledge-toolbar">
           <div class="knowledge-toolbar__label">
             <t-icon name="search" />
@@ -148,17 +125,22 @@
               @keydown.enter.exact.prevent="sendAiChat"
             />
             <div class="composer__footer">
-              <span>Enter 发送 · Shift + Enter 换行</span>
-              <button
-                class="send-button"
-                type="button"
-                aria-label="发送问题"
-                :disabled="chatBusy || !activeProviderReady || !chatInput.trim()"
-                @click="sendAiChat"
-              >
-                <t-icon :name="chatBusy ? 'loading' : 'arrow-up'" :class="{ spinning: chatBusy }" />
-                <span>{{ chatBusy ? '发送中' : '发送' }}</span>
-              </button>
+              <span class="composer-shortcut">Enter 发送 · Shift + Enter 换行</span>
+              <div class="composer-actions">
+                <button v-if="activeProvider" class="provider-switch" type="button" @click="switchProvider">
+                  <t-icon name="refresh" /> 切换模型
+                </button>
+                <button
+                  class="send-button"
+                  type="button"
+                  aria-label="发送问题"
+                  :disabled="chatBusy || !activeProviderReady || !chatInput.trim()"
+                  @click="sendAiChat"
+                >
+                  <t-icon :name="chatBusy ? 'loading' : 'arrow-up'" :class="{ spinning: chatBusy }" />
+                  <span>{{ chatBusy ? '发送中' : '发送' }}</span>
+                </button>
+              </div>
             </div>
           </div>
           <p class="composer-note"><t-icon name="secured" /> API Key 仅在主进程使用；提交内容会先脱敏常见密钥、Token 和密码字段。</p>
@@ -464,19 +446,6 @@ function configureProvider() {
   overflow: hidden;
 }
 
-.chat-workspace__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--spacing-md);
-  min-height: 68px;
-  padding: 12px var(--panel-padding);
-  border-bottom: 1px solid var(--border-light);
-}
-
-.assistant-identity,
-.assistant-identity__title-row,
-.connection-status,
 .provider-switch,
 .knowledge-toolbar,
 .knowledge-toolbar__label,
@@ -487,81 +456,19 @@ function configureProvider() {
 .message-actions,
 .composer-unavailable,
 .composer__footer,
+.composer-actions,
 .send-button,
 .composer-note {
   display: flex;
   align-items: center;
 }
 
-.assistant-identity {
-  min-width: 0;
-  gap: 12px;
-}
-
-.assistant-identity__icon,
 .message-avatar {
   display: grid;
   flex: 0 0 auto;
   place-items: center;
   color: var(--primary);
   background: var(--primary-light);
-}
-
-.assistant-identity__icon {
-  width: 40px;
-  height: 40px;
-  border: 1px solid color-mix(in srgb, var(--primary) 16%, var(--border-light));
-  border-radius: 12px;
-  font-size: 20px;
-}
-
-.assistant-identity__title-row {
-  gap: var(--spacing-sm);
-  min-width: 0;
-}
-
-.assistant-identity h3 {
-  color: var(--text);
-  font-size: var(--section-title-size);
-  line-height: var(--section-title-line-height);
-}
-
-.assistant-identity p {
-  overflow: hidden;
-  margin-top: 2px;
-  color: var(--text-muted);
-  font-size: 12px;
-  line-height: 18px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.connection-status {
-  gap: 5px;
-  padding: 3px 7px;
-  border-radius: 999px;
-  color: var(--text-muted);
-  background: var(--bg-subtle);
-  font-size: 11px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.connection-status i {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--text-muted);
-}
-
-.connection-status--ready {
-  color: var(--success);
-  background: color-mix(in srgb, var(--success) 10%, var(--bg-subtle));
-}
-
-.connection-status--ready i {
-  background: var(--success);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 12%, transparent);
 }
 
 .provider-switch {
@@ -633,7 +540,7 @@ function configureProvider() {
   min-height: clamp(340px, 48vh, 620px);
   flex: 1 1 auto;
   overflow-y: auto;
-  padding: clamp(24px, 3vw, 40px) var(--panel-padding);
+  padding: 0 var(--panel-padding) clamp(24px, 3vw, 40px);
   background:
     radial-gradient(circle at 12% 0, color-mix(in srgb, var(--primary) 5%, transparent), transparent 26%),
     linear-gradient(180deg, color-mix(in srgb, var(--bg-subtle) 68%, transparent), transparent 34%);
@@ -648,14 +555,14 @@ function configureProvider() {
 .chat-history__status {
   position: sticky;
   z-index: 1;
-  top: -24px;
+  top: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--spacing-sm);
   width: min(var(--chat-content-width), 100%);
-  padding: 4px 0 14px;
-  margin: 0 auto var(--spacing-lg);
+  padding: 8px 0 10px;
+  margin: 0 auto var(--spacing-md);
   border-bottom: 1px solid color-mix(in srgb, var(--border-light) 84%, transparent);
   color: var(--text-muted);
   background: linear-gradient(180deg, var(--bg-subtle) 55%, transparent);
@@ -995,6 +902,21 @@ function configureProvider() {
   font-size: 11px;
 }
 
+.composer-actions {
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+.composer-actions .provider-switch {
+  height: 32px;
+  padding: 0 8px;
+  background: var(--bg-subtle);
+}
+
+.composer-actions .provider-switch:hover {
+  background: var(--primary-light);
+}
+
 .send-button {
   justify-content: center;
   gap: 6px;
@@ -1051,12 +973,6 @@ function configureProvider() {
     min-height: 620px;
   }
 
-  .chat-workspace__header {
-    align-items: flex-start;
-    min-height: 0;
-    padding: var(--spacing-md);
-  }
-
   .provider-switch {
     padding-right: 0;
   }
@@ -1080,9 +996,6 @@ function configureProvider() {
     padding: var(--spacing-lg) var(--spacing-md);
   }
 
-  .chat-history__status {
-    top: -24px;
-  }
 
   .prompt-suggestions {
     grid-template-columns: 1fr;
@@ -1109,16 +1022,6 @@ function configureProvider() {
 }
 
 @media (max-width: 480px) {
-  .assistant-identity__title-row {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .assistant-identity p {
-    max-width: 190px;
-  }
-
   .provider-switch {
     font-size: 0;
   }
@@ -1139,7 +1042,7 @@ function configureProvider() {
     flex: 1;
   }
 
-  .composer__footer > span {
+  .composer-shortcut {
     display: none;
   }
 

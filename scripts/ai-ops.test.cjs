@@ -42,6 +42,18 @@ function sourceProviderLoader() {
   })
 }
 
+function writeModelTestHistory(directory, entries) {
+  fs.writeFileSync(
+    path.join(directory, 'model-test-history.json'),
+    JSON.stringify(entries.map((entry, index) => ({
+      id: `model-test-${index + 1}`,
+      finishedAt: index + 1,
+      results: [],
+      ...entry,
+    }))),
+  )
+}
+
 function cleanup(directory) {
   fs.rmSync(directory, { recursive: true, force: true })
 }
@@ -62,7 +74,10 @@ test('AI Provider 只保存模型可靠性引用，运行时读取最新凭证',
   const directory = makeTempDir()
   try {
     const providerLoader = sourceProviderLoader()
-    const sources = await listProviderSources({ providerLoader })
+    writeModelTestHistory(directory, [{
+      results: [{ providerId: 'cc-switch-test-provider', appType: 'codex', model: 'qwen3', status: 'ok' }],
+    }])
+    const sources = await listProviderSources({ userDataPath: directory, providerLoader })
     assert.equal(sources.length, 1)
     assert.equal(Object.hasOwn(sources[0], 'apiKey'), false)
 
@@ -98,6 +113,9 @@ test('不可用的模型可靠性 Provider 不能被设为 AI 默认 Provider', 
   const directory = makeTempDir()
   try {
     const readyLoader = sourceProviderLoader()
+    writeModelTestHistory(directory, [{
+      results: [{ providerId: 'cc-switch-test-provider', appType: 'codex', model: 'qwen3', status: 'ok' }],
+    }])
     const saved = await addProviderFromModelReliability({
       userDataPath: directory,
       input: { sourceProviderId: 'cc-switch-test-provider', sourceAppType: 'codex', model: 'qwen3' },
@@ -217,7 +235,14 @@ test('模型可靠性中的 Responses、Anthropic 和 Gemini Provider 都可一�
     ],
   })
   try {
-    const sources = await listProviderSources({ providerLoader })
+    writeModelTestHistory(directory, [{
+      results: [
+        { providerId: 'responses', appType: 'codex', model: 'gpt-test', status: 'ok' },
+        { providerId: 'anthropic', appType: 'claude', model: 'claude-test', status: 'ok' },
+        { providerId: 'gemini', appType: 'gemini', model: 'gemini-test', status: 'ok' },
+      ],
+    }])
+    const sources = await listProviderSources({ userDataPath: directory, providerLoader })
     assert.deepEqual(sources.map(item => item.protocolLabel), ['OpenAI Responses', 'Anthropic Messages', 'Gemini generateContent'])
     assert.doesNotMatch(JSON.stringify(sources), /responses-secret|claude-secret|gemini-secret/)
 
@@ -235,6 +260,89 @@ test('模型可靠性中的 Responses、Anthropic 和 Gemini Provider 都可一�
     assert.equal(runtime.anthropicAuthType, 'bearer')
     assert.equal(runtime.beta1m, true)
     assert.equal(runtime.apiKey, 'claude-secret')
+  } finally {
+    cleanup(directory)
+  }
+})
+
+test('AI Provider 仅展示最近一次模型测试通过的模型，失败后不可接入', async () => {
+  const directory = makeTempDir()
+  const providerLoader = async () => ({
+    ok: true,
+    providers: [{
+      id: 'filtered-provider',
+      appType: 'codex',
+      name: '筛选测试 Provider',
+      protocol: 'openai',
+      wireApi: 'chat',
+      baseUrl: 'https://example.com/v1',
+      apiKey: 'test-secret',
+      testable: true,
+      models: [
+        { model: 'passed-model' },
+        { model: 'failed-model' },
+        { model: 'untested-model' },
+      ],
+    }],
+  })
+  try {
+    writeModelTestHistory(directory, [
+      {
+        finishedAt: 100,
+        results: [
+          { providerId: 'filtered-provider', appType: 'codex', model: 'passed-model', status: 'ok' },
+          { providerId: 'filtered-provider', appType: 'codex', model: 'failed-model', status: 'ok' },
+        ],
+      },
+      {
+        finishedAt: 200,
+        results: [{ providerId: 'filtered-provider', appType: 'codex', model: 'failed-model', status: 'error' }],
+      },
+    ])
+
+    const sources = await listProviderSources({ userDataPath: directory, providerLoader })
+    assert.equal(sources.length, 1)
+    assert.deepEqual(sources[0].models.map(item => item.model), ['passed-model'])
+
+    await assert.rejects(
+      () => addProviderFromModelReliability({
+        userDataPath: directory,
+        input: { sourceProviderId: 'filtered-provider', sourceAppType: 'codex', model: 'failed-model' },
+        providerLoader,
+      }),
+      /尚未通过最近一次模型测试/,
+    )
+    await assert.rejects(
+      () => addProviderFromModelReliability({
+        userDataPath: directory,
+        input: { sourceProviderId: 'filtered-provider', sourceAppType: 'codex', model: 'untested-model' },
+        providerLoader,
+      }),
+      /尚未通过最近一次模型测试/,
+    )
+
+    const saved = await addProviderFromModelReliability({
+      userDataPath: directory,
+      input: { sourceProviderId: 'filtered-provider', sourceAppType: 'codex', model: 'passed-model' },
+      providerLoader,
+    })
+    assert.equal(saved.provider.model, 'passed-model')
+
+    writeModelTestHistory(directory, [{
+      finishedAt: 300,
+      results: [{ providerId: 'filtered-provider', appType: 'codex', model: 'passed-model', status: 'error' }],
+    }])
+    const listed = await listProviders({ userDataPath: directory, providerLoader })
+    assert.equal(listed.providers[0].available, false)
+    assert.match(listed.providers[0].issue, /尚未通过最近一次模型测试/)
+    await assert.rejects(
+      () => activateProvider({ userDataPath: directory, id: saved.provider.id, providerLoader }),
+      /尚未通过最近一次模型测试/,
+    )
+    await assert.rejects(
+      () => runtimeProvider({ userDataPath: directory, providerId: saved.provider.id, providerLoader }),
+      /尚未通过最近一次模型测试/,
+    )
   } finally {
     cleanup(directory)
   }

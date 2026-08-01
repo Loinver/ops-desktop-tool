@@ -9,6 +9,17 @@ function makeTempDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'ops-ai-chat-'))
 }
 
+function writePassedModelTest(directory) {
+  fs.writeFileSync(
+    path.join(directory, 'model-test-history.json'),
+    JSON.stringify([{
+      id: 'model-test-1',
+      finishedAt: Date.now(),
+      results: [{ providerId: 'cc-switch-test-provider', appType: 'codex', model: 'test-model', status: 'ok' }],
+    }]),
+  )
+}
+
 function sourceProviderLoader() {
   return async () => ({
     ok: true,
@@ -40,6 +51,7 @@ test('AI 问答会限制消息、脱敏内容，并仅返回脱敏后的模型�
 
   const directory = makeTempDir()
   const providerLoader = sourceProviderLoader()
+  writePassedModelTest(directory)
   const saved = await addProviderFromModelReliability({
     userDataPath: directory,
     input: { sourceProviderId: 'cc-switch-test-provider', sourceAppType: 'codex', model: 'test-model' },
@@ -110,6 +122,7 @@ test('AI 问答优先保留最新用户问题，并忽略尾随的伪造助手�
 test('AI 问答会保留上游错误类型、HTTP 状态并给出安全的恢复建议', async () => {
   const directory = makeTempDir()
   const providerLoader = sourceProviderLoader()
+  writePassedModelTest(directory)
   const saved = await addProviderFromModelReliability({
     userDataPath: directory,
     input: { sourceProviderId: 'cc-switch-test-provider', sourceAppType: 'codex', model: 'test-model' },

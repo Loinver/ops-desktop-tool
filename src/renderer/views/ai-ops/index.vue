@@ -47,11 +47,11 @@
           <div class="panel-title">
             <div>
               <h3>从模型可靠性一键配置</h3>
-              <p>AI Provider 统一从“模型可靠性”读取。接口地址、密钥与模型目录不会复制到 AI 功能，始终使用最新配置。</p>
+              <p>AI Provider 统一从“模型可靠性”读取；仅显示最近一次模型测试通过的模型。接口地址和密钥始终使用最新配置。</p>
             </div>
             <button class="btn-secondary" type="button" @click="openModelReliability"><t-icon name="jump" /> 前往模型可靠性</button>
           </div>
-          <div class="source-notice"><t-icon name="secured" /> 支持 OpenAI Chat / Responses、Anthropic Messages 与 Gemini generateContent。接口地址、认证方式和密钥始终以模型可靠性中的最新配置为准。</div>
+          <div class="source-notice"><t-icon name="secured" /> 仅可选择最近一次模型测试通过的模型；支持 OpenAI Chat / Responses、Anthropic Messages 与 Gemini generateContent。</div>
           <div v-if="sourceError" class="source-empty" role="status">
             <t-icon name="error-circle" />
             <span>{{ sourceError }}</span>
@@ -67,9 +67,9 @@
                 </select>
               </label>
               <label class="full">
-                <span>模型</span>
+                <span>已测试通过的模型</span>
                 <select v-model="sourceSelection.model" :disabled="!selectedProviderSource || savingProvider">
-                  <option value="">请选择模型</option>
+                  <option value="">请选择测试通过的模型</option>
                   <option v-for="model in selectedProviderModels" :key="model.model" :value="model.model">{{ model.label }}</option>
                 </select>
               </label>
@@ -85,7 +85,7 @@
           </template>
           <div v-else class="source-empty">
             <t-icon name="server" />
-            <span>未找到可接入的 Provider。请先在模型可靠性中完成 OpenAI、Anthropic 或 Gemini Provider 的接口、密钥和模型配置。</span>
+            <span>未找到测试通过的可接入模型。请先在模型可靠性完成模型测试，并确认最近一次测试通过。</span>
             <button class="btn-text" type="button" @click="openModelReliability">去配置</button>
           </div>
         </article>
@@ -422,8 +422,11 @@ async function loadProviderSources() {
       return
     }
     providerSources.value = result.sources || []
-    if (!selectedProviderSource.value) {
+    const selectedSource = providerSources.value.find(source => sourceKey(source) === sourceSelection.value.sourceKey)
+    if (!selectedSource) {
       sourceSelection.value = { sourceKey: '', model: '' }
+    } else if (!selectedSource.models.some(model => model.model === sourceSelection.value.model)) {
+      sourceSelection.value.model = ''
     }
   } catch (error) {
     sourceError.value = error?.message || '读取模型可靠性 Provider 失败'

@@ -46,6 +46,7 @@ function evaluationStatePath(userDataPath) { return filePath(userDataPath, 'ai-e
 function logStatePath(userDataPath) { return filePath(userDataPath, 'ai-log-analysis.json') }
 function knowledgeStatePath(userDataPath) { return filePath(userDataPath, 'ai-knowledge.json') }
 function workflowStatePath(userDataPath) { return filePath(userDataPath, 'ai-workflows.json') }
+function modelTestHistoryPath(userDataPath) { return filePath(userDataPath, 'model-test-history.json') }
 
 function providerRefId(sourceProviderId, sourceAppType, model) {
   return string(`model-reliability:${sourceProviderId}:${sourceAppType}:${model}`, 100)
@@ -83,16 +84,46 @@ function sourceKeyMatches(source, ref) {
   return source?.id === ref?.sourceProviderId && source?.appType === ref?.sourceAppType
 }
 
+function modelTestKey(providerId, appType, model) {
+  return `${string(providerId, 100)}::${string(appType, 80)}::${string(model, 160)}`
+}
+
+/**
+ * 每个 Provider / 模型只看最近一次已完成测试结果；较早的成功不能覆盖之后的失败。
+ * 历史由模型测试页面按时间倒序保存，排序确保即使旧文件顺序异常也能正确处理。
+ */
+function latestModelTestStatuses(userDataPath) {
+  const history = readJsonFile(modelTestHistoryPath(userDataPath), [])
+  const entries = Array.isArray(history) ? [...history] : []
+  entries.sort((a, b) => (Number(b?.finishedAt) || 0) - (Number(a?.finishedAt) || 0))
+
+  const statuses = new Map()
+  for (const entry of entries) {
+    const results = Array.isArray(entry?.results) ? entry.results : []
+    for (const result of results) {
+      const key = modelTestKey(result?.providerId, result?.appType, result?.model)
+      if (!result?.providerId || !result?.appType || !result?.model || statuses.has(key)) continue
+      statuses.set(key, string(result?.status, 40))
+    }
+  }
+  return statuses
+}
+
+function passedSourceModels(source, modelStatuses) {
+  return sourceModels(source).filter(model => modelStatuses.get(modelTestKey(source.id, source.appType, model.model)) === 'ok')
+}
+
 async function loadModelReliabilitySources(providerLoader = loadProviders) {
   const result = await providerLoader()
   if (!result?.ok) throw new Error(`无法读取模型可靠性 Provider：${result?.message || '未知错误'}`)
   return Array.isArray(result.providers) ? result.providers : []
 }
 
-async function listProviderSources({ providerLoader = loadProviders } = {}) {
+async function listProviderSources({ userDataPath = defaultUserDataPath(), providerLoader = loadProviders } = {}) {
   const sources = await loadModelReliabilitySources(providerLoader)
+  const modelStatuses = latestModelTestStatuses(userDataPath)
   return sources
-    .filter(source => supportedAiSource(source) && source.testable && source.apiKey && source.baseUrl && sourceModels(source).length)
+    .filter(source => supportedAiSource(source) && source.testable && source.apiKey && source.baseUrl)
     .map(source => ({
       id: string(source.id, 100),
       appType: string(source.appType, 80),
@@ -103,8 +134,9 @@ async function listProviderSources({ providerLoader = loadProviders } = {}) {
       protocol: string(source.protocol, 40),
       wireApi: string(source.wireApi, 40),
       protocolLabel: providerProtocolLabel(source.protocol, source.wireApi),
-      models: sourceModels(source),
+      models: passedSourceModels(source, modelStatuses),
     }))
+    .filter(source => source.models.length)
 }
 
 async function addProviderFromModelReliability({ userDataPath, input = {}, providerLoader = loadProviders }) {
@@ -119,6 +151,8 @@ async function addProviderFromModelReliability({ userDataPath, input = {}, provi
   if (!supportedAiSource(source)) throw new Error('当前 Provider 协议暂不支持，请在模型可靠性中选择 OpenAI、Anthropic 或 Gemini Provider')
   if (!source.testable || !source.apiKey || !source.baseUrl) throw new Error('所选 Provider 尚未在模型可靠性中完成可用配置')
   if (!sourceModels(source).some(item => item.model === model)) throw new Error('所选模型不属于当前 Provider，请刷新后重新选择')
+  const latestStatus = latestModelTestStatuses(userDataPath).get(modelTestKey(sourceProviderId, sourceAppType, model))
+  if (latestStatus !== 'ok') throw new Error('所选模型尚未通过最近一次模型测试，请先前往模型可靠性完成测试')
 
   const state = loadProviderRaw(userDataPath)
   const id = providerRefId(sourceProviderId, sourceAppType, model)
@@ -138,10 +172,10 @@ async function addProviderFromModelReliability({ userDataPath, input = {}, provi
   else state.providers.push(provider)
   state.activeProviderId = provider.id
   if (!writeJsonFile(providerStatePath(userDataPath), state)) throw new Error('保存 AI Provider 引用失败')
-  return { activeProviderId: state.activeProviderId, provider: await safeProvider(provider, { providerLoader }) }
+  return { activeProviderId: state.activeProviderId, provider: await safeProvider(provider, { userDataPath, providerLoader }) }
 }
 
-async function safeProvider(provider, { providerLoader = loadProviders } = {}) {
+async function safeProvider(provider, { userDataPath = defaultUserDataPath(), providerLoader = loadProviders } = {}) {
   const base = {
     id: string(provider?.id, 100),
     model: string(provider?.model, 160),
@@ -169,9 +203,7 @@ async function safeProvider(provider, { providerLoader = loadProviders } = {}) {
     if (!supportedAiSource(source)) return { ...base, name: string(source.name, 80) || base.name, issue: '该 Provider 协议暂不支持' }
     if (!sourceModels(source).some(item => item.model === base.model)) return { ...base, name: string(source.name, 80) || base.name, baseUrl: string(source.baseUrl, 500), issue: '所选模型已不在 Provider 模型列表中' }
     const hasApiKey = Boolean(source.apiKey)
-    const available = Boolean(source.testable && source.baseUrl && hasApiKey)
-    return {
-      ...base,
+    const sourceDetails = {
       name: redactSensitiveText(string(source.name || source.appLabel || base.name, 80)),
       baseUrl: string(source.baseUrl, 500),
       hasApiKey,
@@ -179,17 +211,24 @@ async function safeProvider(provider, { providerLoader = loadProviders } = {}) {
       protocol: string(source.protocol, 40),
       wireApi: string(source.wireApi, 40),
       protocolLabel: providerProtocolLabel(source.protocol, source.wireApi),
-      available,
-      issue: available ? '' : (Array.isArray(source.issues) && source.issues[0]) || 'Provider 当前不可用，请前往模型可靠性检查配置',
     }
+    const sourceAvailable = Boolean(source.testable && source.baseUrl && hasApiKey)
+    if (!sourceAvailable) return {
+      ...base,
+      ...sourceDetails,
+      issue: (Array.isArray(source.issues) && source.issues[0]) || 'Provider 当前不可用，请前往模型可靠性检查配置',
+    }
+    const latestStatus = latestModelTestStatuses(userDataPath).get(modelTestKey(base.sourceProviderId, base.sourceAppType, base.model))
+    if (latestStatus !== 'ok') return { ...base, ...sourceDetails, issue: '所选模型尚未通过最近一次模型测试' }
+    return { ...base, ...sourceDetails, available: true }
   } catch (error) {
     return { ...base, issue: error?.message || '无法读取模型可靠性 Provider' }
   }
 }
 
-async function listProviders({ userDataPath, providerLoader = loadProviders } = {}) {
+async function listProviders({ userDataPath = defaultUserDataPath(), providerLoader = loadProviders } = {}) {
   const state = loadProviderRaw(userDataPath)
-  return { activeProviderId: state.activeProviderId, providers: await Promise.all(state.providers.map(item => safeProvider(item, { providerLoader }))) }
+  return { activeProviderId: state.activeProviderId, providers: await Promise.all(state.providers.map(item => safeProvider(item, { userDataPath, providerLoader }))) }
 }
 
 async function deleteProvider({ userDataPath, id, providerLoader = loadProviders }) {
@@ -206,7 +245,7 @@ async function activateProvider({ userDataPath, id, providerLoader = loadProvide
   const state = loadProviderRaw(userDataPath)
   const candidate = state.providers.find(item => item.id === id)
   if (!candidate) throw new Error('AI Provider 不存在')
-  const resolved = await safeProvider(candidate, { providerLoader })
+  const resolved = await safeProvider(candidate, { userDataPath, providerLoader })
   if (!resolved.available) throw new Error(resolved.issue || '当前 Provider 不可用，请先在模型可靠性中检查配置')
   state.activeProviderId = id
   if (!writeJsonFile(providerStatePath(userDataPath), state)) throw new Error('切换 AI Provider 失败')
@@ -223,6 +262,8 @@ async function runtimeProvider({ userDataPath, providerId, providerLoader = load
   if (!supportedAiSource(source)) throw new Error('当前 AI Provider 协议暂不支持，请在模型可靠性中更换为 OpenAI、Anthropic 或 Gemini Provider')
   if (!source.testable || !source.baseUrl || !source.apiKey) throw new Error('当前 AI Provider 在模型可靠性中不可用，请先检查接口地址和密钥')
   if (!sourceModels(source).some(item => item.model === ref.model)) throw new Error('当前 AI 模型已不在模型可靠性 Provider 中，请重新一键配置')
+  const latestStatus = latestModelTestStatuses(userDataPath).get(modelTestKey(ref.sourceProviderId, ref.sourceAppType, ref.model))
+  if (latestStatus !== 'ok') throw new Error('当前 AI 模型尚未通过最近一次模型测试，请先前往模型可靠性完成测试')
   const selectedModel = sourceModels(source).find(item => item.model === ref.model)
   return {
     id: ref.id,
@@ -750,6 +791,7 @@ module.exports = {
   defaultUserDataPath,
   redactSensitiveText,
   listProviderSources,
+  latestModelTestStatuses,
   listProviders,
   addProviderFromModelReliability,
   deleteProvider,
