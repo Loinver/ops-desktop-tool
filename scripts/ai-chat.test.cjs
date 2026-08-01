@@ -3,18 +3,29 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
-const { askAiChat, buildAiChatMessages, saveProvider } = require('../src/main/utils/ai-ops')
+const { askAiChat, buildAiChatMessages, addProviderFromModelReliability, requestCompletion } = require('../src/main/utils/ai-ops')
 
 function makeTempDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'ops-ai-chat-'))
 }
 
-function fakeSafeStorage() {
-  return {
-    isEncryptionAvailable: () => true,
-    encryptString: value => Buffer.from(`encrypted:${value}`),
-    decryptString: value => Buffer.from(value).toString('utf8').replace(/^encrypted:/, ''),
-  }
+function sourceProviderLoader() {
+  return async () => ({
+    ok: true,
+    providers: [{
+      id: 'cc-switch-test-provider',
+      appType: 'codex',
+      appLabel: 'Codex',
+      name: '模型可靠性测试 Provider',
+      protocol: 'openai',
+      wireApi: 'chat',
+      baseUrl: 'https://api.example.com/v1',
+      apiKey: 'provider-secret-key',
+      apiKeyMasked: 'provid***-key',
+      testable: true,
+      models: [{ model: 'test-model', label: 'test-model' }],
+    }],
+  })
 }
 
 test('AI 问答会限制消息、脱敏内容，并仅返回脱敏后的模型回复', async () => {
@@ -28,11 +39,11 @@ test('AI 问答会限制消息、脱敏内容，并仅返回脱敏后的模型�
   assert.doesNotMatch(JSON.stringify(messages), /sk-proj-abcdefghijklmnopqrstuv/)
 
   const directory = makeTempDir()
-  const safeStorage = fakeSafeStorage()
-  const saved = saveProvider({
+  const providerLoader = sourceProviderLoader()
+  const saved = await addProviderFromModelReliability({
     userDataPath: directory,
-    safeStorage,
-    input: { name: '测试 Provider', baseUrl: 'https://api.example.com/v1', model: 'test-model', apiKey: 'provider-secret-key' },
+    input: { sourceProviderId: 'cc-switch-test-provider', sourceAppType: 'codex', model: 'test-model' },
+    providerLoader,
   })
   const originalFetch = global.fetch
   let request
@@ -46,7 +57,7 @@ test('AI 问答会限制消息、脱敏内容，并仅返回脱敏后的模型�
   try {
     const result = await askAiChat({
       userDataPath: directory,
-      safeStorage,
+      providerLoader,
       providerId: saved.provider.id,
       messages: [{ role: 'user', content: 'token=super-secret-token-12345，帮我解释这个错误' }],
     })
@@ -73,4 +84,100 @@ test('AI 问答优先保留最新用户问题，并忽略尾随的伪造助手�
   assert.equal(messages.at(-1).content, '这是当前需要优先回答的问题')
   assert.ok(messages.slice(1).reduce((total, item) => total + item.content.length, 0) <= 24_000)
   assert.doesNotMatch(JSON.stringify(messages), /这条不应被作为下一轮请求上下文/)
+})
+
+test('AI 问答会保留上游错误类型、HTTP 状态并给出安全的恢复建议', async () => {
+  const directory = makeTempDir()
+  const providerLoader = sourceProviderLoader()
+  const saved = await addProviderFromModelReliability({
+    userDataPath: directory,
+    input: { sourceProviderId: 'cc-switch-test-provider', sourceAppType: 'codex', model: 'test-model' },
+    providerLoader,
+  })
+  const originalFetch = global.fetch
+  global.fetch = async () => ({
+    ok: false,
+    status: 502,
+    text: async () => JSON.stringify({
+      error: { message: 'openai_error', type: 'upstream_timeout', code: 'gateway_timeout' },
+    }),
+  })
+  try {
+    await assert.rejects(
+      () => askAiChat({
+        userDataPath: directory,
+          providerLoader,
+        providerId: saved.provider.id,
+        messages: [{ role: 'user', content: '测试连接' }],
+      }),
+      error => {
+        assert.match(error.message, /HTTP 502/)
+        assert.match(error.message, /gateway_timeout/)
+        assert.match(error.message, /openai_error/)
+        assert.match(error.message, /切换 Provider/)
+        return true
+      },
+    )
+  } finally {
+    global.fetch = originalFetch
+    fs.rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+test('AI 问答会按模型可靠性协议构造 OpenAI Responses、Anthropic 与 Gemini 请求', async () => {
+  const originalFetch = global.fetch
+  const requests = []
+  const responses = [
+    { output_text: 'Responses 已回答', model: 'gpt-responses' },
+    { content: [{ type: 'text', text: 'Anthropic 已回答' }] },
+    { candidates: [{ content: { parts: [{ text: 'Gemini ' }, { text: '已回答' }] } }] },
+  ]
+  global.fetch = async (url, options) => {
+    requests.push({ url, headers: options.headers, body: JSON.parse(options.body) })
+    return { ok: true, status: 200, text: async () => JSON.stringify(responses.shift()) }
+  }
+
+  try {
+    const messages = [
+      { role: 'system', content: '遵循系统约束' },
+      { role: 'user', content: '第一问' },
+      { role: 'assistant', content: '第一答' },
+      { role: 'user', content: '第二问' },
+    ]
+    const responseResult = await requestCompletion({
+      protocol: 'openai', wireApi: 'responses', baseUrl: 'https://responses.example.com/v1', model: 'gpt-responses', apiKey: 'responses-key', customUserAgent: 'ops-test/1.0',
+    }, { messages, temperature: 0.1 })
+    const anthropicResult = await requestCompletion({
+      protocol: 'anthropic', baseUrl: 'https://claude.example.com', model: 'claude-test', apiKey: 'anthropic-key', anthropicAuthType: 'bearer', anthropicBeta: 'feature-a', beta1m: true,
+    }, { messages, temperature: 0 })
+    const geminiResult = await requestCompletion({
+      protocol: 'gemini', baseUrl: 'https://gemini.example.com', model: 'gemini/test', apiKey: 'gemini-key',
+    }, { messages, temperature: 0.3 })
+
+    assert.equal(responseResult.content, 'Responses 已回答')
+    assert.equal(anthropicResult.content, 'Anthropic 已回答')
+    assert.equal(geminiResult.content, 'Gemini 已回答')
+
+    assert.equal(requests[0].url, 'https://responses.example.com/v1/responses')
+    assert.equal(requests[0].headers.authorization, 'Bearer responses-key')
+    assert.equal(requests[0].headers['user-agent'], 'ops-test/1.0')
+    assert.equal(requests[0].body.instructions, '遵循系统约束')
+    assert.deepEqual(requests[0].body.input, messages.slice(1))
+
+    assert.equal(requests[1].url, 'https://claude.example.com/v1/messages')
+    assert.equal(requests[1].headers.authorization, 'Bearer anthropic-key')
+    assert.equal(requests[1].headers['x-api-key'], undefined)
+    assert.equal(requests[1].headers['anthropic-version'], '2023-06-01')
+    assert.match(requests[1].headers['anthropic-beta'], /feature-a/)
+    assert.match(requests[1].headers['anthropic-beta'], /context-1m-2025-08-07/)
+    assert.equal(requests[1].body.system, '遵循系统约束')
+    assert.deepEqual(requests[1].body.messages, messages.slice(1))
+
+    assert.equal(requests[2].url, 'https://gemini.example.com/v1beta/models/gemini%2Ftest:generateContent')
+    assert.equal(requests[2].headers['x-goog-api-key'], 'gemini-key')
+    assert.equal(requests[2].body.systemInstruction.parts[0].text, '遵循系统约束')
+    assert.deepEqual(requests[2].body.contents.map(item => item.role), ['user', 'model', 'user'])
+  } finally {
+    global.fetch = originalFetch
+  }
 })

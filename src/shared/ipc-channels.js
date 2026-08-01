@@ -101,7 +101,8 @@ const IPC_CHANNELS = {
 
   // AI 运维中心
   AI_OPS_GET_STATE: 'aiOps:getState',
-  AI_PROVIDER_SAVE: 'aiOps:saveProvider',
+  AI_PROVIDER_SOURCE_LIST: 'aiOps:listProviderSources',
+  AI_PROVIDER_SOURCE_ADD: 'aiOps:addProviderFromModelReliability',
   AI_PROVIDER_DELETE: 'aiOps:deleteProvider',
   AI_PROVIDER_ACTIVATE: 'aiOps:activateProvider',
   AI_PROVIDER_TEST: 'aiOps:testProvider',

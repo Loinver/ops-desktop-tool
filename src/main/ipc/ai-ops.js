@@ -1,14 +1,15 @@
 const path = require('node:path')
 const fs = require('node:fs')
-const { app, ipcMain, safeStorage, shell } = require('electron')
+const { app, ipcMain, shell } = require('electron')
 const { IPC_CHANNELS } = require('../../shared/ipc-channels')
 const { readJsonFile } = require('../utils/json-store')
 const { readQuickLaunchState } = require('../utils/quicklaunch-storage')
 const { normalizeExternalUrl, openExternalUrl } = require('../utils/external-url')
 const {
   redactSensitiveText,
+  listProviderSources,
   listProviders,
-  saveProvider,
+  addProviderFromModelReliability,
   deleteProvider,
   activateProvider,
   runtimeProvider,
@@ -47,9 +48,9 @@ function userDataPath() { return app.getPath('userData') }
 function success(value = {}) { return { ok: true, ...value } }
 function failure(error) { return { ok: false, error: error instanceof Error ? error.message : 'AI 运维操作失败' } }
 
-function safeState() {
+async function safeState() {
   return {
-    providers: listProviders({ userDataPath: userDataPath(), safeStorage }),
+    providers: await listProviders({ userDataPath: userDataPath() }),
     evaluations: loadEvaluationState(userDataPath()),
     logs: loadLogState(userDataPath()),
     knowledge: loadKnowledgeState(userDataPath()),
@@ -82,7 +83,7 @@ function copilotContext(prompt) {
 }
 
 async function generateOptionalAnalysis({ providerId, prompt }) {
-  const provider = runtimeProvider({ userDataPath: userDataPath(), safeStorage, providerId })
+  const provider = await runtimeProvider({ userDataPath: userDataPath(), providerId })
   const response = await requestCompletion(provider, {
     temperature: 0.1,
     messages: [
@@ -96,21 +97,24 @@ async function generateOptionalAnalysis({ providerId, prompt }) {
 function registerAiOpsHandlers() {
   startAutomationTimer()
   ipcMain.handle(IPC_CHANNELS.AI_OPS_GET_STATE, async () => {
-    try { return success(safeState()) } catch (error) { return failure(error) }
+    try { return success(await safeState()) } catch (error) { return failure(error) }
   })
 
-  ipcMain.handle(IPC_CHANNELS.AI_PROVIDER_SAVE, async (_event, input) => {
-    try { return success(saveProvider({ userDataPath: userDataPath(), safeStorage, input })) } catch (error) { return failure(error) }
+  ipcMain.handle(IPC_CHANNELS.AI_PROVIDER_SOURCE_LIST, async () => {
+    try { return success({ sources: await listProviderSources() }) } catch (error) { return failure(error) }
+  })
+  ipcMain.handle(IPC_CHANNELS.AI_PROVIDER_SOURCE_ADD, async (_event, input) => {
+    try { return success(await addProviderFromModelReliability({ userDataPath: userDataPath(), input })) } catch (error) { return failure(error) }
   })
   ipcMain.handle(IPC_CHANNELS.AI_PROVIDER_DELETE, async (_event, id) => {
-    try { return success({ providers: deleteProvider({ userDataPath: userDataPath(), safeStorage, id }) }) } catch (error) { return failure(error) }
+    try { return success({ providers: await deleteProvider({ userDataPath: userDataPath(), id }) }) } catch (error) { return failure(error) }
   })
   ipcMain.handle(IPC_CHANNELS.AI_PROVIDER_ACTIVATE, async (_event, id) => {
-    try { return success({ providers: activateProvider({ userDataPath: userDataPath(), safeStorage, id }) }) } catch (error) { return failure(error) }
+    try { return success({ providers: await activateProvider({ userDataPath: userDataPath(), id }) }) } catch (error) { return failure(error) }
   })
   ipcMain.handle(IPC_CHANNELS.AI_PROVIDER_TEST, async (_event, providerId) => {
     try {
-      const provider = runtimeProvider({ userDataPath: userDataPath(), safeStorage, providerId })
+      const provider = await runtimeProvider({ userDataPath: userDataPath(), providerId })
       const result = await requestCompletion(provider, { messages: [{ role: 'user', content: '回复“连接正常”。' }], temperature: 0 })
       return success({ model: result.model, content: redactSensitiveText(result.content).slice(0, 500), usage: result.usage })
     } catch (error) { return failure(error) }
@@ -120,7 +124,6 @@ function registerAiOpsHandlers() {
     try {
       return success(await askAiChat({
         userDataPath: userDataPath(),
-        safeStorage,
         providerId: options.providerId,
         messages: options.messages,
       }))
@@ -132,7 +135,7 @@ function registerAiOpsHandlers() {
   })
   ipcMain.handle(IPC_CHANNELS.AI_EVALUATION_RUN, async (_event, options) => {
     try {
-      const run = await runEvaluation({ userDataPath: userDataPath(), safeStorage, providerId: options?.providerId, caseIds: options?.caseIds })
+      const run = await runEvaluation({ userDataPath: userDataPath(), providerId: options?.providerId, caseIds: options?.caseIds })
       addOpsEvent(userDataPath(), {
         sourceKey: `evaluation:${run.id}`,
         category: 'model',

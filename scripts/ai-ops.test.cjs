@@ -6,8 +6,9 @@ const path = require('node:path')
 const { spawn } = require('node:child_process')
 const {
   redactSensitiveText,
+  listProviderSources,
   listProviders,
-  saveProvider,
+  addProviderFromModelReliability,
   runtimeProvider,
   saveEvaluationCases,
   loadEvaluationState,
@@ -21,12 +22,23 @@ function makeTempDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'ops-ai-'))
 }
 
-function fakeSafeStorage() {
-  return {
-    isEncryptionAvailable: () => true,
-    encryptString: value => Buffer.from(value, 'utf8'),
-    decryptString: value => Buffer.from(value).toString('utf8'),
-  }
+function sourceProviderLoader() {
+  return async () => ({
+    ok: true,
+    providers: [{
+      id: 'cc-switch-test-provider',
+      appType: 'codex',
+      appLabel: 'Codex',
+      name: '模型可靠性测试 Provider',
+      protocol: 'openai',
+      wireApi: 'chat',
+      baseUrl: 'http://127.0.0.1:11434/v1',
+      apiKey: 'local-secret-key-123',
+      apiKeyMasked: 'local-***-123',
+      testable: true,
+      models: [{ model: 'qwen3', label: 'qwen3' }],
+    }],
+  })
 }
 
 function cleanup(directory) {
@@ -45,28 +57,36 @@ test('敏感信息在保存与分析前会被脱敏', () => {
   assert.match(output, /\[已脱敏/) 
 })
 
-test('Provider 使用系统安全存储，读取列表不暴露明文密钥', () => {
+test('AI Provider 只保存模型可靠性引用，运行时读取最新凭证', async () => {
   const directory = makeTempDir()
   try {
-    const safeStorage = fakeSafeStorage()
-    assert.throws(
-      () => saveProvider({ userDataPath: directory, safeStorage, input: { baseUrl: 'https://api.example.com/v1?api_key=leak', model: 'unsafe' } }),
-      /不能包含账号、查询参数或片段/,
-    )
-    const saved = saveProvider({
+    const providerLoader = sourceProviderLoader()
+    const sources = await listProviderSources({ providerLoader })
+    assert.equal(sources.length, 1)
+    assert.equal(Object.hasOwn(sources[0], 'apiKey'), false)
+
+    const saved = await addProviderFromModelReliability({
       userDataPath: directory,
-      safeStorage,
-      input: { name: '本地模型', baseUrl: 'http://127.0.0.1:11434/v1', model: 'qwen3', apiKey: 'local-secret-key-123' },
+      input: { sourceProviderId: 'cc-switch-test-provider', sourceAppType: 'codex', model: 'qwen3' },
+      providerLoader,
+    })
+    await addProviderFromModelReliability({
+      userDataPath: directory,
+      input: { sourceProviderId: 'cc-switch-test-provider', sourceAppType: 'codex', model: 'qwen3' },
+      providerLoader,
     })
     assert.equal(saved.provider.hasApiKey, true)
     assert.doesNotMatch(JSON.stringify(saved.provider), /local-secret-key-123/)
 
-    const listed = listProviders({ userDataPath: directory, safeStorage })
+    const stored = fs.readFileSync(path.join(directory, 'ai-providers.json'), 'utf8')
+    assert.doesNotMatch(stored, /local-secret-key-123|apiKeyEncrypted|baseUrl/)
+
+    const listed = await listProviders({ userDataPath: directory, providerLoader })
     assert.equal(listed.activeProviderId, saved.provider.id)
     assert.equal(listed.providers.length, 1)
     assert.equal(Object.hasOwn(listed.providers[0], 'apiKey'), false)
 
-    const runtime = runtimeProvider({ userDataPath: directory, safeStorage })
+    const runtime = await runtimeProvider({ userDataPath: directory, providerLoader })
     assert.equal(runtime.apiKey, 'local-secret-key-123')
   } finally {
     cleanup(directory)
@@ -152,6 +172,40 @@ test('MCP 服务仅公开只读工具', async () => {
       assert.ok(message.result.tools.every(item => !/deploy|delete|rollback/i.test(item.name)))
     })
     child.kill()
+  } finally {
+    cleanup(directory)
+  }
+})
+
+test('模型可靠性中的 Responses、Anthropic 和 Gemini Provider 都可一键接入且不暴露密钥', async () => {
+  const directory = makeTempDir()
+  const providerLoader = async () => ({
+    ok: true,
+    providers: [
+      { id: 'responses', appType: 'codex', name: 'Responses 网关', protocol: 'openai', wireApi: 'responses', baseUrl: 'https://responses.example.com/v1', apiKey: 'responses-secret', apiKeyMasked: 'res***', testable: true, models: [{ model: 'gpt-test' }] },
+      { id: 'anthropic', appType: 'claude', name: 'Claude 网关', protocol: 'anthropic', baseUrl: 'https://claude.example.com', apiKey: 'claude-secret', apiKeyMasked: 'cla***', anthropicAuthType: 'bearer', anthropicBeta: 'feature-a', testable: true, models: [{ model: 'claude-test', beta1m: true }] },
+      { id: 'gemini', appType: 'gemini', name: 'Gemini 网关', protocol: 'gemini', baseUrl: 'https://gemini.example.com', apiKey: 'gemini-secret', apiKeyMasked: 'gem***', testable: true, models: [{ model: 'gemini-test' }] },
+    ],
+  })
+  try {
+    const sources = await listProviderSources({ providerLoader })
+    assert.deepEqual(sources.map(item => item.protocolLabel), ['OpenAI Responses', 'Anthropic Messages', 'Gemini generateContent'])
+    assert.doesNotMatch(JSON.stringify(sources), /responses-secret|claude-secret|gemini-secret/)
+
+    const saved = await addProviderFromModelReliability({
+      userDataPath: directory,
+      input: { sourceProviderId: 'anthropic', sourceAppType: 'claude', model: 'claude-test' },
+      providerLoader,
+    })
+    assert.equal(saved.provider.protocol, 'anthropic')
+    assert.equal(saved.provider.protocolLabel, 'Anthropic Messages')
+    assert.equal(saved.provider.beta1m, undefined)
+
+    const runtime = await runtimeProvider({ userDataPath: directory, providerLoader })
+    assert.equal(runtime.protocol, 'anthropic')
+    assert.equal(runtime.anthropicAuthType, 'bearer')
+    assert.equal(runtime.beta1m, true)
+    assert.equal(runtime.apiKey, 'claude-secret')
   } finally {
     cleanup(directory)
   }

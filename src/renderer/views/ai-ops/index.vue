@@ -4,10 +4,10 @@
       <div class="page-heading">
         <div class="page-eyebrow"><t-icon name="gesture-pray" /> AI CAPABILITY CENTER</div>
         <h2 class="page-title">AI 能力中心</h2>
-        <p class="page-desc">统一管理 Provider、AI 问答、模型评测、脱敏日志、知识库与需要确认的安全工作流。</p>
+        <p class="page-desc">统一管理 Provider、模型评测、脱敏日志、知识库与需要确认的安全工作流。</p>
       </div>
       <div class="page-actions header-actions">
-        <span class="safety-chip"><t-icon name="secured" /> 凭证加密 · 执行需确认</span>
+        <span class="safety-chip"><t-icon name="secured" /> 凭证不出主进程 · 执行需确认</span>
         <button class="btn-secondary refresh-btn" type="button" :disabled="loading || refreshing" @click="loadState">
           <t-icon name="refresh" :class="{ spinning: refreshing }" />
           {{ refreshing ? '刷新中' : '刷新' }}
@@ -43,36 +43,50 @@
       tabindex="-1"
     >
       <section v-if="activeTab === 'providers'" class="panel-grid providers-layout">
-        <article class="panel form-panel">
+        <article class="panel form-panel provider-source-panel">
           <div class="panel-title">
             <div>
-              <h3>AI Provider</h3>
-              <p>仅支持 OpenAI 兼容的 Chat Completions 接口；API Key 仅保存为系统加密数据。</p>
+              <h3>从模型可靠性一键配置</h3>
+              <p>AI Provider 统一从“模型可靠性”读取。接口地址、密钥与模型目录不会复制到 AI 功能，始终使用最新配置。</p>
             </div>
+            <button class="btn-secondary" type="button" @click="openModelReliability"><t-icon name="jump" /> 前往模型可靠性</button>
           </div>
-          <div v-if="providerForm.id" class="form-context">
-            <span class="context-dot"></span>
-            正在编辑 <strong>{{ providerForm.name || '未命名 Provider' }}</strong>
-            <button class="btn-text" type="button" @click="resetProviderForm">取消编辑</button>
+          <div class="source-notice"><t-icon name="secured" /> 支持 OpenAI Chat / Responses、Anthropic Messages 与 Gemini generateContent。接口地址、认证方式和密钥始终以模型可靠性中的最新配置为准。</div>
+          <div v-if="sourceError" class="source-empty" role="status">
+            <t-icon name="error-circle" />
+            <span>{{ sourceError }}</span>
+            <button class="btn-text" type="button" :disabled="sourceLoading" @click="loadProviderSources">重新读取</button>
           </div>
-          <div class="form-grid">
-            <label><span>名称</span><input v-model="providerForm.name" placeholder="例如：公司 AI 网关" maxlength="80" /></label>
-            <label><span>默认模型</span><input v-model="providerForm.model" placeholder="例如：gpt-4.1-mini" maxlength="160" /></label>
-            <label class="full"><span>接口地址</span><input v-model="providerForm.baseUrl" placeholder="https://api.example.com/v1" maxlength="500" /></label>
-            <label class="full">
-              <span>API Key <em>编辑已有 Provider 时留空即保持不变</em></span>
-              <input v-model="providerForm.apiKey" type="password" placeholder="sk-..." autocomplete="off" />
-            </label>
-            <label class="check"><input v-model="providerForm.enabled" type="checkbox" /> 启用此 Provider</label>
-            <label v-if="providerForm.id && providerForm.hasApiKey" class="check"><input v-model="providerForm.clearApiKey" type="checkbox" /> 清除已保存的 API Key</label>
-          </div>
-          <p v-if="providerSaveError" class="form-error" role="alert"><t-icon name="error-circle" /> {{ providerSaveError }}</p>
-          <div class="actions">
-            <button class="btn-primary" type="button" :disabled="savingProvider" @click="saveProvider">
-              <t-icon :name="savingProvider ? 'loading' : 'save'" :class="{ spinning: savingProvider }" />
-              {{ savingProvider ? '保存中' : '保存 Provider' }}
-            </button>
-            <button v-if="providerForm.id" class="btn-text" type="button" @click="resetProviderForm">取消编辑</button>
+          <template v-else-if="providerSources.length">
+            <div class="form-grid">
+              <label class="full">
+                <span>Provider</span>
+                <select v-model="sourceSelection.sourceKey" :disabled="sourceLoading || savingProvider">
+                  <option value="">请选择模型可靠性 Provider</option>
+                  <option v-for="source in providerSources" :key="sourceKey(source)" :value="sourceKey(source)">{{ source.name }} · {{ source.protocolLabel }}</option>
+                </select>
+              </label>
+              <label class="full">
+                <span>模型</span>
+                <select v-model="sourceSelection.model" :disabled="!selectedProviderSource || savingProvider">
+                  <option value="">请选择模型</option>
+                  <option v-for="model in selectedProviderModels" :key="model.model" :value="model.model">{{ model.label }}</option>
+                </select>
+              </label>
+            </div>
+            <p v-if="selectedProviderSource" class="source-meta"><t-icon name="server" /> {{ selectedProviderSource.baseUrl }} <span>·</span> 密钥仅在主进程从模型可靠性读取</p>
+            <div class="actions">
+              <button class="btn-primary" type="button" :disabled="savingProvider || !selectedProviderSource || !sourceSelection.model" @click="addModelReliabilityProvider">
+                <t-icon :name="savingProvider ? 'loading' : 'add'" :class="{ spinning: savingProvider }" />
+                {{ savingProvider ? '配置中' : '一键配置并设为默认' }}
+              </button>
+              <button class="btn-text" type="button" :disabled="sourceLoading" @click="loadProviderSources">刷新来源</button>
+            </div>
+          </template>
+          <div v-else class="source-empty">
+            <t-icon name="server" />
+            <span>未找到可接入的 Provider。请先在模型可靠性中完成 OpenAI、Anthropic 或 Gemini Provider 的接口、密钥和模型配置。</span>
+            <button class="btn-text" type="button" @click="openModelReliability">去配置</button>
           </div>
         </article>
 
@@ -84,21 +98,23 @@
             </div>
             <span v-if="providers.length" class="count-badge">{{ providers.length }}</span>
           </div>
-          <div v-if="!providers.length" class="empty-mini">先添加一个 Provider，后续 AI 总结和模型评测即可使用。</div>
+          <div v-if="!providers.length" class="empty-mini">请先从左侧的模型可靠性来源一键添加 Provider。</div>
           <div v-for="provider in providers" :key="provider.id" :class="['provider-card', { selected: provider.id === providerState.activeProviderId }]">
             <div class="provider-card-main">
               <div class="provider-name-row">
                 <strong>{{ provider.name }}</strong>
                 <span v-if="provider.id === providerState.activeProviderId" class="status-badge primary">默认 Provider</span>
-                <span :class="['status-badge', provider.enabled ? 'success' : 'muted']">{{ provider.enabled ? '已启用' : '已停用' }}</span>
+                <span class="status-badge primary">模型可靠性来源</span>
+                <span v-if="provider.protocolLabel" class="status-badge muted">{{ provider.protocolLabel }}</span>
+                <span :class="['status-badge', provider.available ? 'success' : 'muted']">{{ provider.available ? '可用' : '需检查' }}</span>
               </div>
               <span class="provider-model">{{ provider.model }}</span>
               <div class="provider-url-row">
                 <small :title="provider.baseUrl">{{ provider.baseUrl }}</small>
                 <button class="icon-btn copy-btn" type="button" title="复制接口地址" aria-label="复制接口地址" @click="copyText(provider.baseUrl, '接口地址已复制')"><t-icon name="file-copy" /></button>
               </div>
-              <small v-if="provider.hasApiKey" class="key-status"><t-icon name="secured" /> 密钥已安全保存（{{ provider.apiKeyMasked }}）</small>
-              <small v-else class="danger-text">未配置密钥</small>
+              <small v-if="provider.available" class="key-status"><t-icon name="secured" /> 密钥由模型可靠性托管（{{ provider.apiKeyMasked }}）</small>
+              <small v-else class="danger-text">{{ provider.issue || '来源当前不可用' }}</small>
             </div>
             <div class="card-actions">
               <span v-if="provider.id === providerState.activeProviderId" class="default-label">默认</span>
@@ -108,8 +124,8 @@
               <button class="icon-btn" type="button" title="连接测试" aria-label="连接测试" :disabled="testingProviderId === provider.id" @click="testProvider(provider.id)">
                 <t-icon :name="testingProviderId === provider.id ? 'loading' : 'check-circle'" :class="{ spinning: testingProviderId === provider.id }" />
               </button>
-              <button class="icon-btn" type="button" title="编辑 Provider" aria-label="编辑 Provider" @click="editProvider(provider)"><t-icon name="edit" /></button>
-              <button class="icon-btn danger" type="button" title="删除 Provider" aria-label="删除 Provider" @click="removeProvider(provider)"><t-icon name="delete" /></button>
+              <button class="icon-btn" type="button" title="前往模型可靠性" aria-label="前往模型可靠性" @click="openModelReliability"><t-icon name="jump" /></button>
+              <button class="icon-btn danger" type="button" title="从 AI 功能中移除" aria-label="从 AI 功能中移除" @click="removeProvider(provider)"><t-icon name="delete" /></button>
             </div>
           </div>
         </article>
@@ -240,14 +256,14 @@
 
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import MessagePlugin from 'tdesign-vue-next/es/message/plugin.mjs'
-import { validateProviderForm } from '../../utils/ai-provider-form.mjs'
 import { useConfirm } from '../../composables/useConfirm'
 
 const { confirm } = useConfirm()
+const router = useRouter()
 const tabs = [
   { id: 'providers', name: 'Provider', icon: 'server' },
-  { id: 'chat', name: 'AI 问答', icon: 'chat' },
   { id: 'evaluation', name: '模型评测', icon: 'chart-bar' },
   { id: 'logs', name: '日志分析', icon: 'search' },
   { id: 'knowledge', name: '知识库', icon: 'folder-open' },
@@ -261,7 +277,8 @@ const refreshing = ref(false)
 const hasLoaded = ref(false)
 const busy = ref(false)
 const savingProvider = ref(false)
-const providerSaveError = ref('')
+const sourceLoading = ref(false)
+const sourceError = ref('')
 const testingProviderId = ref('')
 const activatingProviderId = ref('')
 const providerState = ref({ activeProviderId: '', providers: [] })
@@ -270,14 +287,13 @@ const logState = ref({ items: [] })
 const knowledgeState = ref({ documents: [] })
 const workflowState = ref({ history: [] })
 const mcpInfo = ref(null)
-const chatMessages = ref([])
 const chatInput = ref('')
 const chatBusy = ref(false)
 const chatError = ref('')
 
-const newProvider = () => ({ id: '', name: '', baseUrl: '', model: '', apiKey: '', enabled: true, clearApiKey: false })
 const newCase = () => ({ id: '', name: '', prompt: '', systemPrompt: '', expectedKeywords: '', expectJson: false })
-const providerForm = ref(newProvider())
+const providerSources = ref([])
+const sourceSelection = ref({ sourceKey: '', model: '' })
 const caseForm = ref(newCase())
 const logForm = ref({ title: '', text: '', useAi: false })
 const knowledgeForm = ref({ title: '', tags: '', content: '' })
@@ -293,7 +309,10 @@ const evaluationFilter = ref('all')
 
 const providers = computed(() => providerState.value.providers || [])
 const activeProvider = computed(() => providers.value.find(item => item.id === providerState.value.activeProviderId))
-const activeProviderReady = computed(() => Boolean(activeProvider.value?.enabled && activeProvider.value?.hasApiKey))
+const activeProviderReady = computed(() => Boolean(activeProvider.value?.enabled && activeProvider.value?.available && activeProvider.value?.hasApiKey))
+const sourceKey = source => `${source.appType}::${source.id}`
+const selectedProviderSource = computed(() => providerSources.value.find(source => sourceKey(source) === sourceSelection.value.sourceKey) || null)
+const selectedProviderModels = computed(() => selectedProviderSource.value?.models || [])
 const evaluationCases = computed(() => evaluationState.value.cases || [])
 const latestEvaluation = computed(() => evaluationState.value.runs?.[0] || null)
 const logs = computed(() => logState.value.items || [])
@@ -385,6 +404,7 @@ async function loadState() {
     logState.value = result.logs || logState.value
     knowledgeState.value = result.knowledge || knowledgeState.value
     workflowState.value = result.workflows || workflowState.value
+    await loadProviderSources()
     const info = await window.opsApi.getAiMcpInfo()
     if (info?.ok) mcpInfo.value = info
     hasLoaded.value = true
@@ -396,43 +416,44 @@ async function loadState() {
   }
 }
 
-function resetProviderForm() {
-  providerForm.value = newProvider()
-  providerSaveError.value = ''
-}
-
-function editProvider(provider) {
-  providerForm.value = { ...newProvider(), ...provider, apiKey: '', clearApiKey: false }
-  providerSaveError.value = ''
-  activeTab.value = 'providers'
-}
-
-async function saveProvider() {
-  const validationError = validateProviderForm(providerForm.value)
-  if (validationError) {
-    providerSaveError.value = validationError
-    MessagePlugin.warning({ content: validationError, placement: 'bottom-right' })
-    return
-  }
-
-  savingProvider.value = true
-  providerSaveError.value = ''
+async function loadProviderSources() {
+  sourceLoading.value = true
+  sourceError.value = ''
   try {
-    const result = await window.opsApi.saveAiProvider({ ...providerForm.value })
-    if (!notify(result, '保存 Provider 失败')) {
-      providerSaveError.value = result?.error || '保存 Provider 失败'
+    const result = await window.opsApi.listAiProviderSources()
+    if (!result?.ok) {
+      sourceError.value = result?.error || '读取模型可靠性 Provider 失败'
       return
     }
-    providerState.value = result.activeProviderId
-      ? { ...providerState.value, activeProviderId: result.activeProviderId, providers: providers.value.filter(item => item.id !== result.provider.id).concat(result.provider) }
-      : providerState.value
-    await loadState()
-    resetProviderForm()
-    MessagePlugin.success({ content: 'AI Provider 已加密保存', placement: 'bottom-right' })
+    providerSources.value = result.sources || []
+    if (!selectedProviderSource.value) {
+      sourceSelection.value = { sourceKey: '', model: '' }
+    }
   } catch (error) {
-    const message = error?.message || '保存 Provider 失败，请重试'
-    providerSaveError.value = message
-    MessagePlugin.error({ content: message, placement: 'bottom-right' })
+    sourceError.value = error?.message || '读取模型可靠性 Provider 失败'
+  } finally {
+    sourceLoading.value = false
+  }
+}
+
+function openModelReliability() {
+  router.push('/model-test')
+}
+
+async function addModelReliabilityProvider() {
+  const source = selectedProviderSource.value
+  const model = sourceSelection.value.model
+  if (!source || !model) return
+  savingProvider.value = true
+  try {
+    const result = await window.opsApi.addAiProviderFromModelReliability({
+      sourceProviderId: source.id,
+      sourceAppType: source.appType,
+      model,
+    })
+    if (!notify(result, '一键配置 Provider 失败')) return
+    await loadState()
+    MessagePlugin.success({ content: '已从模型可靠性一键配置并设为默认 Provider', placement: 'bottom-right' })
   } finally {
     savingProvider.value = false
   }
@@ -462,14 +483,13 @@ async function testProvider(id) {
 }
 
 async function removeProvider(provider) {
-  if (!await confirm({ title: '删除 AI Provider', content: `确定删除“${provider.name}”吗？此操作不会影响已保存的评测和日志记录。`, theme: 'warning' })) return
+  if (!await confirm({ title: '从 AI 功能中移除 Provider', content: `确定移除“${provider.name} · ${provider.model}”吗？不会删除模型可靠性中的原始 Provider。`, theme: 'warning' })) return
   busy.value = true
   try {
     const result = await window.opsApi.deleteAiProvider(provider.id)
     if (notify(result)) {
       providerState.value = result.providers
-      if (providerForm.value.id === provider.id) resetProviderForm()
-      MessagePlugin.success({ content: 'Provider 已删除', placement: 'bottom-right' })
+      MessagePlugin.success({ content: '已从 AI 功能中移除 Provider', placement: 'bottom-right' })
     }
   } finally {
     busy.value = false
@@ -621,7 +641,7 @@ async function sendAiChat() {
   const prompt = chatInput.value.trim()
   if (!prompt || chatBusy.value) return
   if (!activeProviderReady.value) {
-    chatError.value = '请先配置、启用并设为默认 Provider'
+    chatError.value = '请先在模型可靠性完成配置，并一键添加可用的默认 Provider'
     return
   }
   const userMessage = { id: `user-${Date.now()}-${Math.random().toString(16).slice(2)}`, role: 'user', content: prompt }
@@ -677,6 +697,10 @@ async function executeWorkflow() {
     busy.value = false
   }
 }
+
+watch(() => sourceSelection.value.sourceKey, () => {
+  sourceSelection.value.model = ''
+})
 
 watch(activeTab, tab => {
   if (tab === 'mcp' && !mcpInfo.value) loadState()
@@ -873,6 +897,7 @@ textarea:focus-visible {
 }
 
 input,
+select,
 textarea {
   width: 100%;
   box-sizing: border-box;
@@ -884,7 +909,8 @@ textarea {
   transition: border-color 0.18s ease, box-shadow 0.18s ease;
 }
 
-input {
+input,
+select {
   height: 36px;
   padding: 0 10px;
 }
@@ -897,11 +923,13 @@ textarea {
 }
 
 input:hover,
+select:hover,
 textarea:hover {
   border-color: color-mix(in srgb, var(--primary) 30%, var(--border));
 }
 
 input:focus,
+select:focus,
 textarea:focus {
   border-color: var(--primary);
   box-shadow: 0 0 0 3px var(--primary-soft);
@@ -1035,6 +1063,47 @@ button:disabled {
   border-radius: 50%;
   background: var(--primary);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 15%, transparent);
+}
+
+.provider-source-panel {
+  align-content: start;
+}
+
+.source-notice,
+.source-empty,
+.source-meta {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 var(--spacing-md);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.source-notice {
+  padding: 10px 11px;
+  border: 1px solid color-mix(in srgb, var(--primary) 16%, var(--border));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--primary-soft) 70%, #fff);
+}
+
+.source-empty {
+  padding: 14px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-subtle);
+}
+
+.source-empty .btn-text {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.source-meta {
+  align-items: center;
+  overflow-wrap: anywhere;
+  color: var(--text-muted);
 }
 
 .count-badge {

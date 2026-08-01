@@ -2,7 +2,7 @@ const path = require('node:path')
 const crypto = require('node:crypto')
 const os = require('node:os')
 const { readJsonFile, writeJsonFile } = require('./json-store')
-const { encryptSecret, readSecretField, maskSecret } = require('./secure-secret')
+const { loadProviders } = require('./ccswitch')
 
 const MAX_PROVIDERS = 20
 const MAX_EVALUATION_CASES = 50
@@ -39,115 +39,223 @@ function redactSensitiveText(value) {
   return text
 }
 
-function normalizeBaseUrl(value) {
-  const raw = string(value, 500).replace(/\/+$/, '')
-  if (!raw) throw new Error('请输入 OpenAI 兼容接口地址')
-  let parsed
-  try { parsed = new URL(raw) } catch { throw new Error('AI 接口地址格式无效') }
-  if (!['https:', 'http:'].includes(parsed.protocol)) throw new Error('AI 接口地址仅支持 http 或 https')
-  if (parsed.username || parsed.password || parsed.search || parsed.hash) throw new Error('AI 接口地址不能包含账号、查询参数或片段')
-  return raw
-}
-
-function normalizeProvider(input = {}, existing = {}) {
-  const baseUrl = normalizeBaseUrl(input.baseUrl ?? existing.baseUrl ?? '')
-  const model = string(input.model ?? existing.model, 160)
-  if (!model) throw new Error('请输入默认模型')
-  return {
-    id: string(existing.id || input.id || crypto.randomUUID(), 100),
-    name: redactSensitiveText(string(input.name ?? existing.name ?? 'AI Provider', 80)) || 'AI Provider',
-    baseUrl,
-    model,
-    enabled: input.enabled !== false,
-    createdAt: Number(existing.createdAt) || Date.now(),
-    updatedAt: Date.now(),
-  }
-}
-
 function providerStatePath(userDataPath) { return filePath(userDataPath, 'ai-providers.json') }
 function evaluationStatePath(userDataPath) { return filePath(userDataPath, 'ai-evaluations.json') }
 function logStatePath(userDataPath) { return filePath(userDataPath, 'ai-log-analysis.json') }
 function knowledgeStatePath(userDataPath) { return filePath(userDataPath, 'ai-knowledge.json') }
 function workflowStatePath(userDataPath) { return filePath(userDataPath, 'ai-workflows.json') }
 
+function providerRefId(sourceProviderId, sourceAppType, model) {
+  return string(`model-reliability:${sourceProviderId}:${sourceAppType}:${model}`, 100)
+}
+
 function loadProviderRaw(userDataPath) {
-  const value = readJsonFile(providerStatePath(userDataPath), { version: 1, activeProviderId: '', providers: [] })
-  const providers = Array.isArray(value?.providers) ? value.providers.slice(0, MAX_PROVIDERS) : []
-  const activeProviderId = providers.some(item => item?.id === value?.activeProviderId) ? value.activeProviderId : providers[0]?.id || ''
-  return { version: 1, activeProviderId, providers }
+  const value = readJsonFile(providerStatePath(userDataPath), { version: 2, activeProviderId: '', providers: [] })
+  // v1 的手工 Provider 不再参与运行：Provider 和凭证唯一来源为模型可靠性/cc-switch。
+  const providers = (Array.isArray(value?.providers) ? value.providers : [])
+    .filter(item => item?.source === 'model-reliability' && item?.sourceProviderId && item?.sourceAppType && item?.model)
+    .slice(0, MAX_PROVIDERS)
+  const activeProviderId = providers.some(item => item.id === value?.activeProviderId) ? value.activeProviderId : providers[0]?.id || ''
+  return { version: 2, activeProviderId, providers }
 }
 
-function safeProvider(provider, safeStorage) {
-  let apiKey = ''
-  try {
-    apiKey = readSecretField({ safeStorage, record: provider, encryptedKey: 'apiKeyEncrypted', legacyKey: 'apiKey' }).value
-  } catch {}
-  return {
-    id: string(provider?.id, 100),
-    name: string(provider?.name, 80),
-    baseUrl: string(provider?.baseUrl, 500),
-    model: string(provider?.model, 160),
-    enabled: provider?.enabled !== false,
-    createdAt: Number(provider?.createdAt) || 0,
-    updatedAt: Number(provider?.updatedAt) || 0,
-    hasApiKey: Boolean(apiKey || provider?.apiKeyEncrypted),
-    apiKeyMasked: apiKey ? maskSecret(apiKey) : (provider?.apiKeyEncrypted ? '••••••••' : ''),
-  }
+function supportedAiSource(source) {
+  return ['openai', 'anthropic', 'gemini'].includes(source?.protocol)
 }
 
-function listProviders({ userDataPath, safeStorage }) {
+function providerProtocolLabel(protocol, wireApi) {
+  if (protocol === 'anthropic') return 'Anthropic Messages'
+  if (protocol === 'gemini') return 'Gemini generateContent'
+  return wireApi === 'responses' ? 'OpenAI Responses' : 'OpenAI Chat Completions'
+}
+
+function sourceModels(source) {
+  const models = Array.isArray(source?.models) ? source.models : []
+  return Array.from(new Map(models.map(item => {
+    const model = string(item?.model || item?.key, 160)
+    return model ? [model, { model, label: string(item?.label || model, 220) || model, beta1m: Boolean(item?.beta1m) }] : null
+  }).filter(Boolean)).values())
+}
+
+function sourceKeyMatches(source, ref) {
+  return source?.id === ref?.sourceProviderId && source?.appType === ref?.sourceAppType
+}
+
+async function loadModelReliabilitySources(providerLoader = loadProviders) {
+  const result = await providerLoader()
+  if (!result?.ok) throw new Error(`无法读取模型可靠性 Provider：${result?.message || '未知错误'}`)
+  return Array.isArray(result.providers) ? result.providers : []
+}
+
+async function listProviderSources({ providerLoader = loadProviders } = {}) {
+  const sources = await loadModelReliabilitySources(providerLoader)
+  return sources
+    .filter(source => supportedAiSource(source) && source.testable && source.apiKey && source.baseUrl && sourceModels(source).length)
+    .map(source => ({
+      id: string(source.id, 100),
+      appType: string(source.appType, 80),
+      name: redactSensitiveText(string(source.name || source.appLabel || '模型可靠性 Provider', 80)),
+      appLabel: string(source.appLabel, 80),
+      baseUrl: string(source.baseUrl, 500),
+      apiKeyMasked: string(source.apiKeyMasked, 100),
+      protocol: string(source.protocol, 40),
+      wireApi: string(source.wireApi, 40),
+      protocolLabel: providerProtocolLabel(source.protocol, source.wireApi),
+      models: sourceModels(source),
+    }))
+}
+
+async function addProviderFromModelReliability({ userDataPath, input = {}, providerLoader = loadProviders }) {
+  const sourceProviderId = string(input.sourceProviderId, 100)
+  const sourceAppType = string(input.sourceAppType, 80)
+  const model = string(input.model, 160)
+  if (!sourceProviderId || !sourceAppType || !model) throw new Error('请选择模型可靠性 Provider 和模型')
+
+  const sources = await loadModelReliabilitySources(providerLoader)
+  const source = sources.find(item => item.id === sourceProviderId && item.appType === sourceAppType)
+  if (!source) throw new Error('所选 Provider 已不在模型可靠性中，请刷新后重新选择')
+  if (!supportedAiSource(source)) throw new Error('当前 Provider 协议暂不支持，请在模型可靠性中选择 OpenAI、Anthropic 或 Gemini Provider')
+  if (!source.testable || !source.apiKey || !source.baseUrl) throw new Error('所选 Provider 尚未在模型可靠性中完成可用配置')
+  if (!sourceModels(source).some(item => item.model === model)) throw new Error('所选模型不属于当前 Provider，请刷新后重新选择')
+
   const state = loadProviderRaw(userDataPath)
-  return { activeProviderId: state.activeProviderId, providers: state.providers.map(item => safeProvider(item, safeStorage)) }
-}
-
-function saveProvider({ userDataPath, safeStorage, input = {} }) {
-  const state = loadProviderRaw(userDataPath)
-  const id = string(input.id, 100)
+  const id = providerRefId(sourceProviderId, sourceAppType, model)
   const index = state.providers.findIndex(item => item.id === id)
-  const existing = index >= 0 ? state.providers[index] : {}
-  const provider = normalizeProvider(input, existing)
-  const suppliedKey = String(input.apiKey || '').trim()
-  if (input.clearApiKey) provider.apiKeyEncrypted = ''
-  else if (suppliedKey) provider.apiKeyEncrypted = encryptSecret(safeStorage, suppliedKey)
-  else provider.apiKeyEncrypted = existing.apiKeyEncrypted || ''
-  delete provider.apiKey
+  const previous = index >= 0 ? state.providers[index] : null
+  const provider = {
+    id,
+    source: 'model-reliability',
+    sourceProviderId,
+    sourceAppType,
+    model,
+    enabled: input.enabled !== false,
+    createdAt: Number(previous?.createdAt) || Date.now(),
+    updatedAt: Date.now(),
+  }
   if (index >= 0) state.providers[index] = provider
   else state.providers.push(provider)
   state.activeProviderId = provider.id
-  if (!writeJsonFile(providerStatePath(userDataPath), state)) throw new Error('保存 AI Provider 失败')
-  return { activeProviderId: state.activeProviderId, provider: safeProvider(provider, safeStorage) }
+  if (!writeJsonFile(providerStatePath(userDataPath), state)) throw new Error('保存 AI Provider 引用失败')
+  return { activeProviderId: state.activeProviderId, provider: await safeProvider(provider, { providerLoader }) }
 }
 
-function deleteProvider({ userDataPath, safeStorage, id }) {
+async function safeProvider(provider, { providerLoader = loadProviders } = {}) {
+  const base = {
+    id: string(provider?.id, 100),
+    model: string(provider?.model, 160),
+    enabled: provider?.enabled !== false,
+    source: 'model-reliability',
+    sourceLabel: '模型可靠性',
+    sourceProviderId: string(provider?.sourceProviderId, 100),
+    sourceAppType: string(provider?.sourceAppType, 80),
+    createdAt: Number(provider?.createdAt) || 0,
+    updatedAt: Number(provider?.updatedAt) || 0,
+    name: '模型可靠性 Provider',
+    baseUrl: '',
+    hasApiKey: false,
+    apiKeyMasked: '',
+    available: false,
+    issue: '',
+    protocol: '',
+    wireApi: '',
+    protocolLabel: '',
+  }
+  try {
+    const sources = await loadModelReliabilitySources(providerLoader)
+    const source = sources.find(item => sourceKeyMatches(item, provider))
+    if (!source) return { ...base, issue: 'Provider 已从模型可靠性中移除' }
+    if (!supportedAiSource(source)) return { ...base, name: string(source.name, 80) || base.name, issue: '该 Provider 协议暂不支持' }
+    if (!sourceModels(source).some(item => item.model === base.model)) return { ...base, name: string(source.name, 80) || base.name, baseUrl: string(source.baseUrl, 500), issue: '所选模型已不在 Provider 模型列表中' }
+    const hasApiKey = Boolean(source.apiKey)
+    const available = Boolean(source.testable && source.baseUrl && hasApiKey)
+    return {
+      ...base,
+      name: redactSensitiveText(string(source.name || source.appLabel || base.name, 80)),
+      baseUrl: string(source.baseUrl, 500),
+      hasApiKey,
+      apiKeyMasked: string(source.apiKeyMasked, 100),
+      protocol: string(source.protocol, 40),
+      wireApi: string(source.wireApi, 40),
+      protocolLabel: providerProtocolLabel(source.protocol, source.wireApi),
+      available,
+      issue: available ? '' : (Array.isArray(source.issues) && source.issues[0]) || 'Provider 当前不可用，请前往模型可靠性检查配置',
+    }
+  } catch (error) {
+    return { ...base, issue: error?.message || '无法读取模型可靠性 Provider' }
+  }
+}
+
+async function listProviders({ userDataPath, providerLoader = loadProviders } = {}) {
+  const state = loadProviderRaw(userDataPath)
+  return { activeProviderId: state.activeProviderId, providers: await Promise.all(state.providers.map(item => safeProvider(item, { providerLoader }))) }
+}
+
+async function deleteProvider({ userDataPath, id, providerLoader = loadProviders }) {
   const state = loadProviderRaw(userDataPath)
   const next = state.providers.filter(item => item.id !== String(id || ''))
   if (next.length === state.providers.length) throw new Error('AI Provider 不存在')
   state.providers = next
   if (state.activeProviderId === id) state.activeProviderId = next[0]?.id || ''
-  if (!writeJsonFile(providerStatePath(userDataPath), state)) throw new Error('删除 AI Provider 失败')
-  return listProviders({ userDataPath, safeStorage })
+  if (!writeJsonFile(providerStatePath(userDataPath), state)) throw new Error('移除 AI Provider 失败')
+  return listProviders({ userDataPath, providerLoader })
 }
 
-function activateProvider({ userDataPath, safeStorage, id }) {
+async function activateProvider({ userDataPath, id, providerLoader = loadProviders }) {
   const state = loadProviderRaw(userDataPath)
   if (!state.providers.some(item => item.id === id)) throw new Error('AI Provider 不存在')
   state.activeProviderId = id
   if (!writeJsonFile(providerStatePath(userDataPath), state)) throw new Error('切换 AI Provider 失败')
-  return listProviders({ userDataPath, safeStorage })
+  return listProviders({ userDataPath, providerLoader })
 }
 
-function runtimeProvider({ userDataPath, safeStorage, providerId }) {
+async function runtimeProvider({ userDataPath, providerId, providerLoader = loadProviders }) {
   const state = loadProviderRaw(userDataPath)
-  const provider = state.providers.find(item => item.id === (providerId || state.activeProviderId))
-  if (!provider || provider.enabled === false) throw new Error('请先在 AI Provider 中配置并启用可用模型')
-  const apiKey = readSecretField({ safeStorage, record: provider, encryptedKey: 'apiKeyEncrypted', legacyKey: 'apiKey' }).value
-  if (!apiKey) throw new Error('当前 AI Provider 未配置 API Key')
-  return { ...safeProvider(provider, safeStorage), apiKey }
+  const ref = state.providers.find(item => item.id === (providerId || state.activeProviderId))
+  if (!ref || ref.enabled === false) throw new Error('请先在模型可靠性配置 Provider，再一键添加到 AI 功能')
+  const sources = await loadModelReliabilitySources(providerLoader)
+  const source = sources.find(item => sourceKeyMatches(item, ref))
+  if (!source) throw new Error('当前 AI Provider 已从模型可靠性中移除，请重新一键配置')
+  if (!supportedAiSource(source)) throw new Error('当前 AI Provider 协议暂不支持，请在模型可靠性中更换为 OpenAI、Anthropic 或 Gemini Provider')
+  if (!source.testable || !source.baseUrl || !source.apiKey) throw new Error('当前 AI Provider 在模型可靠性中不可用，请先检查接口地址和密钥')
+  if (!sourceModels(source).some(item => item.model === ref.model)) throw new Error('当前 AI 模型已不在模型可靠性 Provider 中，请重新一键配置')
+  const selectedModel = sourceModels(source).find(item => item.model === ref.model)
+  return {
+    id: ref.id,
+    name: redactSensitiveText(string(source.name || source.appLabel || '模型可靠性 Provider', 80)),
+    baseUrl: string(source.baseUrl, 500),
+    model: ref.model,
+    apiKey: source.apiKey,
+    protocol: string(source.protocol, 40),
+    wireApi: string(source.wireApi, 40),
+    customUserAgent: string(source.customUserAgent, 300),
+    anthropicAuthType: string(source.anthropicAuthType, 40),
+    anthropicBeta: string(source.anthropicBeta, 300),
+    beta1m: Boolean(selectedModel?.beta1m),
+    source: 'model-reliability',
+  }
+}
+
+function stripTrailingSlash(value) {
+  return String(value || '').trim().replace(/\/+$/, '')
+}
+
+function joinOpenAiEndpoint(baseUrl, suffix) {
+  const base = stripTrailingSlash(baseUrl)
+  return /\/v1$/i.test(base) ? `${base}/${suffix}` : `${base}/v1/${suffix}`
 }
 
 function chatEndpoint(baseUrl) {
-  const base = String(baseUrl || '').replace(/\/+$/, '')
-  return /\/v1$/i.test(base) ? `${base}/chat/completions` : `${base}/v1/chat/completions`
+  return joinOpenAiEndpoint(baseUrl, 'chat/completions')
+}
+
+function responsesEndpoint(baseUrl) {
+  return joinOpenAiEndpoint(baseUrl, 'responses')
+}
+
+function geminiEndpoint(baseUrl, model) {
+  const base = stripTrailingSlash(baseUrl) || 'https://generativelanguage.googleapis.com'
+  const root = /\/v1(?:beta)?$/i.test(base) ? base : `${base}/v1beta`
+  return `${root}/models/${encodeURIComponent(model)}:generateContent`
 }
 
 function buildAiChatMessages(messages) {
@@ -179,8 +287,8 @@ function buildAiChatMessages(messages) {
   ]
 }
 
-async function askAiChat({ userDataPath, safeStorage, providerId, messages }) {
-  const provider = runtimeProvider({ userDataPath, safeStorage, providerId })
+async function askAiChat({ userDataPath, providerId, messages, providerLoader = loadProviders }) {
+  const provider = await runtimeProvider({ userDataPath, providerId, providerLoader })
   const response = await requestCompletion(provider, {
     messages: buildAiChatMessages(messages),
     temperature: 0.2,
@@ -188,28 +296,171 @@ async function askAiChat({ userDataPath, safeStorage, providerId, messages }) {
   return { content: redactSensitiveText(response.content), model: response.model }
 }
 
+function providerRequestError(data, raw, status) {
+  const error = data?.error
+  const message = redactSensitiveText(string(
+    typeof error === 'string' ? error : (error?.message || data?.message || data?.Message),
+    500,
+  ))
+  const code = redactSensitiveText(string(
+    typeof error === 'object' ? (error?.code || error?.type || error?.status) : (data?.code || data?.status),
+    120,
+  ))
+  const fallback = redactSensitiveText(string(raw, 500))
+  const detail = message || fallback || `HTTP ${status}`
+  const codeSuffix = code && code !== message ? ` · ${code}` : ''
+  const recoveryHint = status >= 500 || /(?:openai_error|upstream|server[_ -]?error|internal[_ -]?error)/i.test(`${message} ${code}`)
+    ? ' 上游服务或中转接口暂时异常，请稍后重试、执行连接测试，或切换 Provider。'
+    : ''
+  return `AI 请求失败（HTTP ${status}${codeSuffix}）：${detail}${recoveryHint}`
+}
+
+function applyCustomUserAgent(provider, headers) {
+  return provider?.customUserAgent ? { ...headers, 'user-agent': provider.customUserAgent } : headers
+}
+
+function splitChatMessages(messages) {
+  const system = []
+  const turns = []
+  for (const item of Array.isArray(messages) ? messages : []) {
+    const content = string(item?.content, MAX_CHAT_MESSAGE_LENGTH)
+    if (!content) continue
+    if (item?.role === 'system') system.push(content)
+    else if (item?.role === 'assistant' || item?.role === 'user') turns.push({ role: item.role, content })
+  }
+  return { system: system.join('\n\n'), turns }
+}
+
+function extractText(value) {
+  if (typeof value === 'string') return value.trim()
+  if (Array.isArray(value)) return value.map(item => {
+    if (typeof item === 'string') return item
+    return item?.text || item?.content || ''
+  }).join('').trim()
+  return ''
+}
+
+function extractOpenAiChatText(data) {
+  return extractText(data?.choices?.[0]?.message?.content)
+}
+
+function extractOpenAiResponsesText(data) {
+  if (typeof data?.output_text === 'string' && data.output_text.trim()) return data.output_text.trim()
+  return extractText((data?.output || []).flatMap(item => item?.content || []).map(item => item?.text || item?.content || ''))
+}
+
+function extractAnthropicText(data) {
+  return extractText((data?.content || []).filter(item => item?.type === 'text').map(item => item?.text || ''))
+}
+
+function extractGeminiText(data) {
+  return extractText(data?.candidates?.[0]?.content?.parts?.map(item => item?.text || '') || [])
+}
+
+function mergeCommaValues(...values) {
+  return [...new Set(values.flatMap(value => String(value || '').split(',')).map(value => value.trim()).filter(Boolean))].join(',')
+}
+
+async function requestJson(url, options, signal) {
+  const response = await fetch(url, { ...options, signal })
+  const raw = await response.text()
+  let data
+  try { data = JSON.parse(raw) } catch { data = null }
+  return { response, raw, data }
+}
+
+function openAiChatRequest(provider, messages, temperature, responseFormat) {
+  const body = { model: provider.model, messages, temperature }
+  if (responseFormat) body.response_format = responseFormat
+  return {
+    url: chatEndpoint(provider.baseUrl),
+    options: {
+      method: 'POST',
+      headers: applyCustomUserAgent(provider, { 'content-type': 'application/json', authorization: `Bearer ${provider.apiKey}` }),
+      body: JSON.stringify(body),
+    },
+    extract: extractOpenAiChatText,
+  }
+}
+
+function openAiResponsesRequest(provider, messages, temperature) {
+  const { system, turns } = splitChatMessages(messages)
+  const body = { model: provider.model, input: turns, temperature, store: false }
+  if (system) body.instructions = system
+  return {
+    url: responsesEndpoint(provider.baseUrl),
+    options: {
+      method: 'POST',
+      headers: applyCustomUserAgent(provider, { 'content-type': 'application/json', authorization: `Bearer ${provider.apiKey}` }),
+      body: JSON.stringify(body),
+    },
+    extract: extractOpenAiResponsesText,
+  }
+}
+
+function anthropicRequest(provider, messages, temperature) {
+  const { system, turns } = splitChatMessages(messages)
+  const headers = {
+    'content-type': 'application/json',
+    'anthropic-version': '2023-06-01',
+    ...(provider.anthropicAuthType === 'bearer' ? { authorization: `Bearer ${provider.apiKey}` } : { 'x-api-key': provider.apiKey }),
+  }
+  const beta = mergeCommaValues(provider.anthropicBeta, provider.beta1m ? 'context-1m-2025-08-07' : '')
+  if (beta) headers['anthropic-beta'] = beta
+  const body = { model: provider.model, max_tokens: 2048, messages: turns, temperature }
+  if (system) body.system = system
+  return {
+    url: joinOpenAiEndpoint(provider.baseUrl, 'messages'),
+    options: { method: 'POST', headers: applyCustomUserAgent(provider, headers), body: JSON.stringify(body) },
+    extract: extractAnthropicText,
+  }
+}
+
+function geminiRequest(provider, messages, temperature) {
+  const { system, turns } = splitChatMessages(messages)
+  const body = {
+    contents: turns.map(item => ({ role: item.role === 'assistant' ? 'model' : 'user', parts: [{ text: item.content }] })),
+    generationConfig: { temperature },
+  }
+  if (system) body.systemInstruction = { parts: [{ text: system }] }
+  return {
+    url: geminiEndpoint(provider.baseUrl, provider.model),
+    options: {
+      method: 'POST',
+      headers: applyCustomUserAgent(provider, { 'content-type': 'application/json', 'x-goog-api-key': provider.apiKey }),
+      body: JSON.stringify(body),
+    },
+    extract: extractGeminiText,
+  }
+}
+
+function completionRequests(provider, options) {
+  if (provider.protocol === 'anthropic') return [anthropicRequest(provider, options.messages, options.temperature)]
+  if (provider.protocol === 'gemini') return [geminiRequest(provider, options.messages, options.temperature)]
+  if (provider.protocol !== 'openai') throw new Error('当前 AI Provider 协议暂不支持')
+  const chat = openAiChatRequest(provider, options.messages, options.temperature, options.responseFormat)
+  const responses = openAiResponsesRequest(provider, options.messages, options.temperature)
+  return provider.wireApi === 'responses' ? [responses, chat] : [chat, responses]
+}
+
 async function requestCompletion(provider, { messages = [], temperature = 0.2, responseFormat } = {}) {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 60_000)
   try {
-    const body = { model: provider.model, messages, temperature }
-    if (responseFormat) body.response_format = responseFormat
-    const response = await fetch(chatEndpoint(provider.baseUrl), {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${provider.apiKey}` },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    })
-    const raw = await response.text()
-    let data
-    try { data = JSON.parse(raw) } catch { data = null }
-    if (!response.ok) {
-      const detail = string(data?.error?.message || raw, 500) || `HTTP ${response.status}`
-      throw new Error(`AI 请求失败：${detail}`)
+    const requests = completionRequests(provider, { messages, temperature, responseFormat })
+    let lastResult
+    for (let index = 0; index < requests.length; index += 1) {
+      const request = requests[index]
+      const result = await requestJson(request.url, request.options, controller.signal)
+      lastResult = result
+      // 与模型可靠性探测一致：OpenAI 兼容中转站若没有实现首选接口，则尝试另一条标准接口。
+      if (!result.response.ok && index < requests.length - 1 && [404, 405].includes(result.response.status)) continue
+      if (!result.response.ok) throw new Error(providerRequestError(result.data, result.raw, result.response.status))
+      const content = request.extract(result.data)
+      if (!content) throw new Error('AI 未返回可用文本')
+      return { content, usage: result.data?.usage || result.data?.usageMetadata || {}, model: result.data?.model || provider.model }
     }
-    const content = data?.choices?.[0]?.message?.content
-    if (typeof content !== 'string' || !content.trim()) throw new Error('AI 未返回可用文本')
-    return { content: content.trim(), usage: data?.usage || {}, model: data?.model || provider.model }
+    throw new Error(providerRequestError(lastResult?.data, lastResult?.raw, lastResult?.response?.status || 0))
   } catch (error) {
     if (error?.name === 'AbortError') throw new Error('AI 请求超时（60 秒）')
     throw error
@@ -251,13 +502,13 @@ function extractJson(text) {
   try { return JSON.parse(raw) } catch { return null }
 }
 
-async function runEvaluation({ userDataPath, safeStorage, providerId, caseIds }) {
+async function runEvaluation({ userDataPath, providerId, caseIds, providerLoader = loadProviders }) {
   const state = loadEvaluationState(userDataPath)
   const selected = Array.isArray(caseIds) && caseIds.length
     ? state.cases.filter(item => caseIds.includes(item.id))
     : state.cases
   if (!selected.length) throw new Error('请先配置至少一个评测用例')
-  const provider = runtimeProvider({ userDataPath, safeStorage, providerId })
+  const provider = await runtimeProvider({ userDataPath, providerId, providerLoader })
   const startedAt = Date.now()
   const results = []
   for (const item of selected) {
@@ -461,8 +712,9 @@ function readMcpSnapshot(userDataPath = defaultUserDataPath()) {
 module.exports = {
   defaultUserDataPath,
   redactSensitiveText,
+  listProviderSources,
   listProviders,
-  saveProvider,
+  addProviderFromModelReliability,
   deleteProvider,
   activateProvider,
   runtimeProvider,

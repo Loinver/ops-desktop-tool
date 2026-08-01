@@ -44,6 +44,12 @@ const routes = [
         meta: { title: 'AI 能力中心', keepAlive: true }
       },
       {
+        path: 'ai-chat',
+        name: 'AiChat',
+        component: () => import('../views/ai-chat/index.vue'),
+        meta: { title: 'AI 问答', keepAlive: true }
+      },
+      {
         path: 'quick-launch',
         name: 'QuickLaunch',
         component: () => import('../views/quick-launch/index.vue'),
