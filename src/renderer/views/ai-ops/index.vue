@@ -118,10 +118,10 @@
             </div>
             <div class="card-actions">
               <span v-if="provider.id === providerState.activeProviderId" class="default-label">默认</span>
-              <button v-else class="btn-text" type="button" :disabled="activatingProviderId === provider.id" @click="activateProvider(provider.id)">
+              <button v-else class="btn-text" type="button" :disabled="activatingProviderId === provider.id || !provider.available" @click="activateProvider(provider.id)">
                 {{ activatingProviderId === provider.id ? '设置中' : '设为默认' }}
               </button>
-              <button class="icon-btn" type="button" title="连接测试" aria-label="连接测试" :disabled="testingProviderId === provider.id" @click="testProvider(provider.id)">
+              <button class="icon-btn" type="button" title="连接测试" aria-label="连接测试" :disabled="testingProviderId === provider.id || !provider.available" @click="testProvider(provider.id)">
                 <t-icon :name="testingProviderId === provider.id ? 'loading' : 'check-circle'" :class="{ spinning: testingProviderId === provider.id }" />
               </button>
               <button class="icon-btn" type="button" title="前往模型可靠性" aria-label="前往模型可靠性" @click="openModelReliability"><t-icon name="jump" /></button>
@@ -129,32 +129,6 @@
             </div>
           </div>
         </article>
-      </section>
-
-      <section v-else-if="activeTab === 'chat'" class="panel chat-panel">
-        <div class="panel-title chat-title">
-          <div>
-            <h3>AI 问答</h3>
-            <p>使用当前默认 Provider 进行多轮问答；会话仅保留在当前页面，不写入本机数据。</p>
-          </div>
-          <span class="chat-provider"><t-icon name="server" /> {{ activeProviderReady ? `${activeProvider.name} · ${activeProvider.model}` : '未配置可用 Provider' }}</span>
-        </div>
-        <p class="chat-notice"><t-icon name="secured" /> API Key 始终仅在主进程使用；发送给模型前会脱敏常见密钥、Token 和密码字段。</p>
-        <div class="chat-history" aria-live="polite">
-          <div v-if="!chatMessages.length" class="empty-mini"><t-icon name="chat" /> 输入问题后即可开始对话，例如：如何为当前项目设计安全的备份策略？</div>
-          <article v-for="message in chatMessages" :key="message.id" :class="['chat-message', `chat-message--${message.role}`]">
-            <span class="chat-message-role">{{ message.role === 'user' ? '你' : 'AI' }}</span>
-            <p>{{ message.content }}</p>
-          </article>
-          <article v-if="chatBusy" class="chat-message chat-message--assistant chat-message--pending"><span class="chat-message-role">AI</span><p><t-icon name="loading" class="spinning" /> 正在思考…</p></article>
-        </div>
-        <p v-if="chatError" class="form-error" role="alert"><t-icon name="error-circle" /> {{ chatError }}</p>
-        <label class="chat-input"><span>问题</span><textarea v-model="chatInput" rows="5" maxlength="4000" placeholder="输入你的问题。Enter 发送，Shift + Enter 换行。" :disabled="chatBusy || !activeProviderReady" @keydown.enter.exact.prevent="sendAiChat" /></label>
-        <div class="actions chat-actions">
-          <button class="btn-secondary" type="button" :disabled="chatBusy || !chatMessages.length" @click="clearAiChat"><t-icon name="clear" /> 清空会话</button>
-          <button class="btn-primary" type="button" :disabled="chatBusy || !activeProviderReady || !chatInput.trim()" @click="sendAiChat"><t-icon :name="chatBusy ? 'loading' : 'chat'" :class="{ spinning: chatBusy }" /> {{ chatBusy ? '回答中…' : '发送问题' }}</button>
-        </div>
-        <p v-if="!activeProviderReady" class="inline-hint"><t-icon name="info-circle" /> 请先在 Provider 页保存 API Key、启用并设为默认 Provider。</p>
       </section>
 
       <section v-else-if="activeTab === 'evaluation'" class="stack">
@@ -242,8 +216,30 @@
       </section>
 
       <section v-else-if="activeTab === 'workflow'" class="panel-grid workflow-layout">
-        <article class="panel form-panel"><div class="panel-title"><div><h3>自然语言运维工作流</h3><p>AI 工作流当前只会生成预览；外部打开必须在你确认后执行，不会自动发布、删除或回滚。</p></div></div><textarea v-model="workflowPrompt" rows="8" placeholder="例如：打开测试环境后台、进入发布页面并查看模型评测"></textarea><div class="actions"><button class="btn-primary" type="button" :disabled="busy || !workflowPrompt.trim()" @click="planWorkflow"><t-icon name="gesture-pray" /> 生成预览</button></div></article>
-        <article class="panel"><div class="panel-title"><div><h3>执行预览</h3><p>{{ workflowPlan ? '请核对每一步，再决定是否执行。' : '尚未生成工作流。' }}</p></div></div><div v-if="workflowPlan" class="workflow-plan"><div class="workflow-request">{{ workflowPlan.prompt }}</div><ol><li v-for="step in workflowPlan.steps" :key="`${step.type}-${step.label}`"><span class="step-icon"><t-icon :name="workflowStepIcon(step)" /></span><span :class="['step-risk', step.risk]">{{ step.risk === 'medium' ? '需注意' : '低风险' }}</span><div><strong>{{ step.label }}</strong><p v-if="step.target">{{ step.target }}</p><small v-if="step.requiresConfirmation">此步需要确认后才会执行。</small></div></li></ol><div v-if="workflowExecution" class="workflow-complete"><t-icon name="check-circle" /> 已处理 {{ workflowExecution.completed }} 个允许步骤；未执行任何发布、删除或回滚操作。</div><button class="btn-primary" type="button" :disabled="busy" @click="executeWorkflow"><t-icon name="play-circle" /> {{ workflowPlan.requiresConfirmation ? `确认执行 ${workflowPlan.steps.length} 个允许步骤` : `执行 ${workflowPlan.steps.length} 个允许步骤` }}</button></div><div v-else class="empty-mini">支持“打开网站”“进入发布”“模型测试”“日志排查”等关键词；发布操作只会导航到页面，不会自动执行。</div></article>
+        <article class="panel form-panel">
+          <div class="panel-title"><div><h3>自然语言运维工作流</h3><p>AI 工作流只生成安全预览：页面步骤由你主动前往；外部打开必须确认；不会自动发布、删除或回滚。</p></div></div>
+          <textarea v-model="workflowPrompt" rows="8" placeholder="例如：打开测试环境后台、进入发布页面并查看模型评测"></textarea>
+          <div class="actions"><button class="btn-primary" type="button" :disabled="busy || !workflowPrompt.trim()" @click="planWorkflow"><t-icon name="gesture-pray" /> 生成预览</button></div>
+        </article>
+        <article class="panel">
+          <div class="panel-title"><div><h3>执行预览</h3><p>{{ workflowPlan ? workflowPlan.summary || '请核对每一步，再决定是否执行。' : '尚未生成工作流。' }}</p></div></div>
+          <div v-if="workflowPlan" class="workflow-plan">
+            <div class="workflow-request">{{ workflowPlan.prompt }}</div>
+            <ol>
+              <li v-for="step in workflowPlan.steps" :key="step.id || `${step.type}-${step.label}`">
+                <span class="step-icon"><t-icon :name="workflowStepIcon(step)" /></span>
+                <span :class="['step-risk', step.risk]">{{ step.risk === 'medium' ? '需注意' : '低风险' }}</span>
+                <div><strong>{{ step.description || step.label }}</strong><p v-if="step.target">{{ step.target }}</p><small v-if="step.requiresConfirmation">此步需要确认后才会执行。</small></div>
+                <button v-if="step.type === 'navigate'" class="btn-text" type="button" @click="navigateWorkflowStep(step)">前往</button>
+              </li>
+            </ol>
+            <div v-if="workflowExecution" class="workflow-complete"><t-icon name="check-circle" /> 已打开 {{ workflowExecution.opened }} 个外部链接；{{ workflowExecution.navigation }} 个页面步骤需点击“前往”。未执行发布、删除或回滚操作。</div>
+            <button v-if="workflowExternalSteps.length" class="btn-primary" type="button" :disabled="busy" @click="executeWorkflow"><t-icon name="play-circle" /> 确认打开 {{ workflowExternalSteps.length }} 个外部链接</button>
+            <p v-else class="inline-hint"><t-icon name="info-circle" /> 此计划没有外部打开步骤，请按需点击每个页面步骤的“前往”。</p>
+          </div>
+          <div v-else class="empty-mini">支持“打开网站”“进入发布”“模型测试”“日志排查”等关键词；发布操作只会导航到页面，不会自动执行。</div>
+          <div v-if="workflowState.history?.length" class="workflow-history"><strong>最近计划</strong><button v-for="item in workflowState.history.slice(0, 5)" :key="item.id" class="btn-text" type="button" @click="restoreWorkflow(item)">{{ item.prompt }}</button></div>
+        </article>
       </section>
 
       <section v-else-if="activeTab === 'mcp'" class="panel mcp-panel"><div class="panel-title"><div><h3>MCP 本地只读服务</h3><p>供 Codex、Claude Desktop 等客户端访问本机发布历史、模型健康度和运维知识库。不会暴露密钥，也不提供发布写操作。</p></div></div><div v-if="mcpInfo" class="mcp-content"><div class="mcp-badge"><t-icon name="secured" /> stdio · 只读</div><p>可用工具：<code>{{ mcpInfo.tools.join(' · ') }}</code></p><p>{{ mcpInfo.note }}</p><label><span>启动命令</span><input :value="mcpInfo.command" readonly @focus="$event.target.select()" /></label><label><span>启动参数</span><input :value="mcpInfo.args.join(' ')" readonly @focus="$event.target.select()" /></label><pre>{{ mcpConfigExample }}</pre></div><div v-else class="empty-mini">正在读取 MCP 配置…</div></section>
@@ -255,12 +251,13 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onActivated, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import MessagePlugin from 'tdesign-vue-next/es/message/plugin.mjs'
 import { useConfirm } from '../../composables/useConfirm'
 
 const { confirm } = useConfirm()
+const route = useRoute()
 const router = useRouter()
 const tabs = [
   { id: 'providers', name: 'Provider', icon: 'server' },
@@ -271,7 +268,7 @@ const tabs = [
   { id: 'mcp', name: 'MCP', icon: 'api' },
 ]
 
-const activeTab = ref('providers')
+const activeTab = ref(tabs.some(tab => tab.id === route.query.tab) ? route.query.tab : 'providers')
 const loading = ref(true)
 const refreshing = ref(false)
 const hasLoaded = ref(false)
@@ -287,9 +284,6 @@ const logState = ref({ items: [] })
 const knowledgeState = ref({ documents: [] })
 const workflowState = ref({ history: [] })
 const mcpInfo = ref(null)
-const chatInput = ref('')
-const chatBusy = ref(false)
-const chatError = ref('')
 
 const newCase = () => ({ id: '', name: '', prompt: '', systemPrompt: '', expectedKeywords: '', expectJson: false })
 const providerSources = ref([])
@@ -341,6 +335,7 @@ const filteredEvaluationResults = computed(() => {
   return evaluationResults.value
 })
 const logLineCount = computed(() => logForm.value.text ? logForm.value.text.split(/\r?\n/).length : 0)
+const workflowExternalSteps = computed(() => (workflowPlan.value?.steps || []).filter(step => step.type === 'open-url'))
 
 function notify(result, fallback = '操作失败') {
   if (result?.ok) return true
@@ -358,6 +353,7 @@ function riskLabel(level) {
 
 function selectTab(tabId) {
   activeTab.value = tabId
+  if (route.query.tab !== tabId) router.replace({ query: { ...route.query, tab: tabId } })
 }
 
 function handleTabKeydown(event, tabId) {
@@ -631,56 +627,34 @@ async function answerKnowledge() {
   }
 }
 
-function clearAiChat() {
-  chatMessages.value = []
-  chatInput.value = ''
-  chatError.value = ''
-}
-
-async function sendAiChat() {
-  const prompt = chatInput.value.trim()
-  if (!prompt || chatBusy.value) return
-  if (!activeProviderReady.value) {
-    chatError.value = '请先在模型可靠性完成配置，并一键添加可用的默认 Provider'
-    return
-  }
-  const userMessage = { id: `user-${Date.now()}-${Math.random().toString(16).slice(2)}`, role: 'user', content: prompt }
-  const messages = [...chatMessages.value, userMessage]
-  chatMessages.value = messages
-  chatInput.value = ''
-  chatError.value = ''
-  chatBusy.value = true
-  try {
-    const result = await window.opsApi.askAiChat({
-      providerId: providerState.value.activeProviderId,
-      messages: messages.map(item => ({ role: item.role, content: item.content })),
-    })
-    if (!notify(result, 'AI 问答失败')) {
-      chatError.value = result?.error || 'AI 问答失败'
-      return
-    }
-    chatMessages.value = [...chatMessages.value, {
-      id: `assistant-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      role: 'assistant',
-      content: result.content,
-    }]
-  } catch (error) {
-    chatError.value = error?.message || 'AI 问答失败，请重试'
-    MessagePlugin.error({ content: chatError.value, placement: 'bottom-right' })
-  } finally {
-    chatBusy.value = false
-  }
-}
-
 async function planWorkflow() {
   busy.value = true
   workflowExecution.value = null
   try {
     const result = await window.opsApi.planAiWorkflow(workflowPrompt.value)
-    if (notify(result, '生成工作流失败')) workflowPlan.value = result.plan
+    if (notify(result, '生成工作流失败')) {
+      workflowPlan.value = result.plan
+      workflowState.value = { ...workflowState.value, history: [result.plan, ...(workflowState.value.history || []).filter(item => item.id !== result.plan.id)] }
+    }
   } finally {
     busy.value = false
   }
+}
+
+function restoreWorkflow(plan) {
+  workflowPlan.value = plan
+  workflowPrompt.value = plan.prompt || ''
+  workflowExecution.value = null
+}
+
+function navigateWorkflowStep(step) {
+  if (step?.type !== 'navigate' || !step.target) return
+  const target = String(step.target)
+  if (!['/system-release', '/ai-ops'].includes(target.split('?')[0])) {
+    MessagePlugin.error({ content: '该页面步骤无效，请重新生成工作流', placement: 'bottom-right' })
+    return
+  }
+  router.push(target)
 }
 
 async function executeWorkflow() {
@@ -690,8 +664,12 @@ async function executeWorkflow() {
   try {
     const result = await window.opsApi.executeAiWorkflow({ plan: workflowPlan.value, confirmed: true })
     if (notify(result, '执行工作流失败')) {
-      workflowExecution.value = { completed: result.completed?.length || 0 }
-      MessagePlugin.success({ content: `已处理 ${workflowExecution.value.completed} 个工作流步骤`, placement: 'bottom-right' })
+      const completed = result.completed || []
+      workflowExecution.value = {
+        opened: completed.filter(step => step.status === 'done').length,
+        navigation: completed.filter(step => step.status === 'requires-user-navigation').length,
+      }
+      MessagePlugin.success({ content: workflowExecution.value.opened ? `已打开 ${workflowExecution.value.opened} 个外部链接` : '此计划没有可执行的外部打开步骤', placement: 'bottom-right' })
     }
   } finally {
     busy.value = false
@@ -702,11 +680,18 @@ watch(() => sourceSelection.value.sourceKey, () => {
   sourceSelection.value.model = ''
 })
 
+watch(() => route.query.tab, tab => {
+  if (tabs.some(item => item.id === tab)) activeTab.value = tab
+}, { immediate: true })
+
 watch(activeTab, tab => {
   if (tab === 'mcp' && !mcpInfo.value) loadState()
 })
 
 onMounted(loadState)
+onActivated(() => {
+  if (hasLoaded.value) loadState()
+})
 </script>
 
 <style scoped>
@@ -1611,6 +1596,30 @@ button:disabled {
   color: color-mix(in srgb, var(--success) 82%, #14532d);
   font-size: 12px;
   font-weight: 650;
+}
+
+.workflow-history {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-md);
+  padding-top: var(--spacing-md);
+  border-top: 1px solid var(--border-light);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.workflow-history strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.workflow-history .btn-text {
+  max-width: min(100%, 240px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chat-panel { max-width: 960px; }

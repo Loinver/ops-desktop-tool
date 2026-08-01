@@ -65,8 +65,9 @@
             </div>
             <div v-if="copilotResult.plan" class="plan-card">
               <div><strong>确认式工作流</strong><p>{{ copilotResult.plan.summary }}</p></div>
-              <ol><li v-for="step in copilotResult.plan.steps" :key="step.id">{{ step.description }}<em v-if="step.requiresConfirmation">需要确认</em></li></ol>
-              <button v-if="copilotResult.plan.steps?.length" class="btn-secondary" type="button" @click="executePlan">确认后执行安全步骤</button>
+              <ol><li v-for="step in copilotResult.plan.steps" :key="step.id || `${step.type}-${step.label}`">{{ step.description || step.label }}<em v-if="step.requiresConfirmation">需要确认</em><button v-if="step.type === 'navigate'" class="btn-text" type="button" @click="openPlanStep(step)">前往</button></li></ol>
+              <button v-if="copilotExternalSteps.length" class="btn-secondary" type="button" @click="executePlan">确认打开 {{ copilotExternalSteps.length }} 个外部链接</button>
+              <small v-else>此计划没有可执行的外部打开步骤；页面步骤请点击“前往”。</small>
             </div>
           </div>
         </article>
@@ -179,14 +180,16 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onActivated, onMounted, ref, watch } from 'vue'
 import { MessagePlugin } from 'tdesign-vue-next'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useConfirm } from '../../composables/useConfirm'
 
 const { confirm } = useConfirm()
 const route = useRoute()
+const router = useRouter()
 const loading = ref(false)
+const hasLoaded = ref(false)
 const busy = ref(false)
 const savingTask = ref(false)
 const runningTaskId = ref('')
@@ -204,7 +207,8 @@ const copilotUseAi = ref(true)
 const copilotResult = ref(null)
 const taskForm = ref(newTask())
 
-const activeProvider = computed(() => aiState.value.providers?.providers?.find(item => item.id === aiState.value.providers?.activeProviderId && item.enabled))
+const activeProvider = computed(() => aiState.value.providers?.providers?.find(item => item.id === aiState.value.providers?.activeProviderId && item.enabled && item.available && item.hasApiKey))
+const copilotExternalSteps = computed(() => (copilotResult.value?.plan?.steps || []).filter(step => step.type === 'open-url'))
 const enabledTaskCount = computed(() => tasks.value.filter(item => item.enabled).length)
 const eventSources = computed(() => [...new Set(events.value.map(item => item.sourceType || item.category).filter(Boolean))].sort())
 const filteredEvents = computed(() => events.value.filter((item) => {
@@ -256,6 +260,7 @@ async function load() {
     if (notify(eventResult, '读取事件失败')) { events.value = eventResult.items || []; summary.value = eventResult.summary || {} }
     if (notify(taskResult, '读取自动化任务失败')) tasks.value = taskResult.tasks || []
     if (aiResult?.ok) aiState.value = aiResult
+    hasLoaded.value = true
     await focusRouteEvent()
   } finally { loading.value = false }
 }
@@ -268,10 +273,22 @@ async function askCopilot() {
 }
 async function executePlan() {
   const plan = copilotResult.value?.plan
-  if (!plan) return
-  if (plan.requiresConfirmation && !await confirm({ title: '确认执行工作流', content: '仅执行计划中的安全外部打开步骤；不会发布、删除或回滚。', theme: 'warning' })) return
+  if (!plan || !copilotExternalSteps.value.length) return
+  if (plan.requiresConfirmation && !await confirm({ title: '确认打开外部链接', content: '仅打开计划中的外部链接；不会发布、删除或回滚。', theme: 'warning' })) return
   const result = await window.opsApi.executeAiWorkflow({ plan, confirmed: true })
-  if (notify(result, '执行工作流失败')) MessagePlugin.success({ content: '工作流已执行', placement: 'bottom-right' })
+  if (notify(result, '执行工作流失败')) {
+    const opened = (result.completed || []).filter(step => step.status === 'done').length
+    MessagePlugin.success({ content: `已打开 ${opened} 个外部链接`, placement: 'bottom-right' })
+  }
+}
+function openPlanStep(step) {
+  if (step?.type !== 'navigate' || !step.target) return
+  const target = String(step.target)
+  if (!['/system-release', '/ai-ops'].includes(target.split('?')[0])) {
+    MessagePlugin.error({ content: '该页面步骤无效，请重新生成计划', placement: 'bottom-right' })
+    return
+  }
+  router.push(target)
 }
 function openKnowledge(source) { window.location.hash = '#/ai-ops'; MessagePlugin.info({ content: `请在 AI 能力中心知识库查看「${source.title}」第 ${source.startLine}-${source.endLine} 行。`, placement: 'bottom-right' }) }
 async function updateEvent(item, status) { const result = await window.opsApi.updateOpsEvent(item.id, status); if (notify(result, '更新事件失败')) await load() }
@@ -287,6 +304,9 @@ watch(() => route.query.event, (eventId) => {
 })
 
 onMounted(load)
+onActivated(() => {
+  if (hasLoaded.value) load()
+})
 </script>
 
 <style scoped>

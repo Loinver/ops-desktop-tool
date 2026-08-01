@@ -186,6 +186,7 @@ const retryableChatError = ref(false)
 
 const knowledgeQuery = ref('')
 const knowledgeUseAi = ref(false)
+const knowledgeResults = ref([])
 const searched = ref(false)
 
 const providerState = ref({ activeProviderId: '', providers: [] })
@@ -227,6 +228,10 @@ function scrollToBottom() {
 }
 
 watch(chatMessages, () => nextTick(scrollToBottom), { deep: true })
+watch(knowledgeQuery, () => {
+  searched.value = false
+  knowledgeResults.value = []
+})
 
 function loadHistory() {
   const saved = localStorage.getItem('aiChatHistory')
@@ -258,17 +263,13 @@ function addMessage(role, content) {
 
 async function requestAssistantReply() {
   chatBusy.value = true
+  let completed = false
   try {
-    const result = searched.value && knowledgeUseAi.value && knowledgeQuery.value
-      ? await window.opsApi.answerAiKnowledge({
-        query: knowledgeQuery.value,
-        useAi: true,
-        providerId: activeProvider.value?.id
-      })
-      : await window.opsApi.askAiChat({
-        providerId: providerState.value.activeProviderId,
-        messages: chatMessages.value.map(message => ({ role: message.role, content: message.content }))
-      })
+    const result = await window.opsApi.askAiChat({
+      providerId: providerState.value.activeProviderId,
+      messages: chatMessages.value.map(message => ({ role: message.role, content: message.content })),
+      knowledgeResults: searched.value && knowledgeUseAi.value ? knowledgeResults.value : [],
+    })
 
     if (!result?.ok) {
       chatError.value = result?.error || 'AI 问答失败'
@@ -276,15 +277,17 @@ async function requestAssistantReply() {
       return
     }
 
-    addMessage('assistant', result.content || result.answer || '')
+    addMessage('assistant', result.content || '')
     retryableChatError.value = false
+    completed = true
   } catch (error) {
     chatError.value = error?.message || 'AI 问答失败，请重试'
     retryableChatError.value = true
     MessagePlugin.error({ content: chatError.value, placement: 'bottom-right' })
   } finally {
     chatBusy.value = false
-    searched.value = false
+    // 检索证据只用于下一次提问；请求失败时保留它，确保“重试”仍使用同一批证据。
+    if (completed) searched.value = false
   }
 }
 
@@ -292,7 +295,7 @@ async function sendAiChat() {
   const prompt = chatInput.value.trim()
   if (!prompt || chatBusy.value) return
   if (!activeProviderReady.value) {
-    chatError.value = '请先配置、启用并设为默认 Provider'
+    chatError.value = '请先在模型可靠性完成配置，并在 AI 能力中心一键添加默认 Provider'
     retryableChatError.value = false
     return
   }
@@ -307,7 +310,7 @@ async function sendAiChat() {
 async function retryLastQuestion() {
   if (chatBusy.value || !latestUserMessage.value) return
   if (!activeProviderReady.value) {
-    chatError.value = '请先配置、启用并设为默认 Provider'
+    chatError.value = '请先在模型可靠性完成配置，并在 AI 能力中心一键添加默认 Provider'
     retryableChatError.value = false
     return
   }
@@ -321,7 +324,8 @@ async function searchKnowledge() {
   const query = knowledgeQuery.value.trim()
   if (!query) return
 
-  searched.value = true
+  searched.value = false
+  knowledgeResults.value = []
   chatError.value = ''
   try {
     const result = await window.opsApi.searchAiKnowledge(query)
@@ -329,7 +333,11 @@ async function searchKnowledge() {
       chatError.value = result?.error || '知识检索失败'
       return
     }
-    addMessage('assistant', result.results?.length ? `已检索到 ${result.results.length} 条知识。现在可以继续提问，我会基于这些结果回答。` : '没有检索到匹配的知识。')
+    knowledgeResults.value = result.results || []
+    searched.value = true
+    addMessage('assistant', knowledgeResults.value.length
+      ? `已检索到 ${knowledgeResults.value.length} 条本地知识。开启“基于检索结果回答”后，下一次提问会引用这些片段。`
+      : '没有检索到匹配的知识。')
   } catch (error) {
     chatError.value = '知识检索失败'
   }
@@ -373,6 +381,7 @@ function configureProvider() {
 
 <style scoped>
 .ai-chat-page {
+  --chat-content-width: 1120px;
   gap: 0;
 }
 
@@ -440,14 +449,15 @@ function configureProvider() {
 
 .chat-page-content {
   min-height: 0;
-  flex: 1;
+  flex: 1 1 auto;
   display: flex;
 }
 
 .chat-workspace {
-  width: min(1180px, 100%);
+  width: min(1280px, 100%);
   min-height: 0;
-  flex: 1;
+  height: 100%;
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   margin: 0 auto;
@@ -459,8 +469,8 @@ function configureProvider() {
   align-items: center;
   justify-content: space-between;
   gap: var(--spacing-md);
-  min-height: 76px;
-  padding: var(--spacing-md) var(--panel-padding);
+  min-height: 68px;
+  padding: 12px var(--panel-padding);
   border-bottom: 1px solid var(--border-light);
 }
 
@@ -573,8 +583,8 @@ function configureProvider() {
 }
 
 .knowledge-toolbar {
-  gap: 10px;
-  padding: 10px var(--panel-padding);
+  gap: var(--spacing-sm);
+  padding: 8px var(--panel-padding);
   border-bottom: 1px solid var(--border-light);
   background: color-mix(in srgb, var(--bg-subtle) 76%, transparent);
 }
@@ -620,10 +630,10 @@ function configureProvider() {
 
 .chat-history {
   position: relative;
-  min-height: 240px;
-  flex: 1;
+  min-height: clamp(340px, 48vh, 620px);
+  flex: 1 1 auto;
   overflow-y: auto;
-  padding: clamp(20px, 3vw, 32px) var(--panel-padding);
+  padding: clamp(24px, 3vw, 40px) var(--panel-padding);
   background:
     radial-gradient(circle at 12% 0, color-mix(in srgb, var(--primary) 5%, transparent), transparent 26%),
     linear-gradient(180deg, color-mix(in srgb, var(--bg-subtle) 68%, transparent), transparent 34%);
@@ -638,12 +648,12 @@ function configureProvider() {
 .chat-history__status {
   position: sticky;
   z-index: 1;
-  top: -20px;
+  top: -24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--spacing-sm);
-  width: min(800px, 100%);
+  width: min(var(--chat-content-width), 100%);
   padding: 4px 0 14px;
   margin: 0 auto var(--spacing-lg);
   border-bottom: 1px solid color-mix(in srgb, var(--border-light) 84%, transparent);
@@ -667,8 +677,8 @@ function configureProvider() {
 }
 
 .chat-welcome {
-  width: min(920px, 100%);
-  padding: clamp(20px, 6vh, 72px) 0 var(--spacing-xl);
+  width: min(var(--chat-content-width), 100%);
+  padding: clamp(28px, 8vh, 88px) 0 var(--spacing-xl);
   margin: auto;
 }
 
@@ -742,7 +752,7 @@ function configureProvider() {
 .chat-message {
   align-items: flex-start;
   gap: 10px;
-  width: min(980px, 100%);
+  width: min(var(--chat-content-width), 100%);
   margin: 0 auto;
   transition: transform var(--transition-fast);
 }
@@ -774,7 +784,7 @@ function configureProvider() {
 
 .message-stack {
   min-width: 0;
-  max-width: min(820px, calc(100% - 40px));
+  max-width: min(960px, calc(100% - 40px));
 }
 
 .message-meta {
@@ -939,7 +949,8 @@ function configureProvider() {
 }
 
 .composer {
-  margin-top: var(--spacing-md);
+  width: min(var(--chat-content-width), 100%);
+  margin: 12px auto 0;
   padding: 4px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -960,8 +971,8 @@ function configureProvider() {
 .composer textarea {
   display: block;
   width: 100%;
-  min-height: 74px;
-  padding: 10px;
+  min-height: 82px;
+  padding: 11px 12px;
   border: 0;
   outline: 0;
   resize: vertical;
@@ -1065,7 +1076,7 @@ function configureProvider() {
   }
 
   .chat-history {
-    min-height: 300px;
+    min-height: 340px;
     padding: var(--spacing-lg) var(--spacing-md);
   }
 

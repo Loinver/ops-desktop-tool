@@ -126,6 +126,7 @@ function registerAiOpsHandlers() {
         userDataPath: userDataPath(),
         providerId: options.providerId,
         messages: options.messages,
+        knowledgeResults: options.knowledgeResults,
       }))
     } catch (error) { return failure(error) }
   })
@@ -237,8 +238,10 @@ function registerAiOpsHandlers() {
           const url = normalizeExternalUrl(step.target)
           await openExternalUrl(url, { shell })
           completed.push({ ...step, target: url, status: 'done' })
+        } else if (step.type === 'navigate') {
+          completed.push({ ...step, status: 'requires-user-navigation' })
         } else {
-          completed.push({ ...step, status: 'previewed' })
+          completed.push({ ...step, status: 'guided' })
         }
       }
       return success({ completed })

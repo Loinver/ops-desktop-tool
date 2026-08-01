@@ -568,15 +568,16 @@ function usesOfficialModelsOnly(provider) {
 }
 
 /**
- * 保留端点协议兼容性，再按用户保存的规则筛选模型。
- * 规则不再内置特定模型或中转站白名单：默认获取全部兼容模型；用户可改为仅获取匹配项，
- * 并用排除规则去掉不希望加载的模型。
+ * 保留端点协议兼容性，再按中转站规则和用户保存的规则筛选模型。
+ * ZenMux 的模型测试只允许测试其模型 ID 明确以 `-free` 结尾的免费模型；
+ * 这个内置限制优先于用户的包含规则，避免付费模型进入测试队列。
  */
 function filterProviderModels(provider, models, modelListSettings = {}) {
   const list = Array.isArray(models) ? models : []
   return list.filter((item) => {
     const rawModel = typeof item === 'string' ? item : item?.model || item?.id || item?.name
     const model = splitOneMModelMarker(rawModel).model
+    if (isZenMuxProvider(provider) && !/-free$/i.test(model)) return false
     // 一个模型仍必须能通过当前端点协议调用，避免把跨生态模型放进测试队列。
     if (!isModelAllowedForProtocol(provider.protocol, compactBareModelName(model))) return false
     return isModelIncludedBySettings(model, modelListSettings)
@@ -816,12 +817,7 @@ async function testModel(payload = {}, { signal } = {}) {
     : { ok: false, status: 'error', message: '未知错误' }
 }
 
-/**
- * 解析 /models 接口返回的模型列表，同时保留模型元数据。
- *
- * ZenMux 的官方接口会在 pricings 中标注各项价格；若在这里提前只保留 id，
- * 后续便无法准确识别没有 `-free` 后缀、但实际价格为 0 的免费模型。
- */
+/** 解析 /models 接口返回的模型列表，同时保留模型元数据。 */
 function normalizeModelList(data) {
   const rawModels = Array.isArray(data?.data)
     ? data.data
@@ -1294,5 +1290,12 @@ function registerModelTestHandlers() {
 
 module.exports = {
   registerModelTestHandlers,
-  __testables: { requestOnce, requestWithRetry, delay, testModel, cancelledModelResult },
+  __testables: {
+    requestOnce,
+    requestWithRetry,
+    delay,
+    testModel,
+    cancelledModelResult,
+    filterProviderModels,
+  },
 }

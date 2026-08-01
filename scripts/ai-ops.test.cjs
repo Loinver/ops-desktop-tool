@@ -9,6 +9,7 @@ const {
   listProviderSources,
   listProviders,
   addProviderFromModelReliability,
+  activateProvider,
   runtimeProvider,
   saveEvaluationCases,
   loadEvaluationState,
@@ -93,6 +94,32 @@ test('AI Provider 只保存模型可靠性引用，运行时读取最新凭证',
   }
 })
 
+test('不可用的模型可靠性 Provider 不能被设为 AI 默认 Provider', async () => {
+  const directory = makeTempDir()
+  try {
+    const readyLoader = sourceProviderLoader()
+    const saved = await addProviderFromModelReliability({
+      userDataPath: directory,
+      input: { sourceProviderId: 'cc-switch-test-provider', sourceAppType: 'codex', model: 'qwen3' },
+      providerLoader: readyLoader,
+    })
+    const unavailableLoader = async () => ({
+      ok: true,
+      providers: [{
+        ...((await readyLoader()).providers[0]),
+        testable: false,
+      }],
+    })
+
+    await assert.rejects(
+      () => activateProvider({ userDataPath: directory, id: saved.provider.id, providerLoader: unavailableLoader }),
+      /不可用|检查配置/,
+    )
+  } finally {
+    cleanup(directory)
+  }
+})
+
 test('模型评测用例会规范化关键词且日志规则可识别风险', () => {
   const directory = makeTempDir()
   try {
@@ -135,8 +162,10 @@ test('知识库支持脱敏、按行号检索，本地工作流不会生成危�
       prompt: '打开测试环境后台，然后进入发布页面',
       quickLaunchItems: [{ type: 'url', name: '测试环境后台', target: 'https://staging.example.com' }],
     })
+    assert.match(plan.summary, /安全步骤/)
     assert.ok(plan.steps.some(step => step.type === 'open-url' && step.requiresConfirmation))
     assert.ok(plan.steps.some(step => step.type === 'navigate' && step.target === '/system-release'))
+    assert.ok(plan.steps.every(step => step.id && step.description === step.label))
     assert.ok(plan.steps.every(step => step.type !== 'shell' && step.type !== 'deploy' && step.type !== 'delete'))
   } finally {
     cleanup(directory)
