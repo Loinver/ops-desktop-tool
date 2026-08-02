@@ -190,6 +190,30 @@ test('知识库支持脱敏、按行号检索，本地工作流不会生成危�
   }
 })
 
+test('知识库检索标题命中加权高于正文命中，并返回 matchedTerms', () => {
+  const directory = makeTempDir()
+  try {
+    saveKnowledgeDocument(directory, {
+      title: '回滚操作手册',
+      tags: '回滚, 发布',
+      content: '当发布失败时需要执行回滚流程。\n确认版本号后联系运维。',
+    })
+    saveKnowledgeDocument(directory, {
+      title: '日常巡检记录',
+      tags: '巡检',
+      content: '检查磁盘空间和内存。\n如有异常可参考回滚流程处理。',
+    })
+    const results = searchKnowledge(directory, '回滚', 5)
+    assert.ok(results.length >= 2)
+    assert.equal(results[0].title, '回滚操作手册')
+    assert.ok(results[0].score > results[1].score)
+    assert.ok(Array.isArray(results[0].matchedTerms))
+    assert.ok(results[0].matchedTerms.includes('回滚'))
+  } finally {
+    cleanup(directory)
+  }
+})
+
 test('MCP 服务仅公开只读工具', async () => {
   const directory = makeTempDir()
   const serverPath = path.join(__dirname, '../src/main/mcp-server.js')

@@ -711,14 +711,25 @@ function searchKnowledge(userDataPath, query, limit = 8) {
   const matches = []
   for (const doc of docs) {
     const title = redactSensitiveText(String(doc.title || '未命名知识'))
-    const tags = (Array.isArray(doc.tags) ? doc.tags : []).map(item => redactSensitiveText(String(item || ''))).filter(Boolean)
-    const lines = redactSensitiveText(String(doc.content || '')).split(/\r?\n/)
-    for (let i = 0; i < lines.length; i += 12) {
-      const block = lines.slice(i, i + 12).join('\n')
-      const lower = `${title}\n${tags.join(' ')}\n${block}`.toLowerCase()
-      const score = keywords.reduce((sum, keyword) => sum + (lower.includes(keyword) ? 1 : 0), 0)
-      if (score) matches.push({ documentId: doc.id, title, tags, startLine: i + 1, endLine: Math.min(lines.length, i + 12), score, content: block.slice(0, 2200) })
-    }
+   const tags = (Array.isArray(doc.tags) ? doc.tags : []).map(item => redactSensitiveText(String(item || ''))).filter(Boolean)
+    const titleLower = title.toLowerCase()
+    const tagsLower = tags.map(item => item.toLowerCase()).join(' ')
+   const lines = redactSensitiveText(String(doc.content || '')).split(/\r?\n/)
+   for (let i = 0; i < lines.length; i += 12) {
+     const block = lines.slice(i, i + 12).join('\n')
+     const lower = `${title}\n${tags.join(' ')}\n${block}`.toLowerCase()
+      const matched = []
+      let score = 0
+      for (const keyword of keywords) {
+        if (!lower.includes(keyword)) continue
+        matched.push(keyword)
+        // 标题命中加权 3 倍、标签命中加权 2 倍、正文命中计 1 分。
+        if (titleLower.includes(keyword)) score += 3
+        else if (tagsLower.includes(keyword)) score += 2
+        else score += 1
+      }
+      if (score) matches.push({ documentId: doc.id, title, tags, startLine: i + 1, endLine: Math.min(lines.length, i + 12), score, matchedTerms: Array.from(new Set(matched)).slice(0, 20), content: block.slice(0, 2200) })
+   }
   }
   return matches.sort((a, b) => b.score - a.score).slice(0, Math.max(1, Math.min(20, Number(limit) || 8)))
 }

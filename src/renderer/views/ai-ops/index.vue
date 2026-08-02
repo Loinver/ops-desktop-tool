@@ -211,8 +211,30 @@
       </section>
 
       <section v-else-if="activeTab === 'knowledge'" class="panel-grid knowledge-layout">
-        <article class="panel form-panel"><div class="panel-title"><div><h3>本地运维知识库</h3><p>可保存发布规范、故障复盘、服务器说明和排障手册；检索结果显示具体行号。</p></div></div><div class="form-grid"><label><span>标题</span><input v-model="knowledgeForm.title" placeholder="例如：正式环境发布 SOP" /></label><label><span>标签</span><input v-model="knowledgeForm.tags" placeholder="发布, 正式环境, 回滚" /></label><label class="full"><span>内容</span><textarea v-model="knowledgeForm.content" rows="13" maxlength="200000" placeholder="粘贴本地文档内容。保存前会脱敏。"></textarea></label></div><div class="actions"><button class="btn-primary" type="button" :disabled="busy || !knowledgeForm.content.trim()" @click="saveKnowledge"><t-icon name="save" /> 保存到知识库</button><button class="btn-secondary" type="button" :disabled="busy" @click="importKnowledge"><t-icon name="upload" /> 导入本地文档</button></div><div class="knowledge-list"><div v-for="doc in knowledgeDocuments" :key="doc.id" class="knowledge-doc"><div><strong>{{ doc.title }}</strong><p>{{ doc.tags?.join(' · ') || '无标签' }} · {{ doc.source?.type === 'file' ? `来源：${doc.source.name}` : '手动录入' }} · {{ formatTime(doc.updatedAt) }}</p></div><button class="btn-text danger-text" type="button" @click="removeKnowledge(doc.id)">删除</button></div><div v-if="!knowledgeDocuments.length" class="empty-mini">暂无知识文档，保存内容后可在右侧检索。</div></div></article>
-        <article class="panel search-panel"><div class="panel-title"><div><h3>检索与问答</h3><p>默认仅返回本地证据片段；开启 AI 后会要求答案标注来源编号。</p></div></div><div class="search-row"><input v-model="knowledgeQuery" placeholder="例如：正式环境如何回滚？" @keyup.enter="searchKnowledge" /><button class="btn-secondary" type="button" :disabled="busy" @click="searchKnowledge"><t-icon name="search" /> 检索</button></div><label class="check"><input v-model="knowledgeUseAi" type="checkbox" :disabled="!activeProviderReady" /> 使用当前 AI Provider 基于检索结果回答</label><p v-if="!activeProviderReady" class="inline-hint"><t-icon name="info-circle" /> 配置已启用且包含密钥的默认 Provider 后可生成 AI 回答。</p><button class="btn-primary answer-btn" type="button" :disabled="busy || !knowledgeQuery.trim()" @click="answerKnowledge"><t-icon name="chat" /> 生成带引用的回答</button><div v-if="knowledgeAnswer" class="answer-box"><strong>回答</strong><pre>{{ knowledgeAnswer }}</pre></div><div v-if="knowledgeResults.length" class="search-results"><div v-for="(item, index) in knowledgeResults" :key="`${item.documentId}-${item.startLine}`" class="search-result"><strong>[{{ index + 1 }}] {{ item.title }}</strong><span>第 {{ item.startLine }}–{{ item.endLine }} 行 · 匹配 {{ item.score }}</span><pre>{{ item.content }}</pre></div></div><div v-else-if="searched" class="empty-mini">没有检索到匹配知识。</div></article>
+        <article class="panel form-panel">
+          <div class="panel-title"><div><h3>{{ knowledgeEditingId ? '编辑知识文档' : '本地运维知识库' }}</h3><p>可保存发布规范、故障复盘、服务器说明和排障手册；检索结果显示具体行号。</p></div></div>
+          <div class="form-grid"><label><span>标题</span><input v-model="knowledgeForm.title" placeholder="例如：正式环境发布 SOP" /></label><label><span>标签</span><input v-model="knowledgeForm.tags" placeholder="发布, 正式环境, 回滚" /></label><label class="full"><span>内容</span><textarea v-model="knowledgeForm.content" rows="13" maxlength="200000" placeholder="粘贴本地文档内容。保存前会脱敏。"></textarea></label></div>
+          <div class="actions"><button class="btn-primary" type="button" :disabled="busy || !knowledgeForm.content.trim()" @click="saveKnowledge"><t-icon name="save" /> {{ knowledgeEditingId ? '更新文档' : '保存到知识库' }}</button><button v-if="knowledgeEditingId" class="btn-secondary" type="button" @click="cancelEditKnowledge">取消编辑</button><button class="btn-secondary" type="button" :disabled="busy" @click="importKnowledge"><t-icon name="upload" /> 导入本地文档</button></div>
+          <div v-if="knowledgeAllTags.length" class="knowledge-tag-filter"><button :class="['tag-chip', { active: !knowledgeTagFilter }]" type="button" @click="knowledgeTagFilter = ''">全部</button><button v-for="tag in knowledgeAllTags" :key="tag.name" :class="['tag-chip', { active: knowledgeTagFilter === tag.name }]" type="button" @click="knowledgeTagFilter = knowledgeTagFilter === tag.name ? '' : tag.name">{{ tag.name }} ({{ tag.count }})</button></div>
+          <div class="knowledge-list"><div v-for="doc in filteredKnowledgeDocuments" :key="doc.id" class="knowledge-doc" :class="{ editing: knowledgeEditingId === doc.id }"><div class="knowledge-doc-info"><strong>{{ doc.title }}</strong><p>{{ doc.tags?.join(' · ') || '无标签' }} · {{ doc.source?.type === 'file' ? `来源：${doc.source.name}` : '手动录入' }} · {{ formatTime(doc.updatedAt) }}</p></div><div class="knowledge-doc-actions"><button class="btn-text" type="button" @click="readKnowledge(doc)" title="阅读"><t-icon name="file-text" /></button><button class="btn-text" type="button" @click="editKnowledge(doc)" title="编辑"><t-icon name="edit" /></button><button class="btn-text" type="button" :disabled="busy" @click="exportKnowledge(doc)" title="导出"><t-icon name="download" /></button><button class="btn-text danger-text" type="button" @click="removeKnowledge(doc.id)" title="删除"><t-icon name="delete" /></button></div></div><div v-if="!filteredKnowledgeDocuments.length" class="empty-mini">{{ knowledgeDocuments.length ? '该标签下无文档。' : '暂无知识文档，保存内容后可在右侧检索。' }}</div></div>
+          <div v-if="knowledgeDocuments.length" class="knowledge-stats">{{ knowledgeDocuments.length }} 篇文档 · {{ knowledgeTotalChars.toLocaleString() }} 字</div>
+        </article>
+        <article class="panel search-panel">
+          <template v-if="knowledgeReadingDoc">
+            <div class="panel-title"><div><h3>{{ knowledgeReadingDoc.title }}</h3><p>{{ knowledgeReadingDoc.tags?.join(' · ') || '无标签' }} · {{ formatTime(knowledgeReadingDoc.updatedAt) }}</p></div><button class="btn-text" type="button" @click="closeReader"><t-icon name="close" /> 返回检索</button></div>
+            <div class="knowledge-reader"><pre>{{ knowledgeReadingDoc.content }}</pre></div>
+          </template>
+          <template v-else>
+            <div class="panel-title"><div><h3>检索与问答</h3><p>默认仅返回本地证据片段；开启 AI 后会要求答案标注来源编号。</p></div></div>
+            <div class="search-row"><input v-model="knowledgeQuery" placeholder="例如：正式环境如何回滚？" @keyup.enter="searchKnowledge" /><button class="btn-secondary" type="button" :disabled="busy" @click="searchKnowledge"><t-icon name="search" /> 检索</button></div>
+            <label class="check"><input v-model="knowledgeUseAi" type="checkbox" :disabled="!activeProviderReady" /> 使用当前 AI Provider 基于检索结果回答</label>
+            <p v-if="!activeProviderReady" class="inline-hint"><t-icon name="info-circle" /> 配置已启用且包含密钥的默认 Provider 后可生成 AI 回答。</p>
+            <button class="btn-primary answer-btn" type="button" :disabled="busy || !knowledgeQuery.trim()" @click="answerKnowledge"><t-icon name="chat" /> 生成带引用的回答</button>
+            <div v-if="knowledgeAnswer" class="answer-box"><strong>回答</strong><pre>{{ knowledgeAnswer }}</pre></div>
+            <div v-if="knowledgeResults.length" class="search-results"><div v-for="(item, index) in knowledgeResults" :key="`${item.documentId}-${item.startLine}`" class="search-result"><strong>[{{ index + 1 }}] {{ item.title }}</strong><span>第 {{ item.startLine }}–{{ item.endLine }} 行 · 匹配 {{ item.score }}</span><pre v-html="highlightKnowledge(item.content, item.matchedTerms)"></pre></div></div>
+            <div v-else-if="searched" class="empty-mini">没有检索到匹配知识。</div>
+          </template>
+        </article>
       </section>
 
       <section v-else-if="activeTab === 'workflow'" class="panel-grid workflow-layout">
@@ -256,6 +278,8 @@ import { useRoute, useRouter } from 'vue-router'
 import MessagePlugin from 'tdesign-vue-next/es/message/plugin.mjs'
 import { useConfirm } from '../../composables/useConfirm'
 
+defineOptions({ name: 'AiOps' })
+
 const { confirm } = useConfirm()
 const route = useRoute()
 const router = useRouter()
@@ -296,6 +320,9 @@ const knowledgeUseAi = ref(false)
 const knowledgeResults = ref([])
 const knowledgeAnswer = ref('')
 const searched = ref(false)
+const knowledgeEditingId = ref('')
+const knowledgeReadingDoc = ref(null)
+const knowledgeTagFilter = ref('')
 const workflowPrompt = ref('')
 const workflowPlan = ref(null)
 const workflowExecution = ref(null)
@@ -311,6 +338,18 @@ const evaluationCases = computed(() => evaluationState.value.cases || [])
 const latestEvaluation = computed(() => evaluationState.value.runs?.[0] || null)
 const logs = computed(() => logState.value.items || [])
 const knowledgeDocuments = computed(() => knowledgeState.value.documents || [])
+const knowledgeAllTags = computed(() => {
+  const counts = new Map()
+  for (const doc of knowledgeDocuments.value) {
+    for (const tag of (doc.tags || [])) counts.set(tag, (counts.get(tag) || 0) + 1)
+  }
+  return Array.from(counts, ([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count)
+})
+const filteredKnowledgeDocuments = computed(() => {
+  if (!knowledgeTagFilter.value) return knowledgeDocuments.value
+  return knowledgeDocuments.value.filter(doc => (doc.tags || []).includes(knowledgeTagFilter.value))
+})
+const knowledgeTotalChars = computed(() => knowledgeDocuments.value.reduce((sum, doc) => sum + (doc.content?.length || 0), 0))
 const mcpConfigExample = computed(() => mcpInfo.value ? JSON.stringify({ mcpServers: { 'ops-desktop': { command: mcpInfo.value.command, args: mcpInfo.value.args } } }, null, 2) : '')
 const evaluationResults = computed(() => latestEvaluation.value?.results || [])
 const evaluationFailedCount = computed(() => evaluationResults.value.filter(item => !item.ok).length)
@@ -562,15 +601,58 @@ async function analyzeLog() {
 async function saveKnowledge() {
   busy.value = true
   try {
-    const result = await window.opsApi.saveAiKnowledge({ ...knowledgeForm.value, tags: knowledgeForm.value.tags })
+    const payload = { ...knowledgeForm.value, id: knowledgeEditingId.value || undefined, tags: knowledgeForm.value.tags }
+    const result = await window.opsApi.saveAiKnowledge(payload)
     if (notify(result, '保存知识失败')) {
       knowledgeState.value = { ...knowledgeState.value, documents: [result.document, ...knowledgeDocuments.value.filter(item => item.id !== result.document.id)] }
       knowledgeForm.value = { title: '', tags: '', content: '' }
+      knowledgeEditingId.value = ''
       MessagePlugin.success({ content: '知识文档已脱敏保存', placement: 'bottom-right' })
     }
   } finally {
     busy.value = false
   }
+}
+
+function editKnowledge(doc) {
+  knowledgeEditingId.value = doc.id
+  knowledgeForm.value = { title: doc.title || '', tags: (doc.tags || []).join(', '), content: doc.content || '' }
+  knowledgeReadingDoc.value = null
+}
+
+function cancelEditKnowledge() {
+  knowledgeEditingId.value = ''
+  knowledgeForm.value = { title: '', tags: '', content: '' }
+}
+
+function readKnowledge(doc) {
+  knowledgeReadingDoc.value = doc
+}
+
+function closeReader() {
+  knowledgeReadingDoc.value = null
+}
+
+async function exportKnowledge(doc) {
+  busy.value = true
+  try {
+    const result = await window.opsApi.exportAiKnowledge({ title: doc.title, tags: doc.tags, content: doc.content })
+    if (result?.ok) MessagePlugin.success({ content: '文档已导出', placement: 'bottom-right' })
+    else if (!result?.canceled) notify(result, '导出失败')
+  } finally {
+    busy.value = false
+  }
+}
+
+function highlightKnowledge(content, matchedTerms) {
+  let html = String(content || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const terms = Array.from(new Set((Array.isArray(matchedTerms) ? matchedTerms : []).filter(term => term && term.length >= 2)))
+    .sort((a, b) => b.length - a.length)
+  for (const term of terms) {
+    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    html = html.replace(new RegExp(escaped, 'gi'), match => `<mark>${match}</mark>`)
+  }
+  return html
 }
 
 async function importKnowledge() {
@@ -1493,9 +1575,83 @@ button:disabled {
 }
 
 .knowledge-list {
-  max-height: 290px;
+  max-height: 400px;
   margin-top: 16px;
   overflow: auto;
+}
+
+.knowledge-tag-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.tag-chip {
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+.tag-chip:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.tag-chip.active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.knowledge-doc-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.knowledge-doc-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 2px;
+}
+
+.knowledge-doc.editing {
+  background: var(--primary-soft);
+  border-radius: 8px;
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+.knowledge-reader {
+  max-height: 60vh;
+  overflow: auto;
+}
+
+.knowledge-reader pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.knowledge-stats {
+  margin-top: 10px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.search-result pre mark {
+  background: var(--warning-light);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
 }
 
 .search-row {
@@ -1758,7 +1914,8 @@ button:disabled {
   }
 
   .card-actions,
-  .row-actions {
+  .row-actions,
+  .knowledge-doc-actions {
     justify-content: flex-end;
   }
 

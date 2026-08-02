@@ -118,6 +118,7 @@ const IPC_CHANNELS = {
   AI_WORKFLOW_EXECUTE: 'aiOps:executeWorkflow',
   AI_COPILOT_ASK: 'aiOps:askCopilot',
   AI_KNOWLEDGE_IMPORT: 'aiOps:importKnowledge',
+  AI_KNOWLEDGE_EXPORT: 'aiOps:exportKnowledge',
   OPS_EVENTS_GET: 'ops:getEvents',
   OPS_EVENT_UPDATE: 'ops:updateEvent',
   OPS_EVENTS_MARK_READ: 'ops:markEventsRead',

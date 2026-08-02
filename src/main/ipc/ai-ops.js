@@ -1,6 +1,6 @@
 const path = require('node:path')
 const fs = require('node:fs')
-const { app, ipcMain, shell } = require('electron')
+const { app, ipcMain, shell, dialog, BrowserWindow } = require('electron')
 const { IPC_CHANNELS } = require('../../shared/ipc-channels')
 const { readJsonFile } = require('../utils/json-store')
 const { readQuickLaunchState } = require('../utils/quicklaunch-storage')
@@ -195,11 +195,31 @@ function registerAiOpsHandlers() {
         content,
         source: { type: 'file', name: path.basename(candidate), importedAt: Date.now() },
       })
-      return success({ document })
+     return success({ document })
+   } catch (error) { return failure(error) }
+ })
+
+  ipcMain.handle(IPC_CHANNELS.AI_KNOWLEDGE_EXPORT, async (_event, document) => {
+    try {
+      const title = String(document?.title || '未命名知识').trim() || '未命名知识'
+      const content = String(document?.content || '')
+      if (!content.trim()) throw new Error('文档内容为空，无法导出')
+      const tags = Array.isArray(document?.tags) ? document.tags : []
+      const focused = BrowserWindow.getFocusedWindow()
+      const safeName = title.replace(/[\\/:*?"<>|]/g, '_').slice(0, 80)
+      const result = await dialog.showSaveDialog(focused, {
+        title: '导出知识文档',
+        defaultPath: `${safeName}.md`,
+        filters: [{ name: 'Markdown 文件', extensions: ['md'] }, { name: '文本文件', extensions: ['txt'] }],
+      })
+      if (result.canceled || !result.filePath) return { ok: false, canceled: true }
+      const header = tags.length ? `# ${title}\n\n> 标签：${tags.join(' · ')}\n\n` : `# ${title}\n\n`
+      fs.writeFileSync(result.filePath, `${header}${content}\n`, { encoding: 'utf8', mode: 0o600 })
+      return success({ filePath: result.filePath })
     } catch (error) { return failure(error) }
   })
 
-  ipcMain.handle(IPC_CHANNELS.AI_KNOWLEDGE_DELETE, async (_event, id) => {
+ ipcMain.handle(IPC_CHANNELS.AI_KNOWLEDGE_DELETE, async (_event, id) => {
     try { return success({ documents: deleteKnowledgeDocument(userDataPath(), id) }) } catch (error) { return failure(error) }
   })
   ipcMain.handle(IPC_CHANNELS.AI_KNOWLEDGE_SEARCH, async (_event, query) => {
