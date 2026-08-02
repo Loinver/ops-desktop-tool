@@ -185,6 +185,8 @@ import { MessagePlugin } from 'tdesign-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import { useConfirm } from '../../composables/useConfirm'
 
+defineOptions({ name: 'OpsControlCenter' })
+
 const { confirm } = useConfirm()
 const route = useRoute()
 const router = useRouter()

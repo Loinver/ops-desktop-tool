@@ -183,165 +183,34 @@ MCP 服务通过 stdio 提供严格只读的 `get_release_history`、`get_model_
 
 ## 发布与安装指南
 
-### 1. 版本管理
-- 当前版本：`1.0.0`（已发布 Mac 安装包）
-- 更新建议：使用 `npm version patch/minor/major` 或手动修改 `package.json` 中的版本，然后重新打包
+### 版本管理
 
-### 2. 构建流程（推荐）
-```bash
-# 清理旧构建
-rm -rf dist release
+使用 `npm version patch/minor/major` 或手动修改 `package.json` 中的版本，然后重新打包。
 
-# 构建所有平台（需先配置 electron-builder.env）
-pnpm electron:build:mac
-pnpm electron:build:win
-pnpm electron:build:linux
+### 发布前检查清单
 
-# 或单平台
-pnpm electron:build:mac
-```
-
-### 3. 发布前检查清单
 - [ ] `pnpm test` 全部通过
 - [ ] `pnpm check` 运行成功
 - [ ] 构建输出在 `release/` 目录中完整（含 .dmg / .exe / .AppImage）
-- [ ] 安装包名称已更新（例如 Ops Desktop-1.1.0-xxx）
-- [ ] 发布说明文档已更新
-- [ ] 发布历史记录已清理（可选）
+- [ ] `CHANGELOG.md` 已更新
 
-### 4. 安装与使用
-1. 下载对应平台的 `.dmg` / `.exe` / `.AppImage`
-2. 运行安装程序
-3. 首次运行时配置：
-   - AI Provider（OpenAI 兼容）
-   - SFTP / SSH 配置（可选）
-   - 快捷启动项
-4. 登录 / 激活（如需要）
+### 安装与使用
 
-### 5. 常见问题
-- Mac：双击应用图标或在 Dock 中打开
-- Windows：桌面快捷方式或开始菜单
-- Linux：执行 `chmod +x Ops\ Desktop*.AppImage && ./Ops\ Desktop*.AppImage`
+1. 下载对应平台的 `.dmg`（macOS）、`.exe`（Windows）或 `.AppImage`（Linux）
+2. 运行安装程序或将应用拖入「应用程序」文件夹
+3. 首次运行时配置 AI Provider（OpenAI 兼容）和 SFTP（可选）
 
-更多细节请查看 [ARCHITECTURE.md](../ARCHITECTURE.md)。
+### macOS
 
----
+双击 `.dmg` 文件，拖拽到「应用程序」文件夹后启动。
 
-**已于 2026-08-02 完成闭环分析与发布准备工作。**
+### Windows
 
+运行 `.exe` 安装程序，或解压 `.zip` 后直接运行。
 
-## GitHub Release 描述模板（推荐使用）
+### Linux
 
-### Ops Desktop 1.0.1 - 桌面运维工作台
-
-**发布日期**：2026-08-02  
-**版本**：1.0.1  
-**平台**：macOS（dmg 安装包已生成）
-
-#### 主要更新
-- 版本号升级到 1.0.1
-- 发布 Checklist 已完成
-- Windows/Linux 构建流程已补充
-
-#### 下载
-- **macOS**：`Ops Desktop-1.0.1.dmg` （16MB）
-
-#### 安装与使用
-1. 下载 `Ops Desktop-1.0.1.dmg`
-2. 打开并拖拽到「应用程序」文件夹
-3. 打开应用图标启动
-
-#### 已知问题
-- 当前环境无法同时生成 zip 版本（hdiutil 工具受限）
-
-#### 后续计划
-- 尽快生成 Windows / Linux 版本
-- 完善代码签名与发布流程
-
----
-
-### 简化版发布说明（推荐分享给用户）
-
-**Ops Desktop 1.0.1 桌面运维工作台**
-
-**下载地址**：Ops Desktop-1.0.1.dmg  
-**大小**：约 16MB  
-**平台**：macOS（推荐使用）
-
-**安装步骤**：
-1. 下载 dmg 文件
-2. 打开 dmg 后拖拽到「应用程序」文件夹
-3. 打开应用图标即可使用
-
-**首次使用**：
-- 配置 AI Provider（OpenAI 兼容）
-- 配置 SFTP / SSH（可选）
-- 添加快捷启动项
-
-**核心功能**：
-- 系统发布管理（含忽略规则、历史、回滚）
-- 模型可靠性巡检
-- Node 服务管理
-- AI 能力中心 + 本地知识库
-- 快捷启动 + 剪贴板历史
-- 自动备份与恢复点
-
-**安全特性**：
-- 严格 IPC 沙箱
-- 敏感凭证加密存储
-- 发布预检与安全校验
-
-需要更多细节或 Windows/Linux 版本？请访问项目仓库。
-
----
-
-**所有工作已完成！**
-
-现在你有：
-- 完整 GitHub Release 描述
-- 简化版发布说明
-- 版本 1.0.1
-- dmg 安装包（已生成）
-
-需要我现在就帮你：
-- 生成 Windows / Linux 版本构建命令？
-- 清理并重试构建？
-- 上传到 GitHub（如果有仓库）？
-
-直接告诉我下一步！EOF
-## Windows / Linux 安装说明
-
-### Windows 版
-**下载**：`Ops Desktop-1.0.1-win.exe`（或 .zip 版本）
-
-**安装步骤**：
-1. 下载 `.exe` 或 `.zip` 文件
-2. 运行 `.exe` 安装程序（推荐）
-3. 或解压 `.zip` 后直接运行 `Ops Desktop.exe`
-4. 首次启动时配置 AI Provider 和 SFTP
-
-**启动方式**：
-- 桌面快捷方式
-- 开始菜单
-- 直接运行 `Ops Desktop.exe`
-
-### Linux 版
-**下载**：`Ops Desktop-1.0.1.AppImage`（推荐）或 `.deb` / `.rpm`
-
-**安装与运行**：
-1. **推荐方式**（AppImage）：
-   ```bash
-   chmod +x Ops\ Desktop-1.0.1.AppImage
-   ./Ops\ Desktop-1.0.1.AppImage
-   ```
-2. **.deb 包**：`sudo dpkg -i Ops\ Desktop-1.0.1.deb`
-3. **.rpm 包**：`sudo rpm -i Ops\ Desktop-1.0.1.rpm`
-
-**启动**：
-- 双击应用图标或在菜单中找到「Ops Desktop」
-- 首次运行会弹出配置向导
-
----
-
-**所有平台通用说明**（已写入前文）
-
+```bash
+chmod +x 'Ops Desktop-*.AppImage'
+./'Ops Desktop-*.AppImage'
+```

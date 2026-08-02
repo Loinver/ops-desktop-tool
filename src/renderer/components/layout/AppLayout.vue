@@ -6,7 +6,7 @@
       <main class="workspace">
         <router-view v-slot="{ Component }">
           <transition name="page-fade" mode="out-in">
-            <keep-alive :include="['SystemRelease', 'ModelTest', 'OpsControlCenter', 'AiOps']">
+            <keep-alive :include="keepAliveNames">
               <component :is="Component" />
             </keep-alive>
           </transition>
@@ -18,11 +18,16 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import CommandPalette from './CommandPalette.vue'
 import Sidebar from './Sidebar.vue'
 import Topbar from './Topbar.vue'
 
+const router = useRouter()
+const keepAliveNames = computed(() =>
+  router.getRoutes().filter(r => r.meta?.keepAlive && r.name).map(r => r.name)
+)
 const SIDEBAR_COLLAPSED_KEY = 'ops-desktop.sidebar-collapsed'
 const sidebarCollapsed = ref(readSidebarPreference())
 const commandPaletteOpen = ref(false)

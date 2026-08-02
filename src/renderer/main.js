@@ -37,6 +37,18 @@ async function bootstrap() {
   app.component('TIcon', LocalIcon)
   app.use(router)
   app.use(pinia)
+
+  app.config.errorHandler = (err, _instance, info) => {
+    console.error('[Vue error]', info, err)
+    import('tdesign-vue-next/es/message/plugin.mjs').then(({ default: MessagePlugin }) => {
+      MessagePlugin.error({ content: '页面发生错误，请刷新或重启应用', placement: 'bottom-right' })
+    })
+  }
+
+  window.addEventListener('unhandledrejection', (event) => {
+    console.error('[Unhandled promise]', event.reason)
+  })
+
   app.mount('#app')
 }
 

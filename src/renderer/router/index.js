@@ -78,6 +78,12 @@ const routes = [
         name: 'GptImage',
         component: () => import('../views/gpt-image/index.vue'),
         meta: { title: 'AI 图像实验' }
+      },
+      {
+        path: ':pathMatch(.*)*',
+        name: 'NotFound',
+        component: () => import('../views/not-found/index.vue'),
+        meta: { title: '页面不存在' }
       }
     ]
   }

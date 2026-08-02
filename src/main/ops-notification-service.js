@@ -1,4 +1,5 @@
 const { BrowserWindow, Notification, ipcMain } = require('electron')
+const logger = require('./utils/logger')
 const { IPC_CHANNELS } = require('../shared/ipc-channels')
 const { markOpsEventsRead, onOpsEventChange } = require('./utils/ops-automation')
 const {
@@ -67,7 +68,7 @@ function showEventNotification(change) {
     try {
       markOpsEventsRead(runtime.userDataPath, { ids: [change.item?.id] })
     } catch (error) {
-      console.error('标记桌面通知事件已读失败:', error)
+      logger.error('标记桌面通知事件已读失败', { message: error?.message, stack: error?.stack })
     }
     sendEventToRenderer(change.item)
   })
@@ -127,7 +128,7 @@ function initializeOpsNotificationService({ userDataPath, getWindow = () => Brow
   registerHandlers()
   stopListening = onOpsEventChange(change => {
     try { showEventNotification(change) }
-    catch (error) { console.error('发送运维桌面通知失败:', error) }
+    catch (error) { logger.error('发送运维桌面通知失败', { message: error?.message, stack: error?.stack }) }
   })
 }
 

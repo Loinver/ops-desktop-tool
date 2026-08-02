@@ -1,4 +1,5 @@
 const { app, safeStorage } = require('electron')
+const logger = require('./utils/logger')
 const { decryptSecret, encryptSecret } = require('./utils/secure-secret')
 const {
   AUTO_BACKUP_INTERVALS,
@@ -45,7 +46,7 @@ function scheduleAutoBackup() {
       })
       try { recoverAutoBackupExecution({ userDataPath: runtime.userDataPath, now: result.entry?.createdAt }) } catch {}
     } catch (error) {
-      console.error('执行自动数据备份失败:', error)
+      logger.error('执行自动数据备份失败', { message: error?.message, stack: error?.stack })
       recordAutoBackupRunFailure(error)
     } finally {
       scheduleAutoBackup()

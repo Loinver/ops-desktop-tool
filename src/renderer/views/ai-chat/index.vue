@@ -156,6 +156,8 @@ import { useRouter } from 'vue-router'
 import PageHeader from '../../components/common/PageHeader.vue'
 import MessagePlugin from 'tdesign-vue-next/es/message/plugin.mjs'
 
+defineOptions({ name: 'AiChat' })
+
 const router = useRouter()
 const title = 'AI 问答'
 const description = '使用模型可靠性来源的一键配置 Provider 进行多轮对话，并按需关联本地知识库。'
