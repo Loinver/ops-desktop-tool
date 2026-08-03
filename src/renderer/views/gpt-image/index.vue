@@ -38,7 +38,7 @@
             <p>输入描述后开始生成，也可以从下面的示例开始</p>
             <div class="prompt-suggestions">
               <button
-type="button"
+                type="button"
                 v-for="suggestion in promptSuggestions"
                 :key="suggestion"
                 @click="useSuggestion(suggestion)"
@@ -48,11 +48,7 @@ type="button"
             </div>
           </div>
 
-          <article
-            v-for="message in messages"
-            :key="message.id"
-            :class="['message', message.role]"
-          >
+          <article v-for="message in messages" :key="message.id" :class="['message', message.role]">
             <div class="message-meta">
               <span>{{ message.role === 'user' ? '你' : 'AI 生图' }}</span>
               <time>{{ message.time }}</time>
@@ -85,7 +81,7 @@ type="button"
                   <span>继续调整</span>
                 </button>
                 <button
-type="button"
+                  type="button"
                   class="btn-download"
                   :disabled="isDownloading(message.id)"
                   @click="downloadImage(message)"
@@ -107,7 +103,9 @@ type="button"
               :disabled="generating"
             />
           </div>
-          <span class="composer-hint">{{ config.hasApiKey ? 'Enter 发送' : '请先设置 API Key' }}</span>
+          <span class="composer-hint">{{
+            config.hasApiKey ? 'Enter 发送' : '请先设置 API Key'
+          }}</span>
           <button class="btn-send" type="submit" :disabled="generating || !draft.trim()">
             <t-icon name="send" />
             <span>{{ generating ? '生成中' : '发送' }}</span>
@@ -118,149 +116,186 @@ type="button"
 
     <Teleport to="body">
       <div v-if="showSettings" class="modal-mask">
-      <div class="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="gpt-image-settings-title">
-        <div class="dialog-header">
-          <div>
-            <h3 id="gpt-image-settings-title">模型设置</h3>
-            <p>配置 OpenAI 兼容图片生成接口</p>
-          </div>
-          <button type="button" class="icon-button" title="关闭" aria-label="关闭" @click="closeSettings">
-            <t-icon name="close" />
-          </button>
-        </div>
-
-        <div class="settings-grid">
-          <label class="field wide">
-            <span>Base URL</span>
-            <input v-model.trim="settingsConfig.baseUrl" type="text" placeholder="https://api.openai.com/v1" />
-          </label>
-
-          <label class="field wide">
-            <span>API Key</span>
-            <input
-              v-model.trim="settingsConfig.apiKey"
-              type="password"
-              :placeholder="config.hasApiKey ? `${config.apiKeyMasked}（留空表示不修改）` : 'sk-...'"
-              autocomplete="off"
-              @input="clearApiKey = false"
-            />
-            <small v-if="config.hasApiKey" class="field-help">API Key 已由系统安全存储加密保存。</small>
-          </label>
-
-          <label v-if="config.hasApiKey" class="toggle-row wide">
-            <input v-model="clearApiKey" type="checkbox" />
-            <span>清除已保存的 API Key</span>
-          </label>
-
-          <label class="field wide">
-            <span>Model</span>
-            <div class="model-picker">
-              <select v-model="settingsConfig.model" :disabled="modelLoading">
-                <option
-                  v-for="model in selectableModels"
-                  :key="model"
-                  :value="model"
-                >
-                  {{ model }}
-                </option>
-              </select>
-              <button type="button" class="btn-ghost model-refresh" :disabled="modelLoading" @click="loadModels">
-                <t-icon name="refresh" :class="{ spinning: modelLoading }" />
-                <span>{{ modelLoading ? '获取中' : '刷新模型' }}</span>
-              </button>
+        <div
+          class="settings-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="gpt-image-settings-title"
+        >
+          <div class="dialog-header">
+            <div>
+              <h3 id="gpt-image-settings-title">模型设置</h3>
+              <p>配置 OpenAI 兼容图片生成接口</p>
             </div>
-            <em v-if="modelError" class="field-error">{{ modelError }}</em>
-          </label>
+            <button
+              type="button"
+              class="icon-button"
+              title="关闭"
+              aria-label="关闭"
+              @click="closeSettings"
+            >
+              <t-icon name="close" />
+            </button>
+          </div>
 
-          <label class="field">
-            <span>尺寸</span>
-            <select v-model="settingsConfig.size">
-              <option value="auto">Auto</option>
-              <option value="1024x1024">1024 x 1024</option>
-              <option value="1024x1536">1024 x 1536</option>
-              <option value="1536x1024">1536 x 1024</option>
-            </select>
-          </label>
+          <div class="settings-grid">
+            <label class="field wide">
+              <span>Base URL</span>
+              <input
+                v-model.trim="settingsConfig.baseUrl"
+                type="text"
+                placeholder="https://api.openai.com/v1"
+              />
+            </label>
 
-          <label class="field">
-            <span>质量</span>
-            <select v-model="settingsConfig.quality">
-              <option value="auto">Auto</option>
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-            </select>
-          </label>
+            <label class="field wide">
+              <span>API Key</span>
+              <input
+                v-model.trim="settingsConfig.apiKey"
+                type="password"
+                :placeholder="
+                  config.hasApiKey ? `${config.apiKeyMasked}（留空表示不修改）` : 'sk-...'
+                "
+                autocomplete="off"
+                @input="clearApiKey = false"
+              />
+              <small v-if="config.hasApiKey" class="field-help"
+                >API Key 已由系统安全存储加密保存。</small
+              >
+            </label>
 
-          <label class="toggle-row wide">
-            <input v-model="useContext" type="checkbox" />
-            <span>携带最近对话上下文</span>
-          </label>
-        </div>
+            <label v-if="config.hasApiKey" class="toggle-row wide">
+              <input v-model="clearApiKey" type="checkbox" />
+              <span>清除已保存的 API Key</span>
+            </label>
 
-        <div class="dialog-actions">
-          <button type="button" class="btn-ghost" @click="closeSettings">取消</button>
-          <button type="button" class="btn-send compact" :disabled="saving" @click="saveConfig">
-            <t-icon name="save" />
-            <span>{{ saving ? '保存中' : '保存' }}</span>
-          </button>
+            <label class="field wide">
+              <span>Model</span>
+              <div class="model-picker">
+                <select v-model="settingsConfig.model" :disabled="modelLoading">
+                  <option v-for="model in selectableModels" :key="model" :value="model">
+                    {{ model }}
+                  </option>
+                </select>
+                <button
+                  type="button"
+                  class="btn-ghost model-refresh"
+                  :disabled="modelLoading"
+                  @click="loadModels"
+                >
+                  <t-icon name="refresh" :class="{ spinning: modelLoading }" />
+                  <span>{{ modelLoading ? '获取中' : '刷新模型' }}</span>
+                </button>
+              </div>
+              <em v-if="modelError" class="field-error">{{ modelError }}</em>
+            </label>
+
+            <label class="field">
+              <span>尺寸</span>
+              <select v-model="settingsConfig.size">
+                <option value="auto">Auto</option>
+                <option value="1024x1024">1024 x 1024</option>
+                <option value="1024x1536">1024 x 1536</option>
+                <option value="1536x1024">1536 x 1024</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>质量</span>
+              <select v-model="settingsConfig.quality">
+                <option value="auto">Auto</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </label>
+
+            <label class="toggle-row wide">
+              <input v-model="useContext" type="checkbox" />
+              <span>携带最近对话上下文</span>
+            </label>
+          </div>
+
+          <div class="dialog-actions">
+            <button type="button" class="btn-ghost" @click="closeSettings">取消</button>
+            <button type="button" class="btn-send compact" :disabled="saving" @click="saveConfig">
+              <t-icon name="save" />
+              <span>{{ saving ? '保存中' : '保存' }}</span>
+            </button>
+          </div>
         </div>
       </div>
-    </div>
     </Teleport>
 
     <Teleport to="body">
       <div v-if="showHistory" class="modal-mask">
-      <div class="history-dialog" role="dialog" aria-modal="true" aria-labelledby="gpt-image-history-title">
-        <div class="dialog-header">
-          <div>
-            <h3 id="gpt-image-history-title">历史记录</h3>
-            <p>{{ historyItems.length }} 张图片</p>
-          </div>
-          <button type="button" class="icon-button" title="关闭" aria-label="关闭" @click="closeHistory">
-            <t-icon name="close" />
-          </button>
-        </div>
-
-        <div class="history-toolbar">
-          <button type="button" class="btn-ghost" :disabled="historyLoading" @click="loadHistory">
-            <t-icon name="refresh" :class="{ spinning: historyLoading }" />
-            <span>{{ historyLoading ? '加载中' : '刷新' }}</span>
-          </button>
-          <button type="button" class="btn-ghost danger" :disabled="historyItems.length === 0" @click="clearHistory">
-            <t-icon name="delete" />
-            <span>清空历史</span>
-          </button>
-        </div>
-
-        <div v-if="historyItems.length === 0" class="history-empty">
-          <t-icon name="image" />
-          <span>暂无生成记录</span>
-        </div>
-
-        <div v-else class="history-grid">
-          <button
-type="button"
-            v-for="item in historyItems"
-            :key="item.id"
-            class="history-card"
-            @click="openHistoryItem(item)"
-          >
-            <img :src="item.imageUrl" alt="历史生成图片" />
-            <div class="history-body">
-              <strong>{{ item.prompt }}</strong>
-              <span>{{ formatHistoryTime(item.createdAt) }}</span>
-              <small>{{ formatHistoryMeta(item) }}</small>
+        <div
+          class="history-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="gpt-image-history-title"
+        >
+          <div class="dialog-header">
+            <div>
+              <h3 id="gpt-image-history-title">历史记录</h3>
+              <p>{{ historyItems.length }} 张图片</p>
             </div>
-          </button>
+            <button
+              type="button"
+              class="icon-button"
+              title="关闭"
+              aria-label="关闭"
+              @click="closeHistory"
+            >
+              <t-icon name="close" />
+            </button>
+          </div>
+
+          <div class="history-toolbar">
+            <button type="button" class="btn-ghost" :disabled="historyLoading" @click="loadHistory">
+              <t-icon name="refresh" :class="{ spinning: historyLoading }" />
+              <span>{{ historyLoading ? '加载中' : '刷新' }}</span>
+            </button>
+            <button
+              type="button"
+              class="btn-ghost danger"
+              :disabled="historyItems.length === 0"
+              @click="clearHistory"
+            >
+              <t-icon name="delete" />
+              <span>清空历史</span>
+            </button>
+          </div>
+
+          <div v-if="historyItems.length === 0" class="history-empty">
+            <t-icon name="image" />
+            <span>暂无生成记录</span>
+          </div>
+
+          <div v-else class="history-grid">
+            <button
+              type="button"
+              v-for="item in historyItems"
+              :key="item.id"
+              class="history-card"
+              @click="openHistoryItem(item)"
+            >
+              <img :src="item.imageUrl" alt="历史生成图片" />
+              <div class="history-body">
+                <strong>{{ item.prompt }}</strong>
+                <span>{{ formatHistoryTime(item.createdAt) }}</span>
+                <small>{{ formatHistoryMeta(item) }}</small>
+              </div>
+            </button>
+          </div>
         </div>
       </div>
-    </div>
     </Teleport>
   </div>
 </template>
 
 <script setup>
+import { opsApi } from '../../api/opsApi.js'
 import { computed, reactive, ref, nextTick, onMounted } from 'vue'
 import MessagePlugin from 'tdesign-vue-next/es/message/plugin.mjs'
 
@@ -271,7 +306,7 @@ const config = reactive({
   apiKeyMasked: '',
   model: 'gpt-image-1',
   size: '1024x1024',
-  quality: 'auto',
+  quality: 'auto'
 })
 
 const settingsConfig = reactive({ ...config })
@@ -296,7 +331,7 @@ const MAX_HISTORY_ITEMS = 80
 const promptSuggestions = [
   '生成一张极简风格的产品海报，白色背景，主体是一台桌面电脑',
   '画一个未来感运维控制台，深色界面，蓝绿色数据光效',
-  '生成一张适合应用图标的插画：服务器、终端、闪电元素',
+  '生成一张适合应用图标的插画：服务器、终端、闪电元素'
 ]
 
 const selectableModels = computed(() => {
@@ -307,7 +342,7 @@ const selectableModels = computed(() => {
 function nowTime() {
   return new Date().toLocaleTimeString('zh-CN', {
     hour: '2-digit',
-    minute: '2-digit',
+    minute: '2-digit'
   })
 }
 
@@ -323,7 +358,7 @@ function serializeImageConfig(source = {}) {
     apiKey: String(source.apiKey || '').trim(),
     model: String(source.model || '').trim(),
     size: String(source.size || '').trim(),
-    quality: String(source.quality || '').trim(),
+    quality: String(source.quality || '').trim()
   }
 }
 
@@ -338,7 +373,7 @@ function normalizeHistoryItem(item = {}) {
     size: String(item.size || '').trim(),
     quality: String(item.quality || '').trim(),
     durationMs: Number(item.durationMs) || 0,
-    createdAt: Number(item.createdAt) || Date.now(),
+    createdAt: Number(item.createdAt) || Date.now()
   }
 }
 
@@ -346,7 +381,7 @@ function normalizeHistory(history) {
   if (!Array.isArray(history)) return []
   return history
     .map(normalizeHistoryItem)
-    .filter(item => item.id && item.prompt && item.imageUrl)
+    .filter((item) => item.id && item.prompt && item.imageUrl)
     .slice(0, MAX_HISTORY_ITEMS)
 }
 
@@ -370,9 +405,7 @@ function imageToUrl(image) {
 function buildPrompt(currentPrompt) {
   if (!useContext.value) return currentPrompt
 
-  const recentMessages = messages.value
-    .filter(item => item.text || item.revisedPrompt)
-    .slice(-8)
+  const recentMessages = messages.value.filter((item) => item.text || item.revisedPrompt).slice(-8)
 
   if (recentMessages.length === 0) return currentPrompt
 
@@ -384,7 +417,7 @@ function buildPrompt(currentPrompt) {
       }
       return `${index + 1}. 上次生成说明：${item.revisedPrompt || item.text}`
     }),
-    `当前需求：${currentPrompt}`,
+    `当前需求：${currentPrompt}`
   ].join('\n')
 }
 
@@ -397,7 +430,7 @@ async function scrollToBottom() {
 
 async function loadConfig() {
   try {
-    const result = await window.opsApi.getGptImageConfig()
+    const result = await opsApi.getGptImageConfig()
     if (result?.ok === false) throw new Error(result.error || '读取配置失败')
     const saved = result?.config || result
     Object.assign(config, saved || {})
@@ -410,8 +443,8 @@ async function loadConfig() {
 async function loadHistory() {
   historyLoading.value = true
   try {
-    if (typeof window.opsApi?.getGptImageHistory === 'function') {
-      historyItems.value = normalizeHistory(await window.opsApi.getGptImageHistory())
+    if (typeof opsApi?.getGptImageHistory === 'function') {
+      historyItems.value = normalizeHistory(await opsApi.getGptImageHistory())
       return
     }
 
@@ -428,10 +461,10 @@ async function persistHistory() {
   const nextHistory = normalizeHistory(historyItems.value)
   historyItems.value = nextHistory
 
-  if (typeof window.opsApi?.saveGptImageHistory === 'function') {
+  if (typeof opsApi?.saveGptImageHistory === 'function') {
     // nextHistory 虽来自 normalizeHistory，但赋值到 ref 后会再次成为 Vue Proxy；
     // 再次规范化，确保 IPC 始终接收结构化克隆支持的普通对象。
-    await window.opsApi.saveGptImageHistory(normalizeHistory(nextHistory))
+    await opsApi.saveGptImageHistory(normalizeHistory(nextHistory))
     return
   }
 
@@ -441,7 +474,7 @@ async function persistHistory() {
 async function appendHistoryItem(item) {
   historyItems.value = normalizeHistory([
     item,
-    ...historyItems.value.filter(historyItem => historyItem.id !== item.id),
+    ...historyItems.value.filter((historyItem) => historyItem.id !== item.id)
   ])
   await persistHistory()
 }
@@ -451,9 +484,9 @@ async function saveConfig() {
   try {
     const nextConfig = {
       ...serializeImageConfig(settingsConfig),
-      clearApiKey: clearApiKey.value,
+      clearApiKey: clearApiKey.value
     }
-    const result = await window.opsApi.saveGptImageConfig(nextConfig)
+    const result = await opsApi.saveGptImageConfig(nextConfig)
     if (result?.ok) {
       Object.assign(config, result.config || {}, { apiKey: '' })
       Object.assign(settingsConfig, config, { apiKey: '' })
@@ -471,7 +504,7 @@ async function saveConfig() {
 async function loadModels() {
   modelError.value = ''
 
-  if (typeof window.opsApi?.listGptImageModels !== 'function') {
+  if (typeof opsApi?.listGptImageModels !== 'function') {
     modelError.value = '模型列表接口未加载，请重启 Electron 应用'
     MessagePlugin.error({ content: modelError.value, placement: 'bottom-right' })
     return
@@ -480,9 +513,7 @@ async function loadModels() {
   modelLoading.value = true
 
   try {
-    const result = await window.opsApi.listGptImageModels(
-      serializeImageConfig(settingsConfig),
-    )
+    const result = await opsApi.listGptImageModels(serializeImageConfig(settingsConfig))
     if (!result?.ok) {
       modelError.value = result?.error || '获取模型列表失败'
       MessagePlugin.error({ content: modelError.value, placement: 'bottom-right' })
@@ -520,7 +551,7 @@ async function sendMessage() {
     id: createId(),
     role: 'user',
     text,
-    time: nowTime(),
+    time: nowTime()
   })
 
   const assistantMessage = reactive({
@@ -533,7 +564,7 @@ async function sendMessage() {
     imageUrl: '',
     revisedPrompt: '',
     elapsedMs: 0,
-    durationText: '0ms',
+    durationText: '0ms'
   })
   messages.value.push(assistantMessage)
   generating.value = true
@@ -545,10 +576,10 @@ async function sendMessage() {
 
   try {
     const imageConfig = serializeImageConfig(config)
-    await window.opsApi.saveGptImageConfig(imageConfig)
-    const result = await window.opsApi.generateGptImage({
+    await opsApi.saveGptImageConfig(imageConfig)
+    const result = await opsApi.generateGptImage({
       prompt: String(prompt),
-      config: imageConfig,
+      config: imageConfig
     })
 
     assistantMessage.loading = false
@@ -571,7 +602,7 @@ async function sendMessage() {
       size: config.size,
       quality: config.quality,
       durationMs: assistantMessage.elapsedMs,
-      createdAt: Date.now(),
+      createdAt: Date.now()
     })
   } catch (err) {
     assistantMessage.loading = false
@@ -596,8 +627,11 @@ async function downloadImage(message) {
     return
   }
 
-  if (typeof window.opsApi?.saveGptImage !== 'function') {
-    MessagePlugin.error({ content: '图片保存接口未加载，请重启 Electron 应用', placement: 'bottom-right' })
+  if (typeof opsApi?.saveGptImage !== 'function') {
+    MessagePlugin.error({
+      content: '图片保存接口未加载，请重启 Electron 应用',
+      placement: 'bottom-right'
+    })
     return
   }
 
@@ -606,9 +640,9 @@ async function downloadImage(message) {
   downloadingMessageIds.value = new Set([...downloadingMessageIds.value, messageId])
 
   try {
-    const result = await window.opsApi.saveGptImage({
+    const result = await opsApi.saveGptImage({
       imageUrl,
-      fileName: `gpt-image-${Date.now()}`,
+      fileName: `gpt-image-${Date.now()}`
     })
     if (result?.cancelled) return
 
@@ -656,8 +690,8 @@ async function clearHistory() {
   if (historyItems.value.length === 0) return
   historyItems.value = []
 
-  if (typeof window.opsApi?.clearGptImageHistory === 'function') {
-    await window.opsApi.clearGptImageHistory()
+  if (typeof opsApi?.clearGptImageHistory === 'function') {
+    await opsApi.clearGptImageHistory()
     return
   }
 
@@ -679,7 +713,7 @@ function openHistoryItem(item) {
       id: createId(),
       role: 'user',
       text: item.prompt,
-      time: formatHistoryTime(item.createdAt),
+      time: formatHistoryTime(item.createdAt)
     },
     {
       id: createId(),
@@ -691,8 +725,8 @@ function openHistoryItem(item) {
       imageUrl: item.imageUrl,
       revisedPrompt: item.revisedPrompt,
       elapsedMs: item.durationMs || 0,
-      durationText: item.durationMs ? formatDuration(item.durationMs) : '',
-    },
+      durationText: item.durationMs ? formatDuration(item.durationMs) : ''
+    }
   ]
   closeHistory()
   scrollToBottom()
@@ -705,7 +739,7 @@ function formatHistoryTime(value) {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
-    minute: '2-digit',
+    minute: '2-digit'
   })
 }
 
@@ -714,8 +748,10 @@ function formatHistoryMeta(item) {
     item.model,
     item.size,
     item.quality,
-    item.durationMs ? formatDuration(item.durationMs) : '',
-  ].filter(Boolean).join(' · ')
+    item.durationMs ? formatDuration(item.durationMs) : ''
+  ]
+    .filter(Boolean)
+    .join(' · ')
 }
 
 onMounted(() => {
@@ -723,700 +759,4 @@ onMounted(() => {
 })
 </script>
 
-<style scoped>
-.model-summary {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 420px;
-  padding: 5px;
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius);
-  background: #fff;
-}
-
-.model-summary span {
-  max-width: 180px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  padding: 5px 9px;
-  border-radius: var(--radius-xs);
-  color: var(--text-secondary);
-  background: #f8fafc;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.btn-ghost,
-.btn-send,
-.btn-download {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  border: none;
-  border-radius: var(--radius-sm);
-  font-size: var(--header-control-font-size);
-  font-weight: 500;
-  cursor: pointer;
-  transition: all var(--transition);
-}
-
-.btn-ghost {
-  height: var(--header-control-height);
-  padding: 0 18px;
-  color: var(--text-secondary);
-  background: #fff;
-  border: 1px solid var(--border);
-}
-
-.btn-ghost:hover {
-  color: var(--primary);
-  border-color: var(--primary);
-  background: var(--primary-light);
-}
-
-.btn-ghost.primary {
-  color: #fff;
-  border-color: var(--primary);
-  background: var(--primary);
-}
-
-.btn-ghost.primary:hover {
-  color: #fff;
-  background: var(--primary-hover);
-}
-
-.btn-ghost:disabled,
-.btn-send:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-.workspace {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-}
-
-.chat-pane {
-  min-height: 0;
-  border: 1px solid var(--border-light);
-  background: var(--card-bg);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-xs);
-}
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  margin-bottom: 16px;
-}
-
-.field span,
-.toggle-row {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-
-.field input,
-.field select,
-.composer input {
-  width: 100%;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: #fff;
-  color: var(--text);
-  font: inherit;
-  outline: none;
-  transition: border-color var(--transition), box-shadow var(--transition);
-}
-
-.field input,
-.field select {
-  height: 38px;
-  padding: 0 12px;
-}
-
-.model-picker {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
-}
-
-.model-picker select {
-  min-width: 0;
-}
-
-.model-refresh {
-  height: 38px;
-  white-space: nowrap;
-}
-
-.field-error {
-  color: var(--danger);
-  font-size: 12px;
-  font-style: normal;
-  line-height: 1.5;
-}
-
-.field-help {
-  color: var(--text-secondary);
-  font-size: 11px;
-  font-weight: 400;
-  line-height: 1.5;
-}
-
-.field input:focus,
-.field select:focus,
-.composer input:focus {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(91, 106, 191, 0.12);
-}
-
-.toggle-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 6px;
-}
-
-.toggle-row input {
-  width: 15px;
-  height: 15px;
-  accent-color: var(--primary);
-}
-
-.chat-pane {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.messages {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 22px;
-}
-
-.empty-state {
-  height: 100%;
-  min-height: 340px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  color: var(--text-muted);
-}
-
-.empty-icon {
-  width: 64px;
-  height: 64px;
-  border-radius: 18px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--primary);
-  background: var(--primary-light);
-  font-size: 28px;
-  margin-bottom: 16px;
-}
-
-.empty-state h3 {
-  color: var(--text);
-  font-size: 16px;
-  margin-bottom: 6px;
-}
-
-.empty-state p {
-  font-size: 13px;
-}
-
-.prompt-suggestions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
-  max-width: 760px;
-  margin-top: 18px;
-}
-
-.prompt-suggestions button {
-  max-width: 240px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  height: 34px;
-  padding: 0 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  background: #fff;
-  font-size: 12px;
-  cursor: pointer;
-  transition: all var(--transition);
-}
-
-.prompt-suggestions button:hover {
-  color: var(--primary);
-  border-color: var(--primary);
-  background: var(--primary-light);
-}
-
-.message {
-  max-width: min(720px, 92%);
-  margin-bottom: 18px;
-}
-
-.message.user {
-  margin-left: auto;
-}
-
-.message.assistant {
-  margin-right: auto;
-}
-
-.message-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.message.user .message-meta {
-  justify-content: flex-end;
-}
-
-.duration-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 20px;
-  padding: 0 7px;
-  border-radius: 999px;
-  color: var(--text-secondary);
-  background: #f1f5f9;
-  font-size: 11px;
-}
-
-.message-text {
-  white-space: pre-wrap;
-  line-height: 1.6;
-  font-size: 14px;
-  color: var(--text);
-  padding: 12px 14px;
-  background: #eef6ff;
-  border: 1px solid #dbeafe;
-  border-radius: var(--radius-lg);
-}
-
-.message.assistant .message-text {
-  background: #fff;
-  border-color: var(--border-light);
-}
-
-.generating,
-.error-box {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 14px;
-  border-radius: var(--radius-lg);
-  font-size: 14px;
-}
-
-.generating {
-  color: var(--text-secondary);
-  background: #fff;
-  border: 1px solid var(--border-light);
-}
-
-.spinner {
-  width: 14px;
-  height: 14px;
-  border: 2px solid #cbd5e1;
-  border-top-color: var(--primary);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-.error-box {
-  color: var(--danger);
-  background: var(--danger-light);
-  border: 1px solid #fecaca;
-}
-
-.image-result {
-  width: min(520px, 100%);
-  padding: 10px;
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-lg);
-  background: #fff;
-  box-shadow: var(--shadow-xs);
-}
-
-.image-result img {
-  display: block;
-  width: 100%;
-  max-height: 520px;
-  object-fit: contain;
-  border-radius: var(--radius-sm);
-  background: #f8fafc;
-}
-
-.image-result figcaption {
-  margin-top: 10px;
-  color: var(--text-secondary);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.image-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.btn-download {
-  height: 34px;
-  padding: 0 12px;
-  color: var(--text-secondary);
-  background: #f8fafc;
-  border: 1px solid var(--border);
-}
-
-.btn-download:hover {
-  color: var(--primary);
-  border-color: var(--primary);
-}
-
-.btn-download:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-.btn-download:disabled:hover {
-  color: var(--text-secondary);
-  border-color: var(--border);
-}
-
-.composer {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: 10px;
-  padding: 12px;
-  border-top: 1px solid var(--border-light);
-  background: linear-gradient(180deg, #fff, #f8fafc);
-}
-
-.composer-input {
-  min-width: 0;
-  position: relative;
-}
-
-.composer input {
-  height: 40px;
-  padding: 0 14px;
-  border-color: #dbe3ef;
-  border-radius: 999px;
-  background: #fff;
-  box-shadow: inset 0 1px 0 rgba(15, 23, 42, 0.03);
-}
-
-.composer-hint {
-  color: var(--text-muted);
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.btn-send {
-  height: 40px;
-  min-width: 88px;
-  padding: 0 16px;
-  border-radius: 999px;
-  color: #fff;
-  background: var(--primary);
-  box-shadow: 0 2px 8px rgba(91, 106, 191, 0.24);
-}
-
-.btn-send:hover:not(:disabled) {
-  background: var(--primary-hover);
-}
-
-.spinning {
-  animation: spin 0.8s linear infinite;
-}
-
-.btn-send.compact {
-  align-self: auto;
-  min-width: 92px;
-}
-
-.modal-mask {
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  background: rgba(15, 23, 42, 0.38);
-}
-
-.settings-dialog {
-  width: min(560px, 100%);
-  max-height: min(720px, 92vh);
-  overflow-y: auto;
-  border-radius: var(--radius-lg);
-  background: #fff;
-  box-shadow: var(--shadow-xl);
-}
-
-.history-dialog {
-  width: min(920px, 100%);
-  max-height: min(760px, 92vh);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  border-radius: var(--radius-lg);
-  background: #fff;
-  box-shadow: var(--shadow-xl);
-}
-
-.dialog-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 22px 22px 16px;
-  border-bottom: 1px solid var(--border-light);
-}
-
-.dialog-header h3 {
-  color: var(--text);
-  font-size: 18px;
-  font-weight: 700;
-}
-
-.dialog-header p {
-  margin-top: 4px;
-  color: var(--text-muted);
-  font-size: 13px;
-}
-
-.icon-button {
-  width: 34px;
-  height: 34px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  background: #f8fafc;
-  cursor: pointer;
-  transition: all var(--transition);
-}
-
-.icon-button:hover {
-  color: var(--danger);
-  background: var(--danger-light);
-}
-
-.icon-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.45;
-}
-
-.icon-button:disabled:hover {
-  color: var(--text-secondary);
-  background: #f8fafc;
-}
-
-.settings-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  padding: 20px 22px 6px;
-}
-
-.field.wide,
-.toggle-row.wide {
-  grid-column: 1 / -1;
-}
-
-.dialog-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  padding: 16px 22px 22px;
-}
-
-.history-toolbar {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  padding: 14px 18px;
-  border-bottom: 1px solid var(--border-light);
-}
-
-.btn-ghost.danger:hover {
-  color: var(--danger);
-  border-color: #fecaca;
-  background: var(--danger-light);
-}
-
-.history-empty {
-  min-height: 360px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  color: var(--text-muted);
-  font-size: 13px;
-}
-
-.history-empty .t-icon {
-  font-size: 34px;
-  color: #cbd5e1;
-}
-
-.history-grid {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-  gap: 14px;
-  padding: 18px;
-}
-
-.history-card {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 10px;
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius);
-  background: #fff;
-  cursor: pointer;
-  text-align: left;
-  transition: all var(--transition);
-}
-
-.history-card:hover {
-  border-color: #cbd5e1;
-  box-shadow: var(--shadow-md);
-  transform: translateY(-1px);
-}
-
-.history-card img {
-  width: 100%;
-  aspect-ratio: 1 / 1;
-  object-fit: cover;
-  border-radius: var(--radius-sm);
-  background: #f8fafc;
-}
-
-.history-body {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.history-body strong {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  color: var(--text);
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.4;
-}
-
-.history-body span,
-.history-body small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-muted);
-  font-size: 12px;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-@media (max-width: 980px) {
-  .page--workspace {
-    min-height: 100%;
-    height: auto;
-    overflow: visible;
-  }
-
-  .page-header {
-    align-items: stretch;
-  }
-
-  .page-actions {
-    justify-content: flex-start;
-  }
-
-  .model-summary {
-    max-width: 100%;
-    order: 3;
-  }
-
-  .chat-pane {
-    min-height: 620px;
-  }
-}
-
-@media (max-width: 640px) {
-  .settings-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .model-picker {
-    grid-template-columns: 1fr;
-  }
-
-  .history-toolbar {
-    flex-direction: column;
-  }
-
-  .history-toolbar .btn-ghost {
-    width: 100%;
-  }
-
-  .history-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .composer {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-
-  .composer-hint {
-    display: none;
-  }
-
-  .btn-send {
-    min-width: 78px;
-  }
-}
-</style>
+<style scoped src="./styles.css"></style>

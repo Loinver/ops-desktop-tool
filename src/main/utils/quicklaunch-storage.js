@@ -15,7 +15,7 @@ function makeQuickLaunchState(items) {
   return {
     schema: QUICK_LAUNCH_STORAGE_SCHEMA,
     version: QUICK_LAUNCH_STORAGE_VERSION,
-    items: Array.isArray(items) ? items : [],
+    items: Array.isArray(items) ? items : []
   }
 }
 
@@ -23,5 +23,5 @@ module.exports = {
   QUICK_LAUNCH_STORAGE_SCHEMA,
   QUICK_LAUNCH_STORAGE_VERSION,
   readQuickLaunchState,
-  makeQuickLaunchState,
+  makeQuickLaunchState
 }

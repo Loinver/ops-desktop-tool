@@ -6,16 +6,16 @@ const DEFAULT_RELEASE_IGNORE_RULES = [
   '.git/',
   '.svn/',
   'node_modules/',
-  '*.log',
+  '*.log'
 ]
 
 function normalizeRuleLines(value) {
   const values = Array.isArray(value) ? value : String(value || '').split(/\r?\n/)
   return values
-    .map(item => String(item || '').trim())
-    .filter(item => item && !item.startsWith('#'))
+    .map((item) => String(item || '').trim())
+    .filter((item) => item && !item.startsWith('#'))
     .slice(0, 100)
-    .map(item => item.slice(0, 256))
+    .map((item) => item.slice(0, 256))
 }
 
 function escapeRegex(value) {
@@ -23,7 +23,9 @@ function escapeRegex(value) {
 }
 
 function globToRegExp(rule) {
-  let pattern = String(rule || '').replace(/\\/g, '/').replace(/^\.\//, '')
+  let pattern = String(rule || '')
+    .replace(/\\/g, '/')
+    .replace(/^\.\//, '')
   const directoryOnly = pattern.endsWith('/')
   pattern = pattern.replace(/^\/+|\/+$/g, '')
   const anchored = pattern.startsWith('/')
@@ -103,7 +105,8 @@ function scanLocalEntries(entries, rules = DEFAULT_RELEASE_IGNORE_RULES) {
     }
   }
 
-  for (const entry of entries) visit(entry.localPath, entry.archivePath || path.basename(entry.localPath))
+  for (const entry of entries)
+    visit(entry.localPath, entry.archivePath || path.basename(entry.localPath))
   return summary
 }
 
@@ -111,5 +114,5 @@ module.exports = {
   DEFAULT_RELEASE_IGNORE_RULES,
   normalizeRuleLines,
   createReleaseIgnoreMatcher,
-  scanLocalEntries,
+  scanLocalEntries
 }

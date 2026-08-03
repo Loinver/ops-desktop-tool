@@ -4,7 +4,9 @@
       <div class="page-heading">
         <div class="page-eyebrow"><t-icon name="chat" /> OPS CENTER</div>
         <h2 class="page-title">运维中心</h2>
-        <p class="page-desc">集中处理统一事件、执行自动化巡检，并使用 AI Copilot 基于本地证据辅助排障。</p>
+        <p class="page-desc">
+          集中处理统一事件、执行自动化巡检，并使用 AI Copilot 基于本地证据辅助排障。
+        </p>
       </div>
       <div class="page-actions">
         <button class="btn-secondary" type="button" :disabled="loading" @click="load">
@@ -43,13 +45,28 @@
           <div class="section-toolbar">
             <div class="section-heading">
               <h3 class="section-title">AI 运维 Copilot</h3>
-              <p class="section-desc">先收集本地事件、日志分析和知识库证据；任何外部打开操作仍需二次确认。</p>
+              <p class="section-desc">
+                先收集本地事件、日志分析和知识库证据；任何外部打开操作仍需二次确认。
+              </p>
             </div>
-            <label class="check"><input v-model="copilotUseAi" type="checkbox" :disabled="!activeProvider" /> 使用默认 Provider</label>
+            <label class="check"
+              ><input v-model="copilotUseAi" type="checkbox" :disabled="!activeProvider" /> 使用默认
+              Provider</label
+            >
           </div>
-          <textarea v-model="copilotPrompt" rows="5" maxlength="4000" placeholder="例如：分析最近发布异常，并给出下一步排查和安全操作计划。"></textarea>
+          <textarea
+            v-model="copilotPrompt"
+            rows="5"
+            maxlength="4000"
+            placeholder="例如：分析最近发布异常，并给出下一步排查和安全操作计划。"
+          ></textarea>
           <div class="actions">
-            <button class="btn-primary" type="button" :disabled="busy || !copilotPrompt.trim()" @click="askCopilot">
+            <button
+              class="btn-primary"
+              type="button"
+              :disabled="busy || !copilotPrompt.trim()"
+              @click="askCopilot"
+            >
               <t-icon name="chat" /> {{ busy ? '分析中…' : '生成建议' }}
             </button>
             <span>不会生成或执行 Shell、删除、发布、回滚命令。</span>
@@ -59,14 +76,47 @@
             <pre>{{ copilotResult.answer }}</pre>
             <div v-if="copilotResult.sources?.length" class="citation-list">
               <strong>本地证据</strong>
-              <button v-for="(source, index) in copilotResult.sources" :key="`${source.documentId}-${source.startLine}`" type="button" class="citation" @click="openKnowledge(source)">
-                [{{ index + 1 }}] {{ source.title }} · {{ source.startLine }}–{{ source.endLine }} 行
+              <button
+                v-for="(source, index) in copilotResult.sources"
+                :key="`${source.documentId}-${source.startLine}`"
+                type="button"
+                class="citation"
+                @click="openKnowledge(source)"
+              >
+                [{{ index + 1 }}] {{ source.title }} · {{ source.startLine }}–{{ source.endLine }}
+                行
               </button>
             </div>
             <div v-if="copilotResult.plan" class="plan-card">
-              <div><strong>确认式工作流</strong><p>{{ copilotResult.plan.summary }}</p></div>
-              <ol><li v-for="step in copilotResult.plan.steps" :key="step.id || `${step.type}-${step.label}`">{{ step.description || step.label }}<em v-if="step.requiresConfirmation">需要确认</em><button v-if="step.type === 'navigate'" class="btn-text" type="button" @click="openPlanStep(step)">前往</button></li></ol>
-              <button v-if="copilotExternalSteps.length" class="btn-secondary" type="button" @click="executePlan">确认打开 {{ copilotExternalSteps.length }} 个外部链接</button>
+              <div>
+                <strong>确认式工作流</strong>
+                <p>{{ copilotResult.plan.summary }}</p>
+              </div>
+              <ol>
+                <li
+                  v-for="step in copilotResult.plan.steps"
+                  :key="step.id || `${step.type}-${step.label}`"
+                >
+                  {{ step.description || step.label
+                  }}<em v-if="step.requiresConfirmation">需要确认</em
+                  ><button
+                    v-if="step.type === 'navigate'"
+                    class="btn-text"
+                    type="button"
+                    @click="openPlanStep(step)"
+                  >
+                    前往
+                  </button>
+                </li>
+              </ol>
+              <button
+                v-if="copilotExternalSteps.length"
+                class="btn-secondary"
+                type="button"
+                @click="executePlan"
+              >
+                确认打开 {{ copilotExternalSteps.length }} 个外部链接
+              </button>
               <small v-else>此计划没有可执行的外部打开步骤；页面步骤请点击“前往”。</small>
             </div>
           </div>
@@ -76,7 +126,9 @@
           <div class="section-toolbar event-heading">
             <div class="section-heading">
               <h3 class="section-title">统一事件与通知</h3>
-              <p class="section-desc">按稳定指纹聚合发布、模型、日志和巡检异常，恢复后自动关闭事件。</p>
+              <p class="section-desc">
+                按稳定指纹聚合发布、模型、日志和巡检异常，恢复后自动关闭事件。
+              </p>
             </div>
             <div class="event-filters" aria-label="事件筛选">
               <select v-model="eventFilter" aria-label="事件状态">
@@ -88,37 +140,72 @@
               </select>
               <select v-model="sourceFilter" aria-label="事件来源">
                 <option value="">全部来源</option>
-                <option v-for="source in eventSources" :key="source" :value="source">{{ sourceName(source) }}</option>
+                <option v-for="source in eventSources" :key="source" :value="source">
+                  {{ sourceName(source) }}
+                </option>
               </select>
             </div>
           </div>
 
           <div ref="eventListRef" class="event-list">
-            <article v-for="item in filteredEvents" :key="item.id" :data-event-id="item.id" :class="['event-item', item.severity || item.level, { resolved: item.status === 'resolved', targeted: expandedEventId === item.id && route.query.event === item.id }]">
+            <article
+              v-for="item in filteredEvents"
+              :key="item.id"
+              :data-event-id="item.id"
+              :class="[
+                'event-item',
+                item.severity || item.level,
+                {
+                  resolved: item.status === 'resolved',
+                  targeted: expandedEventId === item.id && route.query.event === item.id
+                }
+              ]"
+            >
               <span class="event-dot" aria-hidden="true"></span>
               <div class="event-content">
                 <div class="event-title-row">
                   <strong>{{ item.title }}</strong>
                   <div class="event-badges">
-                    <span :class="['status-badge', item.status]">{{ statusName(item.status) }}</span>
+                    <span :class="['status-badge', item.status]">{{
+                      statusName(item.status)
+                    }}</span>
                     <span v-if="item.recoveredAt" class="status-badge recovered">自动恢复</span>
-                    <span v-if="item.occurrenceCount > 1" class="count-badge">重复 {{ item.occurrenceCount }} 次</span>
+                    <span v-if="item.occurrenceCount > 1" class="count-badge"
+                      >重复 {{ item.occurrenceCount }} 次</span
+                    >
                   </div>
                 </div>
                 <p>{{ item.description || '无补充说明' }}</p>
                 <div class="event-meta">
                   <span>{{ sourceName(item.sourceType || item.category) }}</span>
                   <span>{{ levelName(item.severity || item.level) }}</span>
-                  <span>最近 {{ formatTime(item.lastOccurredAt || item.updatedAt || item.createdAt) }}</span>
+                  <span
+                    >最近
+                    {{ formatTime(item.lastOccurredAt || item.updatedAt || item.createdAt) }}</span
+                  >
                 </div>
                 <div v-if="expandedEventId === item.id" class="event-detail">
                   <dl>
-                    <div><dt>首次发生</dt><dd>{{ formatTime(item.firstOccurredAt || item.createdAt) }}</dd></div>
-                    <div><dt>最近发生</dt><dd>{{ formatTime(item.lastOccurredAt || item.updatedAt) }}</dd></div>
-                    <div><dt>来源标识</dt><dd>{{ item.sourceId || item.relatedId || '—' }}</dd></div>
-                    <div><dt>事件指纹</dt><dd>{{ item.fingerprint || item.sourceKey || '—' }}</dd></div>
+                    <div>
+                      <dt>首次发生</dt>
+                      <dd>{{ formatTime(item.firstOccurredAt || item.createdAt) }}</dd>
+                    </div>
+                    <div>
+                      <dt>最近发生</dt>
+                      <dd>{{ formatTime(item.lastOccurredAt || item.updatedAt) }}</dd>
+                    </div>
+                    <div>
+                      <dt>来源标识</dt>
+                      <dd>{{ item.sourceId || item.relatedId || '—' }}</dd>
+                    </div>
+                    <div>
+                      <dt>事件指纹</dt>
+                      <dd>{{ item.fingerprint || item.sourceKey || '—' }}</dd>
+                    </div>
                   </dl>
-                  <p v-if="item.resolutionNote" class="resolution-note"><strong>处理结果：</strong>{{ item.resolutionNote }}</p>
+                  <p v-if="item.resolutionNote" class="resolution-note">
+                    <strong>处理结果：</strong>{{ item.resolutionNote }}
+                  </p>
                   <ol v-if="item.timeline?.length" class="event-timeline">
                     <li v-for="entry in [...item.timeline].reverse()" :key="entry.id">
                       <span>{{ timelineName(entry.type) }}</span>
@@ -129,13 +216,33 @@
                 </div>
               </div>
               <div class="event-actions">
-                <button type="button" class="btn-text" @click="toggleEvent(item)">{{ expandedEventId === item.id ? '收起' : '详情' }}</button>
-                <button v-if="item.status === 'open'" type="button" class="btn-text" @click="updateEvent(item, 'acknowledged')">确认</button>
-                <button v-if="item.status !== 'resolved'" type="button" class="btn-text" @click="updateEvent(item, 'resolved')">解决</button>
-                <button v-else type="button" class="btn-text" @click="updateEvent(item, 'open')">重新打开</button>
+                <button type="button" class="btn-text" @click="toggleEvent(item)">
+                  {{ expandedEventId === item.id ? '收起' : '详情' }}
+                </button>
+                <button
+                  v-if="item.status === 'open'"
+                  type="button"
+                  class="btn-text"
+                  @click="updateEvent(item, 'acknowledged')"
+                >
+                  确认
+                </button>
+                <button
+                  v-if="item.status !== 'resolved'"
+                  type="button"
+                  class="btn-text"
+                  @click="updateEvent(item, 'resolved')"
+                >
+                  解决
+                </button>
+                <button v-else type="button" class="btn-text" @click="updateEvent(item, 'open')">
+                  重新打开
+                </button>
               </div>
             </article>
-            <div v-if="!filteredEvents.length" class="empty-mini">暂无匹配事件。发布、模型、日志和巡检异常会自动汇集到这里。</div>
+            <div v-if="!filteredEvents.length" class="empty-mini">
+              暂无匹配事件。发布、模型、日志和巡检异常会自动汇集到这里。
+            </div>
           </div>
         </article>
       </section>
@@ -143,36 +250,96 @@
       <section class="surface-panel page-section automation-panel">
         <div class="section-heading">
           <h3 class="section-title">自动化巡检任务</h3>
-          <p class="section-desc">支持 HTTP 健康检查与 TCP 端口连通性检测；重复失败会聚合为同一事件，恢复后自动关闭。</p>
+          <p class="section-desc">
+            支持 HTTP 健康检查与 TCP 端口连通性检测；重复失败会聚合为同一事件，恢复后自动关闭。
+          </p>
         </div>
         <div class="task-form">
-          <label><span>任务名称</span><input v-model="taskForm.title" maxlength="120" placeholder="例如：生产站点健康检查" /></label>
-          <label><span>检查类型</span><select v-model="taskForm.type"><option value="http-health">HTTP 健康检查</option><option value="tcp-port">TCP 端口</option></select></label>
-          <label><span>{{ taskForm.type === 'tcp-port' ? '主机地址' : '检查地址' }}</span><input v-model="taskForm.target" :placeholder="taskForm.type === 'tcp-port' ? '127.0.0.1' : 'https://example.com/health'" /></label>
-          <label v-if="taskForm.type === 'tcp-port'"><span>端口</span><input v-model.number="taskForm.port" type="number" min="1" max="65535" /></label>
-          <label v-else><span>期望状态码</span><input v-model.number="taskForm.expectedStatus" type="number" min="100" max="599" /></label>
-          <label><span>间隔（分钟）</span><input v-model.number="taskForm.intervalMinutes" type="number" min="5" max="10080" /></label>
-          <label><span>超时（毫秒）</span><input v-model.number="taskForm.timeoutMs" type="number" min="1000" max="60000" /></label>
-          <label class="check task-enabled"><input v-model="taskForm.enabled" type="checkbox" /> 启用任务</label>
+          <label
+            ><span>任务名称</span
+            ><input v-model="taskForm.title" maxlength="120" placeholder="例如：生产站点健康检查"
+          /></label>
+          <label
+            ><span>检查类型</span
+            ><select v-model="taskForm.type">
+              <option value="http-health">HTTP 健康检查</option>
+              <option value="tcp-port">TCP 端口</option>
+            </select></label
+          >
+          <label
+            ><span>{{ taskForm.type === 'tcp-port' ? '主机地址' : '检查地址' }}</span
+            ><input
+              v-model="taskForm.target"
+              :placeholder="
+                taskForm.type === 'tcp-port' ? '127.0.0.1' : 'https://example.com/health'
+              "
+          /></label>
+          <label v-if="taskForm.type === 'tcp-port'"
+            ><span>端口</span
+            ><input v-model.number="taskForm.port" type="number" min="1" max="65535"
+          /></label>
+          <label v-else
+            ><span>期望状态码</span
+            ><input v-model.number="taskForm.expectedStatus" type="number" min="100" max="599"
+          /></label>
+          <label
+            ><span>间隔（分钟）</span
+            ><input v-model.number="taskForm.intervalMinutes" type="number" min="5" max="10080"
+          /></label>
+          <label
+            ><span>超时（毫秒）</span
+            ><input v-model.number="taskForm.timeoutMs" type="number" min="1000" max="60000"
+          /></label>
+          <label class="check task-enabled"
+            ><input v-model="taskForm.enabled" type="checkbox" /> 启用任务</label
+          >
           <div class="task-form-actions">
-            <button class="btn-primary" type="button" :disabled="savingTask" @click="saveTask">{{ taskForm.id ? '更新任务' : '添加任务' }}</button>
-            <button v-if="taskForm.id" class="btn-text" type="button" @click="resetTaskForm">取消编辑</button>
+            <button class="btn-primary" type="button" :disabled="savingTask" @click="saveTask">
+              {{ taskForm.id ? '更新任务' : '添加任务' }}
+            </button>
+            <button v-if="taskForm.id" class="btn-text" type="button" @click="resetTaskForm">
+              取消编辑
+            </button>
           </div>
         </div>
         <div class="task-list">
           <article v-for="task in tasks" :key="task.id" class="task-item">
             <div>
               <strong>{{ task.title }}</strong>
-              <p>{{ task.type === 'tcp-port' ? `TCP ${task.target}:${task.port}` : `${task.target} · HTTP ${task.expectedStatus}` }}</p>
-              <small>{{ task.enabled ? `每 ${task.intervalMinutes} 分钟` : '已停用' }} · {{ task.lastResult ? `${task.lastResult.ok ? '最近正常' : '最近失败'}：${task.lastResult.message}` : '尚未运行' }}</small>
+              <p>
+                {{
+                  task.type === 'tcp-port'
+                    ? `TCP ${task.target}:${task.port}`
+                    : `${task.target} · HTTP ${task.expectedStatus}`
+                }}
+              </p>
+              <small
+                >{{ task.enabled ? `每 ${task.intervalMinutes} 分钟` : '已停用' }} ·
+                {{
+                  task.lastResult
+                    ? `${task.lastResult.ok ? '最近正常' : '最近失败'}：${task.lastResult.message}`
+                    : '尚未运行'
+                }}</small
+              >
             </div>
             <div class="task-actions">
-              <button class="btn-text" type="button" :disabled="runningTaskId === task.id" @click="runTask(task)">{{ runningTaskId === task.id ? '运行中…' : '立即运行' }}</button>
+              <button
+                class="btn-text"
+                type="button"
+                :disabled="runningTaskId === task.id"
+                @click="runTask(task)"
+              >
+                {{ runningTaskId === task.id ? '运行中…' : '立即运行' }}
+              </button>
               <button class="btn-text" type="button" @click="editTask(task)">编辑</button>
-              <button class="btn-text danger-text" type="button" @click="removeTask(task)">删除</button>
+              <button class="btn-text danger-text" type="button" @click="removeTask(task)">
+                删除
+              </button>
             </div>
           </article>
-          <div v-if="!tasks.length" class="empty-mini">暂无自动化任务。可先添加部署后的 HTTP 健康检查。</div>
+          <div v-if="!tasks.length" class="empty-mini">
+            暂无自动化任务。可先添加部署后的 HTTP 健康检查。
+          </div>
         </div>
       </section>
     </main>
@@ -180,8 +347,9 @@
 </template>
 
 <script setup>
+import { opsApi } from '../../api/opsApi.js'
 import { computed, nextTick, onActivated, onMounted, ref, watch } from 'vue'
-import { MessagePlugin } from 'tdesign-vue-next'
+import MessagePlugin from 'tdesign-vue-next/es/message/plugin.mjs'
 import { useRoute, useRouter } from 'vue-router'
 import { useConfirm } from '../../composables/useConfirm'
 
@@ -209,45 +377,116 @@ const copilotUseAi = ref(true)
 const copilotResult = ref(null)
 const taskForm = ref(newTask())
 
-const activeProvider = computed(() => aiState.value.providers?.providers?.find(item => item.id === aiState.value.providers?.activeProviderId && item.enabled && item.available && item.hasApiKey))
-const copilotExternalSteps = computed(() => (copilotResult.value?.plan?.steps || []).filter(step => step.type === 'open-url'))
-const enabledTaskCount = computed(() => tasks.value.filter(item => item.enabled).length)
-const eventSources = computed(() => [...new Set(events.value.map(item => item.sourceType || item.category).filter(Boolean))].sort())
-const filteredEvents = computed(() => events.value.filter((item) => {
-  const matchesStatus = eventFilter.value === 'active'
-    ? item.status !== 'resolved'
-    : !eventFilter.value || item.status === eventFilter.value
-  const matchesSource = !sourceFilter.value || (item.sourceType || item.category) === sourceFilter.value
-  return matchesStatus && matchesSource
-}))
+const activeProvider = computed(() =>
+  aiState.value.providers?.providers?.find(
+    (item) =>
+      item.id === aiState.value.providers?.activeProviderId &&
+      item.enabled &&
+      item.available &&
+      item.hasApiKey
+  )
+)
+const copilotExternalSteps = computed(() =>
+  (copilotResult.value?.plan?.steps || []).filter((step) => step.type === 'open-url')
+)
+const enabledTaskCount = computed(() => tasks.value.filter((item) => item.enabled).length)
+const eventSources = computed(() =>
+  [...new Set(events.value.map((item) => item.sourceType || item.category).filter(Boolean))].sort()
+)
+const filteredEvents = computed(() =>
+  events.value.filter((item) => {
+    const matchesStatus =
+      eventFilter.value === 'active'
+        ? item.status !== 'resolved'
+        : !eventFilter.value || item.status === eventFilter.value
+    const matchesSource =
+      !sourceFilter.value || (item.sourceType || item.category) === sourceFilter.value
+    return matchesStatus && matchesSource
+  })
+)
 
-function newTask() { return { id: '', title: '', type: 'http-health', target: '', port: 3000, expectedStatus: 200, intervalMinutes: 15, timeoutMs: 8000, enabled: true } }
-function notify(result, fallback) { if (!result?.ok) { MessagePlugin.error({ content: result?.error || fallback, placement: 'bottom-right' }); return false } return true }
-function formatTime(value) { return value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '—' }
-function levelName(level) { return ({ info: '信息', warning: '警告', critical: '严重' })[level] || '信息' }
-function statusName(status) { return ({ open: '待处理', acknowledged: '已确认', resolved: '已解决' })[status] || '待处理' }
-function sourceName(source) { return ({ automation: '自动化巡检', 'node-service': 'Node 服务', 'data-backup': '本地数据备份', 'model-monitor': '模型巡检', model: '模型评测', release: '系统发布', log: '日志分析', copilot: 'AI Copilot', system: '系统' })[source] || source || '系统' }
-function timelineName(type) { return ({ opened: '事件创建', occurred: '再次发生', reopened: '重新触发', acknowledged: '已确认', resolved: '已解决', recovered: '自动恢复' })[type] || '状态更新' }
-function toggleEvent(item) { expandedEventId.value = expandedEventId.value === item.id ? '' : item.id }
+function newTask() {
+  return {
+    id: '',
+    title: '',
+    type: 'http-health',
+    target: '',
+    port: 3000,
+    expectedStatus: 200,
+    intervalMinutes: 15,
+    timeoutMs: 8000,
+    enabled: true
+  }
+}
+function notify(result, fallback) {
+  if (!result?.ok) {
+    MessagePlugin.error({ content: result?.error || fallback, placement: 'bottom-right' })
+    return false
+  }
+  return true
+}
+function formatTime(value) {
+  return value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '—'
+}
+function levelName(level) {
+  return { info: '信息', warning: '警告', critical: '严重' }[level] || '信息'
+}
+function statusName(status) {
+  return { open: '待处理', acknowledged: '已确认', resolved: '已解决' }[status] || '待处理'
+}
+function sourceName(source) {
+  return (
+    {
+      automation: '自动化巡检',
+      'node-service': 'Node 服务',
+      'data-backup': '本地数据备份',
+      'model-monitor': '模型巡检',
+      model: '模型评测',
+      release: '系统发布',
+      log: '日志分析',
+      copilot: 'AI Copilot',
+      system: '系统'
+    }[source] ||
+    source ||
+    '系统'
+  )
+}
+function timelineName(type) {
+  return (
+    {
+      opened: '事件创建',
+      occurred: '再次发生',
+      reopened: '重新触发',
+      acknowledged: '已确认',
+      resolved: '已解决',
+      recovered: '自动恢复'
+    }[type] || '状态更新'
+  )
+}
+function toggleEvent(item) {
+  expandedEventId.value = expandedEventId.value === item.id ? '' : item.id
+}
 
 async function focusRouteEvent() {
   const eventId = String(route.query.event || '')
   if (!eventId || lastFocusedEventId.value === eventId) return
-  const item = events.value.find(entry => entry.id === eventId)
+  const item = events.value.find((entry) => entry.id === eventId)
   if (!item) return
   eventFilter.value = item.status === 'resolved' ? '' : 'active'
   sourceFilter.value = ''
   expandedEventId.value = eventId
   lastFocusedEventId.value = eventId
   if (!item.readAt) {
-    const result = await window.opsApi.markOpsEventsRead?.({ ids: [eventId] })
+    const result = await opsApi.markOpsEventsRead?.({ ids: [eventId] })
     if (result?.ok) {
       item.readAt = Number(result.readAt) || Date.now()
       summary.value = result.summary || summary.value
     }
   }
   await nextTick()
-  const target = [...(eventListRef.value?.querySelectorAll('[data-event-id]') || [])].find(element => element.dataset.eventId === eventId)
+  const target = [...(eventListRef.value?.querySelectorAll('[data-event-id]') || [])].find(
+    (element) => element.dataset.eventId === eventId
+  )
   target?.scrollIntoView({ behavior: 'smooth', block: 'center' })
 }
 
@@ -255,38 +494,68 @@ async function load() {
   loading.value = true
   try {
     const [eventResult, taskResult, aiResult] = await Promise.all([
-      window.opsApi.getOpsEvents({ limit: 500 }),
-      window.opsApi.getAutomationTasks(),
-      window.opsApi.getAiOpsState(),
+      opsApi.getOpsEvents({ limit: 500 }),
+      opsApi.getAutomationTasks(),
+      opsApi.getAiOpsState()
     ])
-    if (notify(eventResult, '读取事件失败')) { events.value = eventResult.items || []; summary.value = eventResult.summary || {} }
+    if (notify(eventResult, '读取事件失败')) {
+      events.value = eventResult.items || []
+      summary.value = eventResult.summary || {}
+    }
     if (notify(taskResult, '读取自动化任务失败')) tasks.value = taskResult.tasks || []
     if (aiResult?.ok) aiState.value = aiResult
     hasLoaded.value = true
     await focusRouteEvent()
-  } finally { loading.value = false }
+  } finally {
+    loading.value = false
+  }
 }
 async function askCopilot() {
   busy.value = true
   try {
-    const result = await window.opsApi.askAiCopilot({ prompt: copilotPrompt.value, useAi: copilotUseAi.value && Boolean(activeProvider.value), providerId: activeProvider.value?.id })
-    if (notify(result, 'Copilot 分析失败')) { copilotResult.value = result; await load() }
-  } finally { busy.value = false }
+    const result = await opsApi.askAiCopilot({
+      prompt: copilotPrompt.value,
+      useAi: copilotUseAi.value && Boolean(activeProvider.value),
+      providerId: activeProvider.value?.id
+    })
+    if (notify(result, 'Copilot 分析失败')) {
+      copilotResult.value = result
+      await load()
+    }
+  } finally {
+    busy.value = false
+  }
 }
 async function executePlan() {
   const plan = copilotResult.value?.plan
   if (!plan || !copilotExternalSteps.value.length) return
-  if (plan.requiresConfirmation && !await confirm({ title: '确认打开外部链接', content: '仅打开计划中的外部链接；不会发布、删除或回滚。', theme: 'warning' })) return
-  const result = await window.opsApi.executeAiWorkflow({ plan, confirmed: true })
+  if (
+    plan.requiresConfirmation &&
+    !(await confirm({
+      title: '确认打开外部链接',
+      content: '仅打开计划中的外部链接；不会发布、删除或回滚。',
+      theme: 'warning'
+    }))
+  )
+    return
+  const result = await opsApi.executeAiWorkflow({ plan, confirmed: true })
   if (notify(result, '执行工作流失败')) {
-    const opened = (result.completed || []).filter(step => step.status === 'done').length
+    const opened = (result.completed || []).filter((step) => step.status === 'done').length
     MessagePlugin.success({ content: `已打开 ${opened} 个外部链接`, placement: 'bottom-right' })
   }
 }
 function openPlanStep(step) {
   if (step?.type !== 'navigate' || !step.target) return
   const target = String(step.target)
-  if (!['/system-release', '/ai-models', '/ai-operations', '/knowledge-base', '/ai-integrations'].includes(target.split('?')[0])) {
+  if (
+    ![
+      '/system-release',
+      '/ai-models',
+      '/ai-operations',
+      '/knowledge-base',
+      '/ai-integrations'
+    ].includes(target.split('?')[0])
+  ) {
     MessagePlugin.error({ content: '该页面步骤无效，请重新生成计划', placement: 'bottom-right' })
     return
   }
@@ -294,19 +563,72 @@ function openPlanStep(step) {
 }
 function openKnowledge(source) {
   router.push({ path: '/knowledge-base', query: { document: source.title } })
-  MessagePlugin.info({ content: `请在知识库查看「${source.title}」第 ${source.startLine}-${source.endLine} 行。`, placement: 'bottom-right' })
+  MessagePlugin.info({
+    content: `请在知识库查看「${source.title}」第 ${source.startLine}-${source.endLine} 行。`,
+    placement: 'bottom-right'
+  })
 }
-async function updateEvent(item, status) { const result = await window.opsApi.updateOpsEvent(item.id, status); if (notify(result, '更新事件失败')) await load() }
-function editTask(task) { taskForm.value = { ...newTask(), ...task } }
-function resetTaskForm() { taskForm.value = newTask() }
-async function saveTask() { savingTask.value = true; try { const result = await window.opsApi.saveAutomationTask({ ...taskForm.value }); if (notify(result, '保存任务失败')) { resetTaskForm(); await load(); MessagePlugin.success({ content: '自动化任务已保存', placement: 'bottom-right' }) } } finally { savingTask.value = false } }
-async function runTask(task) { runningTaskId.value = task.id; try { const result = await window.opsApi.runAutomationTask(task.id); if (notify(result, '运行任务失败')) { await load(); MessagePlugin[result.result?.ok ? 'success' : 'warning']({ content: result.result?.message || '任务已完成', placement: 'bottom-right' }) } } finally { runningTaskId.value = '' } }
-async function removeTask(task) { if (!await confirm({ title: '删除自动化任务', content: `确定删除“${task.title}”吗？`, theme: 'warning' })) return; const result = await window.opsApi.deleteAutomationTask(task.id); if (notify(result, '删除任务失败')) { await load(); resetTaskForm() } }
+async function updateEvent(item, status) {
+  const result = await opsApi.updateOpsEvent(item.id, status)
+  if (notify(result, '更新事件失败')) await load()
+}
+function editTask(task) {
+  taskForm.value = { ...newTask(), ...task }
+}
+function resetTaskForm() {
+  taskForm.value = newTask()
+}
+async function saveTask() {
+  savingTask.value = true
+  try {
+    const result = await opsApi.saveAutomationTask({ ...taskForm.value })
+    if (notify(result, '保存任务失败')) {
+      resetTaskForm()
+      await load()
+      MessagePlugin.success({ content: '自动化任务已保存', placement: 'bottom-right' })
+    }
+  } finally {
+    savingTask.value = false
+  }
+}
+async function runTask(task) {
+  runningTaskId.value = task.id
+  try {
+    const result = await opsApi.runAutomationTask(task.id)
+    if (notify(result, '运行任务失败')) {
+      await load()
+      MessagePlugin[result.result?.ok ? 'success' : 'warning']({
+        content: result.result?.message || '任务已完成',
+        placement: 'bottom-right'
+      })
+    }
+  } finally {
+    runningTaskId.value = ''
+  }
+}
+async function removeTask(task) {
+  if (
+    !(await confirm({
+      title: '删除自动化任务',
+      content: `确定删除“${task.title}”吗？`,
+      theme: 'warning'
+    }))
+  )
+    return
+  const result = await opsApi.deleteAutomationTask(task.id)
+  if (notify(result, '删除任务失败')) {
+    await load()
+    resetTaskForm()
+  }
+}
 
-watch(() => route.query.event, (eventId) => {
-  if (!eventId) lastFocusedEventId.value = ''
-  void focusRouteEvent()
-})
+watch(
+  () => route.query.event,
+  (eventId) => {
+    if (!eventId) lastFocusedEventId.value = ''
+    void focusRouteEvent()
+  }
+)
 
 onMounted(load)
 onActivated(() => {
@@ -316,100 +638,427 @@ onActivated(() => {
 
 <style scoped>
 .danger-text,
-.danger-value { color: var(--danger); }
-.success-value { color: var(--success); }
-.spinning { animation: spin 1s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
+.danger-value {
+  color: var(--danger);
+}
+.success-value {
+  color: var(--success);
+}
+.spinning {
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 
-.summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--content-gap); }
-.summary-card { padding: var(--panel-padding); }
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--content-gap);
+}
+.summary-card {
+  padding: var(--panel-padding);
+}
 .summary-card span,
-.summary-card small { display: block; color: var(--text-muted); font-size: 12px; }
-.summary-card strong { display: block; margin: 7px 0 4px; font-size: 25px; }
-.content-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(420px, .95fr); gap: var(--content-gap); align-items: start; }
-.section-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--spacing-md); margin-bottom: var(--spacing-md); }
-.check { display: flex; align-items: center; gap: 7px; color: var(--text-secondary); font-size: 13px; white-space: nowrap; }
-.copilot-panel textarea { width: 100%; resize: vertical; border: 1px solid var(--border); border-radius: 10px; padding: 12px; color: var(--text); font: inherit; }
-.actions { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
-.actions span { color: var(--text-muted); font-size: 12px; }
-.copilot-result { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 16px; }
-.copilot-result h4 { font-size: 14px; }
-.copilot-result pre { max-height: 300px; overflow: auto; margin-top: 8px; padding: 12px; border-radius: 9px; background: #0f172a; color: #e2e8f0; font: 12px/1.6 var(--font-mono); white-space: pre-wrap; }
-.citation-list { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; font-size: 12px; }
-.citation { border: 1px solid #c7d2fe; border-radius: 999px; background: #eef2ff; color: #4f46e5; padding: 5px 8px; cursor: pointer; }
-.plan-card { margin-top: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-subtle); }
-.plan-card p { margin-top: 3px; color: var(--text-muted); font-size: 13px; }
-.plan-card ol { margin: 10px 0 12px; padding-left: 20px; font-size: 13px; line-height: 1.8; }
-.plan-card em { margin-left: 7px; color: #d97706; font-size: 12px; font-style: normal; }
+.summary-card small {
+  display: block;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.summary-card strong {
+  display: block;
+  margin: 7px 0 4px;
+  font-size: 25px;
+}
+.content-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(420px, 0.95fr);
+  gap: var(--content-gap);
+  align-items: start;
+}
+.section-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+}
+.check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.copilot-panel textarea {
+  width: 100%;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  color: var(--text);
+  font: inherit;
+}
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+.actions span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.copilot-result {
+  margin-top: 18px;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+.copilot-result h4 {
+  font-size: 14px;
+}
+.copilot-result pre {
+  max-height: 300px;
+  overflow: auto;
+  margin-top: 8px;
+  padding: 12px;
+  border-radius: 9px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font: 12px/1.6 var(--font-mono);
+  white-space: pre-wrap;
+}
+.citation-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 12px;
+  font-size: 12px;
+}
+.citation {
+  border: 1px solid #c7d2fe;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #4f46e5;
+  padding: 5px 8px;
+  cursor: pointer;
+}
+.plan-card {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-subtle);
+}
+.plan-card p {
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.plan-card ol {
+  margin: 10px 0 12px;
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.8;
+}
+.plan-card em {
+  margin-left: 7px;
+  color: #d97706;
+  font-size: 12px;
+  font-style: normal;
+}
 
-.event-panel { min-width: 0; }
-.event-heading { align-items: flex-end; }
-.event-filters { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.event-panel {
+  min-width: 0;
+}
+.event-heading {
+  align-items: flex-end;
+}
+.event-filters {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
 .event-filters select,
 .task-form input,
-.task-form select { height: 36px; border: 1px solid var(--border); border-radius: 8px; padding: 0 9px; background: #fff; color: var(--text); font: inherit; }
-.event-list { display: grid; gap: 9px; max-height: 620px; overflow: auto; padding-right: 2px; }
-.event-item { display: flex; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: #fff; }
-.event-item.resolved { background: var(--bg-subtle); }
-.event-item.targeted { border-color: color-mix(in srgb, var(--primary) 48%, var(--border)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 10%, transparent); }
-.event-dot { width: 8px; height: 8px; flex: none; margin-top: 7px; border-radius: 50%; background: #64748b; }
-.event-item.warning .event-dot { background: #f59e0b; }
-.event-item.critical .event-dot { background: #ef4444; }
-.event-item.resolved .event-dot { background: #10b981; }
-.event-content { min-width: 0; flex: 1; }
-.event-title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
-.event-title-row > strong { min-width: 0; overflow-wrap: anywhere; }
-.event-badges { display: flex; flex: none; flex-wrap: wrap; justify-content: flex-end; gap: 5px; }
+.task-form select {
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 9px;
+  background: #fff;
+  color: var(--text);
+  font: inherit;
+}
+.event-list {
+  display: grid;
+  gap: 9px;
+  max-height: 620px;
+  overflow: auto;
+  padding-right: 2px;
+}
+.event-item {
+  display: flex;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+}
+.event-item.resolved {
+  background: var(--bg-subtle);
+}
+.event-item.targeted {
+  border-color: color-mix(in srgb, var(--primary) 48%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 10%, transparent);
+}
+.event-dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  margin-top: 7px;
+  border-radius: 50%;
+  background: #64748b;
+}
+.event-item.warning .event-dot {
+  background: #f59e0b;
+}
+.event-item.critical .event-dot {
+  background: #ef4444;
+}
+.event-item.resolved .event-dot {
+  background: #10b981;
+}
+.event-content {
+  min-width: 0;
+  flex: 1;
+}
+.event-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.event-title-row > strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.event-badges {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px;
+}
 .status-badge,
-.count-badge { border-radius: 999px; padding: 3px 7px; background: #f1f5f9; color: #475569; font-size: 11px; white-space: nowrap; }
-.status-badge.open { background: #fff7ed; color: #c2410c; }
-.status-badge.acknowledged { background: #eef2ff; color: #4f46e5; }
+.count-badge {
+  border-radius: 999px;
+  padding: 3px 7px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.status-badge.open {
+  background: #fff7ed;
+  color: #c2410c;
+}
+.status-badge.acknowledged {
+  background: #eef2ff;
+  color: #4f46e5;
+}
 .status-badge.resolved,
-.status-badge.recovered { background: #ecfdf5; color: #047857; }
-.event-content > p { margin: 6px 0; color: var(--text-secondary); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
-.event-meta { display: flex; flex-wrap: wrap; gap: 6px 12px; color: var(--text-muted); font-size: 12px; }
-.event-actions { display: flex; flex-direction: column; align-items: flex-end; }
-.event-detail { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 12px; }
-.event-detail dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px 16px; }
-.event-detail dl div { min-width: 0; }
-.event-detail dt { color: var(--text-muted); font-size: 11px; }
-.event-detail dd { margin-top: 3px; color: var(--text-secondary); font-size: 12px; overflow-wrap: anywhere; }
-.resolution-note { padding: 9px 10px; border-radius: 8px; background: #ecfdf5; color: #047857 !important; }
-.event-timeline { display: grid; gap: 8px; margin: 10px 0 0; padding: 0; list-style: none; }
-.event-timeline li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: start; color: var(--text-muted); font-size: 11px; }
-.event-timeline li > span { color: var(--text-secondary); font-weight: 600; }
-.event-timeline p { margin: 0; color: var(--text-secondary); overflow-wrap: anywhere; }
-.event-timeline time { white-space: nowrap; }
+.status-badge.recovered {
+  background: #ecfdf5;
+  color: #047857;
+}
+.event-content > p {
+  margin: 6px 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.event-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.event-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+.event-detail {
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.event-detail dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px 16px;
+}
+.event-detail dl div {
+  min-width: 0;
+}
+.event-detail dt {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.event-detail dd {
+  margin-top: 3px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.resolution-note {
+  padding: 9px 10px;
+  border-radius: 8px;
+  background: #ecfdf5;
+  color: #047857 !important;
+}
+.event-timeline {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.event-timeline li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.event-timeline li > span {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+.event-timeline p {
+  margin: 0;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+.event-timeline time {
+  white-space: nowrap;
+}
 
-.automation-panel { margin: 0; }
-.task-form { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: var(--spacing-md); padding-bottom: 18px; border-bottom: 1px solid var(--border); }
-.task-form label { display: grid; gap: 6px; color: var(--text-secondary); font-size: 12px; }
-.task-form .task-enabled { display: flex; align-self: end; height: 36px; }
-.task-form-actions { display: flex; align-items: flex-end; gap: 8px; }
-.task-list { display: grid; gap: 8px; margin-top: 16px; }
-.task-item { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; }
+.automation-panel {
+  margin: 0;
+}
+.task-form {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: var(--spacing-md);
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--border);
+}
+.task-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.task-form .task-enabled {
+  display: flex;
+  align-self: end;
+  height: 36px;
+}
+.task-form-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+.task-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+.task-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
 .task-item p,
-.task-item small { display: block; margin-top: 3px; color: var(--text-muted); font-size: 12px; overflow-wrap: anywhere; }
-.task-actions { display: flex; align-items: center; gap: 3px; white-space: nowrap; }
-.empty-mini { padding: 22px; color: var(--text-muted); text-align: center; font-size: 13px; }
+.task-item small {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.task-actions {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}
+.empty-mini {
+  padding: 22px;
+  color: var(--text-muted);
+  text-align: center;
+  font-size: 13px;
+}
 
 @media (max-width: 1100px) {
-  .summary-grid { grid-template-columns: repeat(2, 1fr); }
-  .content-grid { grid-template-columns: 1fr; }
-  .task-form { grid-template-columns: repeat(2, 1fr); }
+  .summary-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .content-grid {
+    grid-template-columns: 1fr;
+  }
+  .task-form {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 @media (max-width: 640px) {
   .summary-grid,
   .task-form,
-  .event-detail dl { grid-template-columns: 1fr; }
+  .event-detail dl {
+    grid-template-columns: 1fr;
+  }
   .section-toolbar,
   .task-item,
-  .event-title-row { align-items: flex-start; flex-direction: column; }
-  .event-filters { width: 100%; justify-content: stretch; }
-  .event-filters select { min-width: 0; flex: 1; }
+  .event-title-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .event-filters {
+    width: 100%;
+    justify-content: stretch;
+  }
+  .event-filters select {
+    min-width: 0;
+    flex: 1;
+  }
   .event-actions,
-  .task-actions { align-items: flex-start; flex-direction: row; flex-wrap: wrap; }
-  .actions { align-items: flex-start; flex-direction: column; }
-  .event-timeline li { grid-template-columns: 1fr; gap: 2px; }
+  .task-actions {
+    align-items: flex-start;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .actions {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .event-timeline li {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
 }
 </style>

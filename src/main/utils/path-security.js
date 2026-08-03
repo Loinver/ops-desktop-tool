@@ -17,7 +17,7 @@ function normalizeRemotePath(value, { allowRoot = true } = {}) {
   if (!rawPath.startsWith('/')) throw new Error('远程路径必须是绝对路径')
 
   const segments = rawPath.split('/')
-  if (segments.some(segment => segment === '..')) {
+  if (segments.some((segment) => segment === '..')) {
     throw new Error('远程路径不能包含上级目录跳转')
   }
 
@@ -34,5 +34,5 @@ function assertLocalPath(value, label = '本地路径') {
 
 module.exports = {
   assertLocalPath,
-  normalizeRemotePath,
+  normalizeRemotePath
 }

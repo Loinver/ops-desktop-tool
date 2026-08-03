@@ -6,6 +6,6 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
-    include: ['tests/renderer/**/*.test.{js,mjs}'],
-  },
+    include: ['tests/renderer/**/*.test.{js,mjs}']
+  }
 })

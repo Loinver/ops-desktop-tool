@@ -14,7 +14,7 @@ const { execFile } = require('node:child_process')
 const DB_CANDIDATES = [
   path.join(os.homedir(), '.cc-switch', 'cc-switch.db'),
   path.join(os.homedir(), 'Library', 'Application Support', 'com.ccswitch.desktop', 'cc-switch.db'),
-  path.join(os.homedir(), 'AppData', 'Roaming', 'com.ccswitch.desktop', 'cc-switch.db'),
+  path.join(os.homedir(), 'AppData', 'Roaming', 'com.ccswitch.desktop', 'cc-switch.db')
 ]
 
 /** 支持测试的 app 类型 */
@@ -24,7 +24,7 @@ const APP_TYPE_LABELS = {
   claude: 'Claude',
   'claude-desktop': 'Claude Desktop',
   codex: 'Codex',
-  gemini: 'Gemini',
+  gemini: 'Gemini'
 }
 
 /** Claude 模型映射的档位顺序，决定展示顺序 */
@@ -40,7 +40,7 @@ function splitOneMModelMarker(value) {
   const beta1m = ONE_M_MODEL_MARKER_RE.test(raw)
   return {
     model: (beta1m ? raw.replace(ONE_M_MODEL_MARKER_RE, '') : raw).trim(),
-    beta1m,
+    beta1m
   }
 }
 
@@ -81,7 +81,7 @@ function runSqlite(dbPath, sql) {
         } catch {
           reject(new Error('sqlite3 返回内容解析失败'))
         }
-      },
+      }
     )
   })
 }
@@ -96,7 +96,9 @@ function parseJson(value, fallback) {
 }
 
 function stripTrailingSlash(url) {
-  return String(url || '').trim().replace(/\/+$/, '')
+  return String(url || '')
+    .trim()
+    .replace(/\/+$/, '')
 }
 
 /** 从 codex 的 TOML 配置文本里抽取字段（简单正则即可，不需要完整 TOML 解析） */
@@ -162,16 +164,14 @@ function parseClaudeProvider(settings) {
       }
       return rank(a) - rank(b)
     })
-    .map(item => ({
+    .map((item) => ({
       key: item.beta1m ? `${item.model}|1m` : item.model,
       model: item.model,
       beta1m: item.beta1m,
-      label: item.beta1m ? `${item.tiers.join(' / ')} · 1M` : item.tiers.join(' / '),
+      label: item.beta1m ? `${item.tiers.join(' / ')} · 1M` : item.tiers.join(' / ')
     }))
 
-  const anthropicBeta = String(
-    env.ANTHROPIC_BETA || env.ANTHROPIC_BETAS || '',
-  ).trim()
+  const anthropicBeta = String(env.ANTHROPIC_BETA || env.ANTHROPIC_BETAS || '').trim()
 
   return { protocol: 'anthropic', baseUrl, apiKey, anthropicAuthType, anthropicBeta, models }
 }
@@ -196,7 +196,7 @@ function parseCodexProvider(settings) {
     collected.set(model, {
       key: model,
       model,
-      label: String(item?.displayName || '').trim() || model,
+      label: String(item?.displayName || '').trim() || model
     })
   }
 
@@ -219,15 +219,15 @@ function parseGeminiProvider(settings) {
   const config = settings?.config && typeof settings.config === 'object' ? settings.config : {}
 
   const baseUrl = stripTrailingSlash(
-    env.GOOGLE_GEMINI_BASE_URL || env.GEMINI_BASE_URL || config.baseUrl || '',
+    env.GOOGLE_GEMINI_BASE_URL || env.GEMINI_BASE_URL || config.baseUrl || ''
   )
   const apiKey = String(env.GEMINI_API_KEY || env.GOOGLE_API_KEY || config.apiKey || '').trim()
 
   const rawModels = Array.isArray(config.models) ? config.models : []
   const models = rawModels
-    .map(item => String(typeof item === 'string' ? item : item?.model || '').trim())
+    .map((item) => String(typeof item === 'string' ? item : item?.model || '').trim())
     .filter(Boolean)
-    .map(model => ({ key: model, model, label: model }))
+    .map((model) => ({ key: model, model, label: model }))
 
   if (models.length === 0 && (env.GEMINI_DEFAULT_MODEL || config.model)) {
     const model = String(env.GEMINI_DEFAULT_MODEL || config.model).trim()
@@ -257,10 +257,7 @@ function parseProviderRow(row, endpointMap) {
   // 某些 cc-switch 配置会预置 Anthropic beta；读取后与 1M beta 合并，
   // 不要在探测时把已有标识覆盖掉。
   const anthropicBeta = String(
-    meta.anthropicBeta
-      || meta.anthropic_beta
-      || parsed.anthropicBeta
-      || '',
+    meta.anthropicBeta || meta.anthropic_beta || parsed.anthropicBeta || ''
   ).trim()
   // 有备用线路时，把主 baseUrl 也并进候选列表（去重）
   const allEndpoints = [...new Set([parsed.baseUrl, ...endpoints].filter(Boolean))]
@@ -268,7 +265,6 @@ function parseProviderRow(row, endpointMap) {
   const issues = []
   if (!parsed.baseUrl) issues.push('未配置 baseUrl')
   if (!parsed.apiKey) issues.push('未配置 apiKey')
-  
 
   return {
     id: row.id,
@@ -290,7 +286,7 @@ function parseProviderRow(row, endpointMap) {
     endpoints: allEndpoints,
     models: parsed.models,
     issues,
-    testable: issues.length === 0,
+    testable: issues.length === 0
   }
 }
 
@@ -310,11 +306,11 @@ async function loadProviders() {
   if (!dbPath) {
     return {
       ok: false,
-      message: `未找到 cc-switch 数据库，已尝试：\n${DB_CANDIDATES.join('\n')}`,
+      message: `未找到 cc-switch 数据库，已尝试：\n${DB_CANDIDATES.join('\n')}`
     }
   }
 
-  const appFilter = SUPPORTED_APP_TYPES.map(type => `'${type}'`).join(', ')
+  const appFilter = SUPPORTED_APP_TYPES.map((type) => `'${type}'`).join(', ')
 
   let rows
   let endpointRows
@@ -324,11 +320,11 @@ async function loadProviders() {
       `SELECT id, app_type, name, settings_config, meta, website_url, is_current, sort_index
          FROM providers
         WHERE app_type IN (${appFilter})
-        ORDER BY app_type, sort_index, name;`,
+        ORDER BY app_type, sort_index, name;`
     )
     endpointRows = await runSqlite(
       dbPath,
-      `SELECT provider_id, app_type, url FROM provider_endpoints;`,
+      `SELECT provider_id, app_type, url FROM provider_endpoints;`
     )
   } catch (error) {
     return { ok: false, message: error.message }
@@ -341,12 +337,12 @@ async function loadProviders() {
     endpointMap.get(key).push(stripTrailingSlash(item.url))
   }
 
-  const providers = rows.map(row => parseProviderRow(row, endpointMap))
+  const providers = rows.map((row) => parseProviderRow(row, endpointMap))
   return { ok: true, dbPath, providers }
 }
 
 module.exports = {
   loadProviders,
   findDatabasePath,
-  SUPPORTED_APP_TYPES,
+  SUPPORTED_APP_TYPES
 }

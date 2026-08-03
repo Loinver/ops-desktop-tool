@@ -28,16 +28,16 @@
 </template>
 
 <script setup>
-import { computed } from "vue";
+import { computed } from 'vue'
 
 const props = defineProps({
   groups: { type: Array, default: () => [] },
-  activeKey: { type: String, default: "" },
-});
+  activeKey: { type: String, default: '' }
+})
 
 const providerCount = computed(() =>
-  props.groups.reduce((total, group) => total + (group.providers?.length || 0), 0),
-);
+  props.groups.reduce((total, group) => total + (group.providers?.length || 0), 0)
+)
 
-defineEmits(["select"]);
+defineEmits(['select'])
 </script>

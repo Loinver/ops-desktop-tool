@@ -10,7 +10,7 @@
     "start": "electron .",
     "mcp": "node src/main/mcp-server.js",
     "preview": "vite preview",
-    "test": "node --test scripts/*.test.cjs && node scripts/check-port-parser.js && vitest run",
+    "test": "node --test scripts/*.test.cjs && node scripts/check-port-parser.js && node scripts/check-renderer-api-boundaries.cjs && vitest run",
     "test:renderer": "vitest run",
     "test:renderer:watch": "vitest",
     "check": "pnpm verify && pnpm build",
@@ -23,7 +23,8 @@
     "electron:build:mac": "vite build && electron-builder --mac",
     "electron:build:win": "vite build && electron-builder --win",
     "electron:build:linux": "vite build && electron-builder --linux",
-    "verify": "pnpm lint && pnpm test"
+    "verify": "pnpm format:check && pnpm lint && pnpm test && pnpm test:e2e",
+    "test:e2e": "node --test tests/e2e/*.test.cjs"
   },
   "keywords": [
     "electron",
@@ -88,6 +89,7 @@
     "eslint-plugin-vue": "^9.33.0",
     "jsdom": "^30.0.1",
     "pinia": "^3.0.4",
+    "playwright": "^1.62.1",
     "prettier": "^3.9.6",
     "tdesign-vue-next": "^1.20.1",
     "vite": "^5.4.0",

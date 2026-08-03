@@ -252,14 +252,17 @@ allowRunningInsecureContent: false
 
 Vite 只构建 Renderer 到 `dist/renderer`，Electron Main 和 Shared 源文件由 electron-builder 按 `package.json#build.files` 打包。
 
-页面路由按模块拆分。UI 不再全量注册 TDesign：简单表格、图片和页头采用原生 Vue/HTML，TDesign 仅保留消息插件，图标使用本地 sprite。这样避免把完整组件库打入入口 chunk，也消除了 Vite 的大 chunk 构建告警。
+页面路由按模块拆分。UI 不再全量注册 TDesign：简单表格、图片和页头采用原生 Vue/HTML，TDesign 仅按需引入消息插件样式，图标使用本地 sprite。避免从包根入口引入组件库后，TDesign CSS 从约 448 KB 降至约 4 KB（未压缩），同时保留消息提示行为。
 
 ## 10. 测试策略
 
 `pnpm test` 执行：
 
 - Node `node:test` 测试文件
-- 端口解析回归脚本
+- Renderer Vitest 测试
+- 端口解析与 Renderer IPC API 边界回归脚本
+
+`pnpm test:e2e` 使用 Playwright 的 Electron 驱动启动临时桌面进程，验证默认工作台与关键路由。Linux CI 使用 `xvfb-run` 提供虚拟显示环境。
 
 当前重点覆盖：
 
@@ -270,7 +273,7 @@ Vite 只构建 Renderer 到 `dist/renderer`，Electron Main 和 Shared 源文件
 - SFTP ZIP 发布和根目录保护
 - 跨平台端口命令输出解析
 
-`pnpm verify` 依次执行 ESLint 和测试；`pnpm check` 在质量检查通过后继续执行生产构建，作为提交前的统一检查入口。
+`pnpm verify` 依次执行 Prettier 格式检查、ESLint、Node/Renderer 测试和 Electron E2E；`pnpm check` 在质量检查通过后继续执行生产构建，作为提交前的统一检查入口。
 
 ## 11. 后续改进
 
@@ -278,7 +281,6 @@ Vite 只构建 Renderer 到 `dist/renderer`，Electron Main 和 Shared 源文件
 
 - 保持 ESLint 零告警，并在 CI 中持续执行统一质量门禁
 - 为 Main IPC 增加更多错误分支与契约测试
-- 为 Renderer 关键流程补充 Playwright Electron 冒烟测试
 
 ### P3
 

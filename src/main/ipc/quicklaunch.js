@@ -78,7 +78,7 @@ function registerQuickLaunchHandlers() {
       } catch (error) {
         errors.push({
           name: typeof item?.name === 'string' ? item.name : '未命名网站',
-          error: error instanceof Error ? error.message : '打开失败',
+          error: error instanceof Error ? error.message : '打开失败'
         })
       }
     }
@@ -88,7 +88,7 @@ function registerQuickLaunchHandlers() {
       opened,
       failed: errors.length,
       errors: errors.slice(0, 5),
-      error: opened === 0 ? (errors[0]?.error || '没有可打开的网站') : '',
+      error: opened === 0 ? errors[0]?.error || '没有可打开的网站' : ''
     }
   })
 
@@ -109,7 +109,7 @@ function registerQuickLaunchHandlers() {
       const result = await dialog.showOpenDialog(focused, {
         title: '导入网址快捷方式 JSON',
         properties: ['openFile'],
-        filters: [{ name: 'JSON 文件', extensions: ['json'] }],
+        filters: [{ name: 'JSON 文件', extensions: ['json'] }]
       })
       if (result.canceled || !result.filePaths[0]) {
         return { ok: false, canceled: true }
@@ -133,7 +133,7 @@ function registerQuickLaunchHandlers() {
       const result = await dialog.showSaveDialog(focused, {
         title: '导出网址快捷方式 JSON',
         defaultPath: 'quick-launch-websites.json',
-        filters: [{ name: 'JSON 文件', extensions: ['json'] }],
+        filters: [{ name: 'JSON 文件', extensions: ['json'] }]
       })
       if (result.canceled || !result.filePath) {
         return { ok: false, canceled: true }
@@ -142,7 +142,7 @@ function registerQuickLaunchHandlers() {
       const payload = makeWebsiteExport(items)
       fs.writeFileSync(result.filePath, `${JSON.stringify(payload, null, 2)}\n`, {
         encoding: 'utf8',
-        mode: 0o600,
+        mode: 0o600
       })
       return { ok: true, filePath: result.filePath, count: payload.items.length }
     } catch (error) {

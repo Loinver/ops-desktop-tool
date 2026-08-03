@@ -1,74 +1,74 @@
 <template>
   <Teleport to="body">
-  <div v-if="modelValue" class="dialog-overlay" @click.self="close">
-    <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="quick-open-title">
-      <header class="dialog-header">
-        <div>
-          <h3 id="quick-open-title">配置一键打开</h3>
-          <p>选择需要同时在默认浏览器中打开的网站。</p>
-        </div>
-        <button type="button" class="icon-btn" title="关闭" @click="close">
-          <t-icon name="close" />
-        </button>
-      </header>
-
-      <div class="dialog-toolbar">
-        <label class="search-box">
-          <t-icon name="search" />
-          <input v-model="query" type="search" placeholder="搜索网站名称或地址" />
-        </label>
-        <div class="selection-actions">
-          <span>已选 {{ selectedIds.size }} / {{ websiteItems.length }}</span>
-          <button type="button" @click="selectVisible">全选</button>
-          <button type="button" @click="clearSelection">清空</button>
-        </div>
-      </div>
-
-      <div class="dialog-body">
-        <div v-if="websiteItems.length === 0" class="empty-list">
-          <t-icon name="earth" />
-          <p>还没有网站快捷方式</p>
-          <span>请先添加网站，或从 JSON 文件导入配置。</span>
-        </div>
-        <div v-else-if="filteredItems.length === 0" class="empty-list compact">
-          <t-icon name="search" />
-          <p>没有匹配的网站</p>
-        </div>
-        <div v-else class="site-list">
-          <label
-            v-for="item in filteredItems"
-            :key="item.id"
-            class="site-option"
-            :class="{ selected: selectedIds.has(String(item.id)) }"
-          >
-            <input
-              type="checkbox"
-              :checked="selectedIds.has(String(item.id))"
-              @change="toggleItem(item.id)"
-            />
-            <span class="site-icon" :style="{ background: item.color || '#6366f1' }">
-              <span v-if="item.icon">{{ item.icon }}</span>
-              <t-icon v-else name="earth" />
-            </span>
-            <span class="site-content">
-              <strong>{{ item.name }}</strong>
-              <small :title="item.target">{{ item.target }}</small>
-            </span>
-            <span v-if="selectedIds.has(String(item.id))" class="selected-tag">一键打开</span>
-          </label>
-        </div>
-      </div>
-
-      <footer class="dialog-footer">
-        <div class="footer-actions">
-          <button type="button" class="btn-cancel" @click="close">取消</button>
-          <button type="button" class="btn-confirm" :disabled="saving" @click="save">
-            {{ saving ? '保存中…' : `保存配置（${selectedIds.size}）` }}
+    <div v-if="modelValue" class="dialog-overlay" @click.self="close">
+      <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="quick-open-title">
+        <header class="dialog-header">
+          <div>
+            <h3 id="quick-open-title">配置一键打开</h3>
+            <p>选择需要同时在默认浏览器中打开的网站。</p>
+          </div>
+          <button type="button" class="icon-btn" title="关闭" @click="close">
+            <t-icon name="close" />
           </button>
+        </header>
+
+        <div class="dialog-toolbar">
+          <label class="search-box">
+            <t-icon name="search" />
+            <input v-model="query" type="search" placeholder="搜索网站名称或地址" />
+          </label>
+          <div class="selection-actions">
+            <span>已选 {{ selectedIds.size }} / {{ websiteItems.length }}</span>
+            <button type="button" @click="selectVisible">全选</button>
+            <button type="button" @click="clearSelection">清空</button>
+          </div>
         </div>
-      </footer>
-    </section>
-  </div>
+
+        <div class="dialog-body">
+          <div v-if="websiteItems.length === 0" class="empty-list">
+            <t-icon name="earth" />
+            <p>还没有网站快捷方式</p>
+            <span>请先添加网站，或从 JSON 文件导入配置。</span>
+          </div>
+          <div v-else-if="filteredItems.length === 0" class="empty-list compact">
+            <t-icon name="search" />
+            <p>没有匹配的网站</p>
+          </div>
+          <div v-else class="site-list">
+            <label
+              v-for="item in filteredItems"
+              :key="item.id"
+              class="site-option"
+              :class="{ selected: selectedIds.has(String(item.id)) }"
+            >
+              <input
+                type="checkbox"
+                :checked="selectedIds.has(String(item.id))"
+                @change="toggleItem(item.id)"
+              />
+              <span class="site-icon" :style="{ background: item.color || '#6366f1' }">
+                <span v-if="item.icon">{{ item.icon }}</span>
+                <t-icon v-else name="earth" />
+              </span>
+              <span class="site-content">
+                <strong>{{ item.name }}</strong>
+                <small :title="item.target">{{ item.target }}</small>
+              </span>
+              <span v-if="selectedIds.has(String(item.id))" class="selected-tag">一键打开</span>
+            </label>
+          </div>
+        </div>
+
+        <footer class="dialog-footer">
+          <div class="footer-actions">
+            <button type="button" class="btn-cancel" @click="close">取消</button>
+            <button type="button" class="btn-confirm" :disabled="saving" @click="save">
+              {{ saving ? '保存中…' : `保存配置（${selectedIds.size}）` }}
+            </button>
+          </div>
+        </footer>
+      </section>
+    </div>
   </Teleport>
 </template>
 
@@ -78,7 +78,7 @@ import MessagePlugin from 'tdesign-vue-next/es/message/plugin.mjs'
 import { useQuickLaunchStore } from '../../../stores/quickLaunch'
 
 const props = defineProps({
-  modelValue: { type: Boolean, default: false },
+  modelValue: { type: Boolean, default: false }
 })
 
 const emit = defineEmits(['update:modelValue', 'saved'])
@@ -91,17 +91,23 @@ const websiteItems = computed(() => store.websiteItems)
 const filteredItems = computed(() => {
   const keyword = query.value.trim().toLowerCase()
   if (!keyword) return websiteItems.value
-  return websiteItems.value.filter(item => [item.name, item.target]
-    .some(value => String(value || '').toLowerCase().includes(keyword)))
-})
-
-watch(() => props.modelValue, (open) => {
-  if (!open) return
-  query.value = ''
-  selectedIds.value = new Set(
-    store.quickOpenItems.map(item => String(item.id))
+  return websiteItems.value.filter((item) =>
+    [item.name, item.target].some((value) =>
+      String(value || '')
+        .toLowerCase()
+        .includes(keyword)
+    )
   )
 })
+
+watch(
+  () => props.modelValue,
+  (open) => {
+    if (!open) return
+    query.value = ''
+    selectedIds.value = new Set(store.quickOpenItems.map((item) => String(item.id)))
+  }
+)
 
 function close() {
   if (saving.value) return
@@ -118,7 +124,7 @@ function toggleItem(id) {
 
 function selectVisible() {
   const next = new Set(selectedIds.value)
-  filteredItems.value.forEach(item => next.add(String(item.id)))
+  filteredItems.value.forEach((item) => next.add(String(item.id)))
   selectedIds.value = next
 }
 
@@ -139,7 +145,7 @@ async function save() {
   } catch (error) {
     MessagePlugin.error({
       content: error instanceof Error ? error.message : '一键打开配置保存失败',
-      placement: 'bottom-right',
+      placement: 'bottom-right'
     })
   } finally {
     saving.value = false

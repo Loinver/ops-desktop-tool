@@ -2,7 +2,17 @@ const path = require('node:path')
 const { readJsonFile, writeJsonFile } = require('./json-store')
 
 const PREFERENCES_VERSION = 1
-const KNOWN_SOURCES = ['release', 'model-monitor', 'model', 'automation', 'log', 'copilot', 'node-service', 'data-backup', 'system']
+const KNOWN_SOURCES = [
+  'release',
+  'model-monitor',
+  'model',
+  'automation',
+  'log',
+  'copilot',
+  'node-service',
+  'data-backup',
+  'system'
+]
 const DEFAULT_NOTIFICATION_PREFERENCES = Object.freeze({
   version: PREFERENCES_VERSION,
   desktopEnabled: true,
@@ -12,7 +22,7 @@ const DEFAULT_NOTIFICATION_PREFERENCES = Object.freeze({
   repeatIntervalMinutes: 15,
   quietHours: Object.freeze({ enabled: false, start: '22:00', end: '08:00' }),
   severities: Object.freeze({ critical: true, warning: true, info: false }),
-  sources: Object.freeze(Object.fromEntries(KNOWN_SOURCES.map(source => [source, true]))),
+  sources: Object.freeze(Object.fromEntries(KNOWN_SOURCES.map((source) => [source, true])))
 })
 
 function preferencesPath(userDataPath) {
@@ -37,29 +47,49 @@ function normalizeNotificationPreferences(input = {}, current = DEFAULT_NOTIFICA
   const sources = {}
 
   for (const source of KNOWN_SOURCES) {
-    sources[source] = source in inputSources
-      ? inputSources[source] !== false
-      : currentSources[source] !== false
+    sources[source] =
+      source in inputSources ? inputSources[source] !== false : currentSources[source] !== false
   }
 
   return {
     version: PREFERENCES_VERSION,
-    desktopEnabled: 'desktopEnabled' in input ? input.desktopEnabled !== false : current.desktopEnabled !== false,
-    soundEnabled: 'soundEnabled' in input ? input.soundEnabled !== false : current.soundEnabled !== false,
-    showWhenFocused: 'showWhenFocused' in input ? input.showWhenFocused === true : current.showWhenFocused === true,
-    notifyRecoveries: 'notifyRecoveries' in input ? input.notifyRecoveries !== false : current.notifyRecoveries !== false,
-    repeatIntervalMinutes: Math.max(1, Math.min(1440, Number(input.repeatIntervalMinutes ?? current.repeatIntervalMinutes) || 15)),
+    desktopEnabled:
+      'desktopEnabled' in input ? input.desktopEnabled !== false : current.desktopEnabled !== false,
+    soundEnabled:
+      'soundEnabled' in input ? input.soundEnabled !== false : current.soundEnabled !== false,
+    showWhenFocused:
+      'showWhenFocused' in input
+        ? input.showWhenFocused === true
+        : current.showWhenFocused === true,
+    notifyRecoveries:
+      'notifyRecoveries' in input
+        ? input.notifyRecoveries !== false
+        : current.notifyRecoveries !== false,
+    repeatIntervalMinutes: Math.max(
+      1,
+      Math.min(1440, Number(input.repeatIntervalMinutes ?? current.repeatIntervalMinutes) || 15)
+    ),
     quietHours: {
-      enabled: 'enabled' in inputQuietHours ? inputQuietHours.enabled === true : currentQuietHours.enabled === true,
+      enabled:
+        'enabled' in inputQuietHours
+          ? inputQuietHours.enabled === true
+          : currentQuietHours.enabled === true,
       start: normalizeTime(inputQuietHours.start, normalizeTime(currentQuietHours.start, '22:00')),
-      end: normalizeTime(inputQuietHours.end, normalizeTime(currentQuietHours.end, '08:00')),
+      end: normalizeTime(inputQuietHours.end, normalizeTime(currentQuietHours.end, '08:00'))
     },
     severities: {
-      critical: 'critical' in inputSeverities ? inputSeverities.critical !== false : currentSeverities.critical !== false,
-      warning: 'warning' in inputSeverities ? inputSeverities.warning !== false : currentSeverities.warning !== false,
-      info: 'info' in inputSeverities ? inputSeverities.info === true : currentSeverities.info === true,
+      critical:
+        'critical' in inputSeverities
+          ? inputSeverities.critical !== false
+          : currentSeverities.critical !== false,
+      warning:
+        'warning' in inputSeverities
+          ? inputSeverities.warning !== false
+          : currentSeverities.warning !== false,
+      info:
+        'info' in inputSeverities ? inputSeverities.info === true : currentSeverities.info === true
     },
-    sources,
+    sources
   }
 }
 
@@ -85,9 +115,7 @@ function isWithinQuietHours(preferences, now = new Date()) {
   const end = minutesOfDay(normalizeTime(quietHours.end, '08:00'))
   if (start === end) return false
   const current = now.getHours() * 60 + now.getMinutes()
-  return start < end
-    ? current >= start && current < end
-    : current >= start || current < end
+  return start < end ? current >= start && current < end : current >= start || current < end
 }
 
 function notificationKind(change = {}) {
@@ -96,7 +124,13 @@ function notificationKind(change = {}) {
   return ''
 }
 
-function notificationDecision({ change = {}, preferences, now = Date.now(), isFocused = false, lastNotifiedAt = 0 } = {}) {
+function notificationDecision({
+  change = {},
+  preferences,
+  now = Date.now(),
+  isFocused = false,
+  lastNotifiedAt = 0
+} = {}) {
   const prefs = normalizeNotificationPreferences(preferences || {})
   const item = change.item || {}
   const kind = notificationKind(change)
@@ -104,9 +138,11 @@ function notificationDecision({ change = {}, preferences, now = Date.now(), isFo
   const source = String(item.sourceType || item.category || 'system')
 
   if (!prefs.desktopEnabled) return { notify: false, reason: 'disabled' }
-  if (item.attributes?.desktopNotification === false) return { notify: false, reason: 'event-disabled' }
+  if (item.attributes?.desktopNotification === false)
+    return { notify: false, reason: 'event-disabled' }
   if (!kind) return { notify: false, reason: 'unsupported-kind' }
-  if (kind === 'recovered' && !prefs.notifyRecoveries) return { notify: false, reason: 'recovery-disabled' }
+  if (kind === 'recovered' && !prefs.notifyRecoveries)
+    return { notify: false, reason: 'recovery-disabled' }
   if (prefs.severities[severity] === false) return { notify: false, reason: 'severity-disabled' }
   if (prefs.sources[source] === false) return { notify: false, reason: 'source-disabled' }
   if (!prefs.showWhenFocused && isFocused) return { notify: false, reason: 'focused' }
@@ -129,20 +165,30 @@ const SOURCE_LABELS = {
   copilot: 'AI Copilot',
   'node-service': 'Node 服务',
   'data-backup': '本地数据备份',
-  system: '系统',
+  system: '系统'
 }
 
 function notificationContent(change = {}) {
   const item = change.item || {}
   const recovered = change.kind === 'recovered'
-  const source = SOURCE_LABELS[item.sourceType || item.category] || item.sourceType || item.category || '系统'
-  const severityLabel = item.severity === 'critical' ? '严重事件' : item.severity === 'warning' ? '告警事件' : '运维事件'
+  const source =
+    SOURCE_LABELS[item.sourceType || item.category] || item.sourceType || item.category || '系统'
+  const severityLabel =
+    item.severity === 'critical'
+      ? '严重事件'
+      : item.severity === 'warning'
+        ? '告警事件'
+        : '运维事件'
   const title = recovered ? `事件已恢复 · ${source}` : `${severityLabel} · ${source}`
-  const headline = String(item.title || (recovered ? '检测结果已恢复正常' : '发现新的运维事件')).trim()
-  const detail = String(recovered ? item.resolutionNote || item.description : item.description || '').trim()
+  const headline = String(
+    item.title || (recovered ? '检测结果已恢复正常' : '发现新的运维事件')
+  ).trim()
+  const detail = String(
+    recovered ? item.resolutionNote || item.description : item.description || ''
+  ).trim()
   return {
     title: title.slice(0, 120),
-    body: `${headline}${detail && detail !== headline ? `\n${detail}` : ''}`.slice(0, 500),
+    body: `${headline}${detail && detail !== headline ? `\n${detail}` : ''}`.slice(0, 500)
   }
 }
 
@@ -155,5 +201,5 @@ module.exports = {
   notificationContent,
   notificationDecision,
   preferencesPath,
-  saveNotificationPreferences,
+  saveNotificationPreferences
 }

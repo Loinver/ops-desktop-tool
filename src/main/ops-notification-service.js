@@ -7,7 +7,7 @@ const {
   loadNotificationPreferences,
   notificationContent,
   notificationDecision,
-  saveNotificationPreferences,
+  saveNotificationPreferences
 } = require('./utils/ops-notification-preferences')
 
 let stopListening = null
@@ -44,13 +44,13 @@ function showEventNotification(change) {
     change,
     preferences,
     isFocused: Boolean(window && !window.isDestroyed() && window.isFocused()),
-    lastNotifiedAt: 0,
+    lastNotifiedAt: 0
   })
   const decision = notificationDecision({
     change,
     preferences,
     isFocused: Boolean(window && !window.isDestroyed() && window.isFocused()),
-    lastNotifiedAt: lastNotifiedAt.get(baseDecision.key) || 0,
+    lastNotifiedAt: lastNotifiedAt.get(baseDecision.key) || 0
   })
   if (!decision.notify) return { shown: false, reason: decision.reason }
 
@@ -58,7 +58,7 @@ function showEventNotification(change) {
   const notification = new Notification({
     ...content,
     silent: !preferences.soundEnabled,
-    urgency: change.item?.severity === 'critical' ? 'critical' : 'normal',
+    urgency: change.item?.severity === 'critical' ? 'critical' : 'normal'
   })
   const previous = activeNotifications.get(decision.key)
   if (previous) previous.close()
@@ -73,7 +73,8 @@ function showEventNotification(change) {
     sendEventToRenderer(change.item)
   })
   notification.on('close', () => {
-    if (activeNotifications.get(decision.key) === notification) activeNotifications.delete(decision.key)
+    if (activeNotifications.get(decision.key) === notification)
+      activeNotifications.delete(decision.key)
   })
   notification.show()
   return { shown: true, reason: 'shown' }
@@ -86,7 +87,7 @@ function showTestNotification() {
   const notification = new Notification({
     title: 'Ops Desktop 通知测试',
     body: '桌面通知已正常工作，后续事件会按照当前偏好推送。',
-    silent: !preferences.soundEnabled,
+    silent: !preferences.soundEnabled
   })
   notification.on('click', focusMainWindow)
   notification.show()
@@ -98,7 +99,7 @@ function preferencesResult(preferences) {
     ok: true,
     preferences,
     supported: supported(),
-    quietNow: isWithinQuietHours(preferences),
+    quietNow: isWithinQuietHours(preferences)
   }
 }
 
@@ -108,27 +109,42 @@ function registerHandlers() {
   ipcMain.removeHandler(IPC_CHANNELS.OPS_NOTIFICATION_TEST)
 
   ipcMain.handle(IPC_CHANNELS.OPS_NOTIFICATION_PREFERENCES_GET, async () => {
-    try { return preferencesResult(loadNotificationPreferences(runtime.userDataPath)) }
-    catch (error) { return { ok: false, error: error.message || '读取通知偏好失败' } }
+    try {
+      return preferencesResult(loadNotificationPreferences(runtime.userDataPath))
+    } catch (error) {
+      return { ok: false, error: error.message || '读取通知偏好失败' }
+    }
   })
   ipcMain.handle(IPC_CHANNELS.OPS_NOTIFICATION_PREFERENCES_SAVE, async (_event, changes = {}) => {
-    try { return preferencesResult(saveNotificationPreferences(runtime.userDataPath, changes)) }
-    catch (error) { return { ok: false, error: error.message || '保存通知偏好失败' } }
+    try {
+      return preferencesResult(saveNotificationPreferences(runtime.userDataPath, changes))
+    } catch (error) {
+      return { ok: false, error: error.message || '保存通知偏好失败' }
+    }
   })
   ipcMain.handle(IPC_CHANNELS.OPS_NOTIFICATION_TEST, async () => {
-    try { return { ok: true, ...showTestNotification() } }
-    catch (error) { return { ok: false, error: error.message || '发送测试通知失败' } }
+    try {
+      return { ok: true, ...showTestNotification() }
+    } catch (error) {
+      return { ok: false, error: error.message || '发送测试通知失败' }
+    }
   })
 }
 
-function initializeOpsNotificationService({ userDataPath, getWindow = () => BrowserWindow.getAllWindows()[0] } = {}) {
+function initializeOpsNotificationService({
+  userDataPath,
+  getWindow = () => BrowserWindow.getAllWindows()[0]
+} = {}) {
   if (!userDataPath) throw new Error('通知服务缺少数据目录')
   stopOpsNotificationService()
   runtime = { userDataPath, getWindow }
   registerHandlers()
-  stopListening = onOpsEventChange(change => {
-    try { showEventNotification(change) }
-    catch (error) { logger.error('发送运维桌面通知失败', { message: error?.message, stack: error?.stack }) }
+  stopListening = onOpsEventChange((change) => {
+    try {
+      showEventNotification(change)
+    } catch (error) {
+      logger.error('发送运维桌面通知失败', { message: error?.message, stack: error?.stack })
+    }
   })
 }
 
@@ -145,5 +161,5 @@ module.exports = {
   initializeOpsNotificationService,
   showEventNotification,
   showTestNotification,
-  stopOpsNotificationService,
+  stopOpsNotificationService
 }

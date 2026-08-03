@@ -1,48 +1,55 @@
 <template>
   <Teleport to="body">
-  <div v-if="modelValue" class="dialog-overlay">
-    <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="batch-website-title">
-      <header class="dialog-header">
-        <div>
-          <h3 id="batch-website-title">粘贴网址 JSON</h3>
-          <p>支持 JSON 数组或包含 <code>items</code> 的对象；仅添加网址快捷方式。</p>
-        </div>
-        <button type="button" class="close-btn" title="关闭" @click="close">
-          <t-icon name="close" />
-        </button>
-      </header>
+    <div v-if="modelValue" class="dialog-overlay">
+      <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="batch-website-title">
+        <header class="dialog-header">
+          <div>
+            <h3 id="batch-website-title">粘贴网址 JSON</h3>
+            <p>支持 JSON 数组或包含 <code>items</code> 的对象；仅添加网址快捷方式。</p>
+          </div>
+          <button type="button" class="close-btn" title="关闭" @click="close">
+            <t-icon name="close" />
+          </button>
+        </header>
 
-      <div class="dialog-body">
-        <label class="json-label" for="website-json-input">JSON 内容</label>
-        <textarea
-          id="website-json-input"
-          v-model="rawJson"
-          class="json-input"
-          spellcheck="false"
-          placeholder="[
+        <div class="dialog-body">
+          <label class="json-label" for="website-json-input">JSON 内容</label>
+          <textarea
+            id="website-json-input"
+            v-model="rawJson"
+            class="json-input"
+            spellcheck="false"
+            placeholder='[
   {
-    &quot;name&quot;: &quot;运维平台&quot;,
-    &quot;target&quot;: &quot;https://ops.example.com&quot;,
-    &quot;icon&quot;: &quot;🚀&quot;,
-    &quot;color&quot;: &quot;#6366f1&quot;
+    "name": "运维平台",
+    "target": "https://ops.example.com",
+    "icon": "🚀",
+    "color": "#6366f1"
   },
   {
-    &quot;name&quot;: &quot;本地服务&quot;,
-    &quot;target&quot;: &quot;localhost:3000&quot;
+    "name": "本地服务",
+    "target": "localhost:3000"
   }
-]"
-        />
-        <p class="json-hint">网址可省略协议；本机地址或带端口地址会自动使用 HTTP。单次最多 200 条。</p>
-      </div>
+]'
+          />
+          <p class="json-hint">
+            网址可省略协议；本机地址或带端口地址会自动使用 HTTP。单次最多 200 条。
+          </p>
+        </div>
 
-      <footer class="dialog-footer">
-        <button type="button" class="btn-cancel" @click="close">取消</button>
-        <button type="button" class="btn-confirm" :disabled="!rawJson.trim()" @click="parseAndAdd">
-          解析并添加
-        </button>
-      </footer>
-    </section>
-  </div>
+        <footer class="dialog-footer">
+          <button type="button" class="btn-cancel" @click="close">取消</button>
+          <button
+            type="button"
+            class="btn-confirm"
+            :disabled="!rawJson.trim()"
+            @click="parseAndAdd"
+          >
+            解析并添加
+          </button>
+        </footer>
+      </section>
+    </div>
   </Teleport>
 </template>
 
@@ -52,16 +59,19 @@ import MessagePlugin from 'tdesign-vue-next/es/message/plugin.mjs'
 import { useQuickLaunchStore } from '../../../stores/quickLaunch'
 
 const props = defineProps({
-  modelValue: { type: Boolean, default: false },
+  modelValue: { type: Boolean, default: false }
 })
 
 const emit = defineEmits(['update:modelValue', 'parsed'])
 const store = useQuickLaunchStore()
 const rawJson = ref('')
 
-watch(() => props.modelValue, (open) => {
-  if (open) rawJson.value = ''
-})
+watch(
+  () => props.modelValue,
+  (open) => {
+    if (open) rawJson.value = ''
+  }
+)
 
 function close() {
   emit('update:modelValue', false)
@@ -70,7 +80,10 @@ function close() {
 async function parseAndAdd() {
   const result = await store.parseWebsiteItems(rawJson.value)
   if (!result?.ok) {
-    MessagePlugin.error({ content: result?.error || '解析网址 JSON 失败', placement: 'bottom-right' })
+    MessagePlugin.error({
+      content: result?.error || '解析网址 JSON 失败',
+      placement: 'bottom-right'
+    })
     return
   }
 

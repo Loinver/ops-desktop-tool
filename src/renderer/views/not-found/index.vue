@@ -34,5 +34,7 @@ defineOptions({ name: 'NotFound' })
   cursor: pointer;
   transition: var(--transition-fast);
 }
-.btn-primary:hover { background: var(--primary-hover); }
+.btn-primary:hover {
+  background: var(--primary-hover);
+}
 </style>

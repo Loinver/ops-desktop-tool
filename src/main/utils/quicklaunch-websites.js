@@ -35,7 +35,7 @@ function normalizeWebsiteItem(item) {
     target,
     icon: normalizeText(item.icon, '', 4),
     color: SAFE_COLOR.test(item.color || '') ? item.color : DEFAULT_COLOR,
-    quickOpen: item.quickOpen === true,
+    quickOpen: item.quickOpen === true
   }
 }
 
@@ -93,7 +93,7 @@ function makeWebsiteExport(items) {
     schema: QUICK_LAUNCH_SCHEMA,
     version: 1,
     generatedAt: new Date().toISOString(),
-    items: websites,
+    items: websites
   }
 }
 
@@ -102,5 +102,5 @@ module.exports = {
   QUICK_LAUNCH_SCHEMA,
   normalizeWebsiteItem,
   parseWebsiteBatch,
-  makeWebsiteExport,
+  makeWebsiteExport
 }

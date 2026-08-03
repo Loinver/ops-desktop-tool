@@ -1,3 +1,4 @@
+import { opsApi } from '../api/opsApi.js'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
@@ -16,7 +17,7 @@ export const useSystemInfoStore = defineStore('systemInfo', () => {
   async function fetchSystemInfo() {
     loading.value = true
     try {
-      const info = await window.opsApi.getSystemInfo()
+      const info = await opsApi.getSystemInfo()
       system.value = info
     } finally {
       loading.value = false

@@ -1,3 +1,4 @@
+import { opsApi } from '../api/opsApi.js'
 import { defineStore } from 'pinia'
 import { ref, computed, toRaw } from 'vue'
 
@@ -5,23 +6,23 @@ export const useClipboardStore = defineStore('clipboard', () => {
   const history = ref([])
   const maxItems = 200
 
-  const textCount = computed(() => history.value.filter(i => i.type === 'text').length)
-  const imageCount = computed(() => history.value.filter(i => i.type === 'image').length)
+  const textCount = computed(() => history.value.filter((i) => i.type === 'text').length)
+  const imageCount = computed(() => history.value.filter((i) => i.type === 'image').length)
 
   async function fetchHistory() {
-    const result = await window.opsApi.getClipboardHistory()
+    const result = await opsApi.getClipboardHistory()
     if (result) {
       history.value = result
     }
   }
 
   async function saveHistory() {
-    const serializableHistory = toRaw(history.value).map(item => ({ ...toRaw(item) }))
-    await window.opsApi.saveClipboardHistory(serializableHistory)
+    const serializableHistory = toRaw(history.value).map((item) => ({ ...toRaw(item) }))
+    await opsApi.saveClipboardHistory(serializableHistory)
   }
 
   async function checkClipboard() {
-    const result = await window.opsApi.readClipboard()
+    const result = await opsApi.readClipboard()
     if (!result) return
 
     const lastItem = history.value[0]
@@ -42,11 +43,11 @@ export const useClipboardStore = defineStore('clipboard', () => {
   }
 
   async function copyToClipboard(item) {
-    await window.opsApi.writeClipboard(item.content)
+    await opsApi.writeClipboard(item.content)
   }
 
   function deleteItem(id) {
-    history.value = history.value.filter(i => i.id !== id)
+    history.value = history.value.filter((i) => i.id !== id)
     saveHistory()
   }
 

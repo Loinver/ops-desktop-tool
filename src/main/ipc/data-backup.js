@@ -18,7 +18,7 @@ const {
   restoreAutoBackup,
   restoreBackupArchive,
   restoreRestorePoint,
-  safeAutoBackupSettings,
+  safeAutoBackupSettings
 } = require('../utils/app-data-backup')
 const { runAutoBackupNow, saveAutoBackupSchedule } = require('../ops-auto-backup-scheduler')
 const { decryptSecret } = require('../utils/secure-secret')
@@ -33,7 +33,8 @@ function focusedWindow() {
 function readBackupFile(filePath) {
   const resolved = path.resolve(String(filePath || '').slice(0, 4096))
   const stat = fs.statSync(resolved)
-  if (!stat.isFile() || stat.size <= 0 || stat.size > MAX_BACKUP_BYTES) throw new Error('备份文件为空或超过大小限制')
+  if (!stat.isFile() || stat.size <= 0 || stat.size > MAX_BACKUP_BYTES)
+    throw new Error('备份文件为空或超过大小限制')
   return { resolved, stat, buffer: fs.readFileSync(resolved) }
 }
 
@@ -49,11 +50,13 @@ function cleanupPendingImports() {
 }
 
 function registerDataBackupHandlers() {
-  ipcMain.handle(IPC_CHANNELS.DATA_BACKUP_OVERVIEW, async () => getBackupOverview(app.getPath('userData')))
+  ipcMain.handle(IPC_CHANNELS.DATA_BACKUP_OVERVIEW, async () =>
+    getBackupOverview(app.getPath('userData'))
+  )
 
-  ipcMain.handle(IPC_CHANNELS.DATA_BACKUP_AUTO_GET, async () => (
+  ipcMain.handle(IPC_CHANNELS.DATA_BACKUP_AUTO_GET, async () =>
     safeAutoBackupSettings(readAutoBackupSettings(app.getPath('userData')))
-  ))
+  )
 
   ipcMain.handle(IPC_CHANNELS.DATA_BACKUP_AUTO_SAVE, async (_event, options = {}) => {
     const settings = saveAutoBackupSchedule(options)
@@ -62,65 +65,69 @@ function registerDataBackupHandlers() {
 
   ipcMain.handle(IPC_CHANNELS.DATA_BACKUP_AUTO_RUN, async () => runAutoBackupNow())
 
-  ipcMain.handle(IPC_CHANNELS.DATA_BACKUP_HISTORY_GET, async () => (
+  ipcMain.handle(IPC_CHANNELS.DATA_BACKUP_HISTORY_GET, async () =>
     getAutoBackupHistory(app.getPath('userData'))
-  ))
+  )
 
-  ipcMain.handle(IPC_CHANNELS.DATA_BACKUP_AUTO_HEALTH_GET, async () => (
+  ipcMain.handle(IPC_CHANNELS.DATA_BACKUP_AUTO_HEALTH_GET, async () =>
     getAutoBackupHealth(app.getPath('userData'))
-  ))
+  )
 
-  ipcMain.handle(IPC_CHANNELS.DATA_BACKUP_AUTO_INSPECT, async (_event, options = {}) => (
+  ipcMain.handle(IPC_CHANNELS.DATA_BACKUP_AUTO_INSPECT, async (_event, options = {}) =>
     inspectAutoBackup({
       userDataPath: app.getPath('userData'),
       id: options.id,
-      decryptPassword: value => decryptSecret(safeStorage, value),
+      decryptPassword: (value) => decryptSecret(safeStorage, value)
     })
-  ))
+  )
 
-  ipcMain.handle(IPC_CHANNELS.DATA_BACKUP_AUTO_RESTORE, async (_event, options = {}) => (
+  ipcMain.handle(IPC_CHANNELS.DATA_BACKUP_AUTO_RESTORE, async (_event, options = {}) =>
     restoreAutoBackup({
       userDataPath: app.getPath('userData'),
       id: options.id,
-      decryptPassword: value => decryptSecret(safeStorage, value),
+      decryptPassword: (value) => decryptSecret(safeStorage, value)
     })
-  ))
+  )
 
-  ipcMain.handle(IPC_CHANNELS.DATA_BACKUP_AUTO_DELETE, async (_event, options = {}) => (
+  ipcMain.handle(IPC_CHANNELS.DATA_BACKUP_AUTO_DELETE, async (_event, options = {}) =>
     deleteAutoBackup({ userDataPath: app.getPath('userData'), id: options.id })
-  ))
+  )
 
   ipcMain.handle(IPC_CHANNELS.DATA_BACKUP_AUTO_OPEN_DIRECTORY, async (_event, options = {}) => {
-    const error = await shell.openPath(getAutoBackupDirectory({ userDataPath: app.getPath('userData'), id: options.id }))
+    const error = await shell.openPath(
+      getAutoBackupDirectory({ userDataPath: app.getPath('userData'), id: options.id })
+    )
     if (error) throw new Error(`无法打开自动备份目录：${error}`)
     return { ok: true }
   })
 
-  ipcMain.handle(IPC_CHANNELS.DATA_BACKUP_RESTORE_POINTS_GET, async () => (
+  ipcMain.handle(IPC_CHANNELS.DATA_BACKUP_RESTORE_POINTS_GET, async () =>
     listRestorePoints(app.getPath('userData'))
-  ))
+  )
 
-  ipcMain.handle(IPC_CHANNELS.DATA_BACKUP_RESTORE_POINT, async (_event, options = {}) => (
+  ipcMain.handle(IPC_CHANNELS.DATA_BACKUP_RESTORE_POINT, async (_event, options = {}) =>
     restoreRestorePoint({ userDataPath: app.getPath('userData'), id: options.id })
-  ))
+  )
 
   ipcMain.handle(IPC_CHANNELS.DATA_BACKUP_EXPORT, async (_event, options = {}) => {
     const archive = createBackupArchive({
       userDataPath: app.getPath('userData'),
       password: options.password,
       categories: options.categories,
-      appVersion: app.getVersion(),
+      appVersion: app.getVersion()
     })
     const date = new Date().toISOString().slice(0, 10)
     const result = await dialog.showSaveDialog(focusedWindow(), {
       title: '导出加密数据备份',
       defaultPath: `ops-desktop-backup-${date}.opsbackup`,
       filters: [{ name: 'Ops Desktop 加密备份', extensions: ['opsbackup'] }],
-      properties: ['createDirectory', 'showOverwriteConfirmation'],
+      properties: ['createDirectory', 'showOverwriteConfirmation']
     })
     if (result.canceled || !result.filePath) return { canceled: true }
     fs.writeFileSync(result.filePath, archive, { mode: 0o600 })
-    try { fs.chmodSync(result.filePath, 0o600) } catch {}
+    try {
+      fs.chmodSync(result.filePath, 0o600)
+    } catch {}
     return { canceled: false, fileName: path.basename(result.filePath), sizeBytes: archive.length }
   })
 
@@ -129,7 +136,7 @@ function registerDataBackupHandlers() {
     const result = await dialog.showOpenDialog(focusedWindow(), {
       title: '选择 Ops Desktop 备份',
       properties: ['openFile'],
-      filters: [{ name: 'Ops Desktop 加密备份', extensions: ['opsbackup'] }],
+      filters: [{ name: 'Ops Desktop 加密备份', extensions: ['opsbackup'] }]
     })
     if (result.canceled || !result.filePaths[0]) return { canceled: true }
     const file = readBackupFile(result.filePaths[0])
@@ -141,7 +148,7 @@ function registerDataBackupHandlers() {
       size: file.stat.size,
       mtimeMs: file.stat.mtimeMs,
       digest: digest(file.buffer),
-      password: options.password,
+      password: options.password
     })
     return { canceled: false, token, fileName: path.basename(file.resolved), summary }
   })
@@ -152,14 +159,18 @@ function registerDataBackupHandlers() {
     const pending = pendingImports.get(token)
     if (!pending) throw new Error('恢复预览已过期，请重新选择备份文件')
     const file = readBackupFile(pending.filePath)
-    if (file.stat.size !== pending.size || file.stat.mtimeMs !== pending.mtimeMs || digest(file.buffer) !== pending.digest) {
+    if (
+      file.stat.size !== pending.size ||
+      file.stat.mtimeMs !== pending.mtimeMs ||
+      digest(file.buffer) !== pending.digest
+    ) {
       pendingImports.delete(token)
       throw new Error('备份文件在预览后发生变化，请重新选择')
     }
     const result = restoreBackupArchive({
       userDataPath: app.getPath('userData'),
       archive: file.buffer,
-      password: pending.password,
+      password: pending.password
     })
     pendingImports.delete(token)
     return result

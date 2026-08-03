@@ -10,7 +10,7 @@ const {
   decodeDataImageUrl,
   ensureImageExtension,
   extensionForContentType,
-  normalizeContentType,
+  normalizeContentType
 } = require('../utils/gpt-image-file')
 
 const userDataPath = app.getPath('userData')
@@ -23,7 +23,7 @@ const DEFAULT_CONFIG = {
   apiKey: '',
   model: 'gpt-image-1',
   size: '1024x1024',
-  quality: 'auto',
+  quality: 'auto'
 }
 
 function sanitizeConfig(config = {}) {
@@ -32,12 +32,14 @@ function sanitizeConfig(config = {}) {
     apiKey: String(config.apiKey || '').trim(),
     model: String(config.model || DEFAULT_CONFIG.model).trim() || DEFAULT_CONFIG.model,
     size: String(config.size || DEFAULT_CONFIG.size).trim() || DEFAULT_CONFIG.size,
-    quality: String(config.quality || DEFAULT_CONFIG.quality).trim() || DEFAULT_CONFIG.quality,
+    quality: String(config.quality || DEFAULT_CONFIG.quality).trim() || DEFAULT_CONFIG.quality
   }
 }
 
 function normalizeBaseUrl(baseUrl) {
-  const value = String(baseUrl || DEFAULT_CONFIG.baseUrl).trim().replace(/\/+$/, '')
+  const value = String(baseUrl || DEFAULT_CONFIG.baseUrl)
+    .trim()
+    .replace(/\/+$/, '')
   if (!value) return DEFAULT_CONFIG.baseUrl
   return value.endsWith('/v1') ? value : `${value}/v1`
 }
@@ -49,7 +51,7 @@ function serializeConfigForStorage(config) {
     apiKeyEncrypted: encryptSecret(safeStorage, normalized.apiKey),
     model: normalized.model,
     size: normalized.size,
-    quality: normalized.quality,
+    quality: normalized.quality
   }
 }
 
@@ -63,7 +65,7 @@ function readConfig() {
     safeStorage,
     record: stored,
     encryptedKey: 'apiKeyEncrypted',
-    legacyKey: 'apiKey',
+    legacyKey: 'apiKey'
   })
   const config = sanitizeConfig({ ...stored, apiKey: secret.value })
 
@@ -87,7 +89,7 @@ function toSafeConfig(config) {
     apiKeyMasked: maskSecret(normalized.apiKey),
     model: normalized.model,
     size: normalized.size,
-    quality: normalized.quality,
+    quality: normalized.quality
   }
 }
 
@@ -97,7 +99,7 @@ function mergeRequestConfig(config = {}) {
   return sanitizeConfig({
     ...stored,
     ...config,
-    apiKey: suppliedApiKey || stored.apiKey,
+    apiKey: suppliedApiKey || stored.apiKey
   })
 }
 
@@ -112,7 +114,7 @@ function sanitizeHistoryItem(item = {}) {
     size: String(item.size || '').trim(),
     quality: String(item.quality || '').trim(),
     durationMs: Number(item.durationMs) || 0,
-    createdAt: Number(item.createdAt) || Date.now(),
+    createdAt: Number(item.createdAt) || Date.now()
   }
 }
 
@@ -120,7 +122,7 @@ function sanitizeHistory(history) {
   if (!Array.isArray(history)) return []
   return history
     .map(sanitizeHistoryItem)
-    .filter(item => item.id && item.prompt && item.imageUrl)
+    .filter((item) => item.id && item.prompt && item.imageUrl)
     .slice(0, MAX_HISTORY_ITEMS)
 }
 
@@ -140,11 +142,11 @@ function normalizeModelList(data) {
         : []
 
   const modelIds = rawModels
-    .map(item => {
+    .map((item) => {
       if (typeof item === 'string') return item
       return item?.id || item?.name || ''
     })
-    .map(id => String(id).trim())
+    .map((id) => String(id).trim())
     .filter(Boolean)
 
   return [...new Set(modelIds)].sort((a, b) => {
@@ -199,7 +201,7 @@ async function readRemoteImage(imageUrl) {
     return {
       buffer,
       contentType,
-      extension: extensionForContentType(contentType),
+      extension: extensionForContentType(contentType)
     }
   } catch (err) {
     if (err?.name === 'AbortError') {
@@ -217,9 +219,7 @@ async function resolveImageForSave(imageUrl) {
     throw new Error('没有可保存的图片')
   }
 
-  return source.startsWith('data:')
-    ? decodeDataImageUrl(source)
-    : readRemoteImage(source)
+  return source.startsWith('data:') ? decodeDataImageUrl(source) : readRemoteImage(source)
 }
 
 function registerGptImageHandlers() {
@@ -238,7 +238,7 @@ function registerGptImageHandlers() {
       const nextConfig = sanitizeConfig({
         ...currentConfig,
         ...config,
-        apiKey: config.clearApiKey ? '' : suppliedApiKey || currentConfig.apiKey,
+        apiKey: config.clearApiKey ? '' : suppliedApiKey || currentConfig.apiKey
       })
       if (!writeConfig(nextConfig)) throw new Error('配置保存失败')
       return { ok: true, config: toSafeConfig(nextConfig) }
@@ -271,8 +271,8 @@ function registerGptImageHandlers() {
           { name: 'PNG 图片', extensions: ['png'] },
           { name: 'JPEG 图片', extensions: ['jpg', 'jpeg'] },
           { name: 'WebP 图片', extensions: ['webp'] },
-          { name: '所有文件', extensions: ['*'] },
-        ],
+          { name: '所有文件', extensions: ['*'] }
+        ]
       })
 
       if (result.canceled || !result.filePath) {
@@ -306,9 +306,9 @@ function registerGptImageHandlers() {
       const response = await fetch(`${normalizeBaseUrl(requestConfig.baseUrl)}/models`, {
         method: 'GET',
         headers: {
-          Authorization: `Bearer ${requestConfig.apiKey}`,
+          Authorization: `Bearer ${requestConfig.apiKey}`
         },
-        signal: controller.signal,
+        signal: controller.signal
       })
 
       const data = await parseResponse(response)
@@ -324,9 +324,8 @@ function registerGptImageHandlers() {
 
       return { ok: true, models }
     } catch (err) {
-      const message = err?.name === 'AbortError'
-        ? '获取模型列表超时'
-        : err?.message || '获取模型列表失败'
+      const message =
+        err?.name === 'AbortError' ? '获取模型列表超时' : err?.message || '获取模型列表失败'
       return { ok: false, error: message }
     } finally {
       clearTimeout(timeout)
@@ -357,7 +356,7 @@ function registerGptImageHandlers() {
       const requestBody = {
         model: config.model,
         prompt,
-        n: 1,
+        n: 1
       }
 
       if (config.size && config.size !== 'auto') {
@@ -372,10 +371,10 @@ function registerGptImageHandlers() {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${config.apiKey}`,
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(requestBody),
-        signal: controller.signal,
+        signal: controller.signal
       })
 
       const data = await parseResponse(response)
@@ -394,14 +393,13 @@ function registerGptImageHandlers() {
         image: {
           b64Json: image.b64_json || '',
           url: image.url || '',
-          revisedPrompt: image.revised_prompt || '',
+          revisedPrompt: image.revised_prompt || ''
         },
-        usage: data?.usage || null,
+        usage: data?.usage || null
       }
     } catch (err) {
-      const message = err?.name === 'AbortError'
-        ? '请求超时，请稍后重试'
-        : err?.message || '图片生成失败'
+      const message =
+        err?.name === 'AbortError' ? '请求超时，请稍后重试' : err?.message || '图片生成失败'
       return { ok: false, error: message }
     } finally {
       clearTimeout(timeout)

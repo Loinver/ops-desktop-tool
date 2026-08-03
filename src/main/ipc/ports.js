@@ -1,16 +1,11 @@
 const { app, ipcMain } = require('electron')
 const { IPC_CHANNELS } = require('../../shared/ipc-channels')
-const {
-  getPortUsage,
-  findPortUsage,
-  killByPort,
-  killByPid,
-} = require('../port-manager')
+const { getPortUsage, findPortUsage, killByPort, killByPid } = require('../port-manager')
 const {
   checkWatchedNodeServices,
   listWatchedNodeServices,
   unwatchNodeService,
-  watchNodeService,
+  watchNodeService
 } = require('../utils/node-service-monitor')
 
 let monitorTimer = null
@@ -38,7 +33,7 @@ async function runNodeServiceMonitorCheck() {
 function startNodeServiceMonitor() {
   if (monitorTimer) return
   monitorTimer = setInterval(() => {
-    runNodeServiceMonitorCheck().catch(error => console.error('Node 服务关注检查失败:', error))
+    runNodeServiceMonitorCheck().catch((error) => console.error('Node 服务关注检查失败:', error))
   }, 60_000)
   monitorTimer.unref?.()
   void runNodeServiceMonitorCheck()
@@ -64,16 +59,25 @@ function registerPortsHandlers() {
     return killByPid(payload?.pid, payload?.signal)
   })
   ipcMain.handle(IPC_CHANNELS.NODE_MONITOR_GET, async () => {
-    try { return { ok: true, items: listWatchedNodeServices(userDataPath()) } }
-    catch (error) { return { ok: false, error: error instanceof Error ? error.message : '读取关注服务失败' } }
+    try {
+      return { ok: true, items: listWatchedNodeServices(userDataPath()) }
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : '读取关注服务失败' }
+    }
   })
   ipcMain.handle(IPC_CHANNELS.NODE_MONITOR_WATCH, async (_event, payload) => {
-    try { return { ok: true, item: watchNodeService(userDataPath(), payload) } }
-    catch (error) { return { ok: false, error: error instanceof Error ? error.message : '关注服务失败' } }
+    try {
+      return { ok: true, item: watchNodeService(userDataPath(), payload) }
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : '关注服务失败' }
+    }
   })
   ipcMain.handle(IPC_CHANNELS.NODE_MONITOR_UNWATCH, async (_event, payload) => {
-    try { return { ok: true, item: unwatchNodeService(userDataPath(), payload) } }
-    catch (error) { return { ok: false, error: error instanceof Error ? error.message : '取消关注服务失败' } }
+    try {
+      return { ok: true, item: unwatchNodeService(userDataPath(), payload) }
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : '取消关注服务失败' }
+    }
   })
   ipcMain.handle(IPC_CHANNELS.NODE_MONITOR_CHECK, async () => runNodeServiceMonitorCheck())
 }

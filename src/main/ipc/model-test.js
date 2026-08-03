@@ -14,12 +14,12 @@ const { readJsonFile, writeJsonFile } = require('../utils/json-store')
 const {
   completeMonitorRun,
   normalizeMonitorSettings,
-  updateMonitorSettings,
+  updateMonitorSettings
 } = require('../utils/model-monitor')
 const {
   normalizeModelListSettings,
   isModelIncludedBySettings,
-  isModelAllowedForProtocol,
+  isModelAllowedForProtocol
 } = require('../utils/model-list-settings')
 const { loadReleaseHistory, getActiveReleaseProfile } = require('../utils/release-store')
 const { getAutoBackupHealth, readAutoBackupSettings } = require('../utils/app-data-backup')
@@ -56,8 +56,8 @@ const CLAUDE_CODE_PROBE_TOOL = {
   input_schema: {
     type: 'object',
     properties: { command: { type: 'string', description: 'The command to execute' } },
-    required: ['command'],
-  },
+    required: ['command']
+  }
 }
 
 /** 拟真请求里的 device_id / session_id 只需稳定且不可回溯，进程内生成一次即可。 */
@@ -75,7 +75,7 @@ function splitOneMModelMarker(value) {
   const beta1m = ONE_M_MODEL_MARKER_RE.test(raw)
   return {
     model: (beta1m ? raw.replace(ONE_M_MODEL_MARKER_RE, '') : raw).trim(),
-    beta1m,
+    beta1m
   }
 }
 
@@ -106,7 +106,9 @@ function cancelledModelResult() {
 }
 
 function stripTrailingSlash(url) {
-  return String(url || '').trim().replace(/\/+$/, '')
+  return String(url || '')
+    .trim()
+    .replace(/\/+$/, '')
 }
 
 /** baseUrl 可能已经带 /v1，也可能没有，这里统一拼出目标路径 */
@@ -159,7 +161,7 @@ const NETWORK_ERROR_HINTS = {
   ETIMEDOUT: '连接超时',
   CERT_HAS_EXPIRED: 'HTTPS 证书已过期',
   UNABLE_TO_VERIFY_LEAF_SIGNATURE: 'HTTPS 证书校验失败',
-  DEPTH_ZERO_SELF_SIGNED_CERT: '使用了自签名证书',
+  DEPTH_ZERO_SELF_SIGNED_CERT: '使用了自签名证书'
 }
 
 /**
@@ -267,7 +269,7 @@ function buildAnthropicProbe(provider, model, baseUrl, options = {}) {
   const headers = {
     'content-type': 'application/json',
     ...buildAnthropicAuthHeaders(provider),
-    'anthropic-version': '2023-06-01',
+    'anthropic-version': '2023-06-01'
   }
   // cc-switch 在 Claude -> Anthropic 路径会重建 anthropic-beta，确保总带
   // claude-code-20250219；[1M] 仅是客户端本地标识，发往上游时去掉模型后缀，
@@ -276,7 +278,7 @@ function buildAnthropicProbe(provider, model, baseUrl, options = {}) {
     ANTHROPIC_CLAUDE_CODE_BETA,
     provider.anthropicBeta,
     options.anthropicBeta,
-    options.beta1m ? ANTHROPIC_1M_BETA : '',
+    options.beta1m ? ANTHROPIC_1M_BETA : ''
   )
   if (beta) headers['anthropic-beta'] = beta
 
@@ -289,9 +291,9 @@ function buildAnthropicProbe(provider, model, baseUrl, options = {}) {
         body: JSON.stringify({
           model,
           max_tokens: 1,
-          messages: [{ role: 'user', content: PROBE_TEXT }],
-        }),
-      },
+          messages: [{ role: 'user', content: PROBE_TEXT }]
+        })
+      }
     }
   }
 
@@ -301,7 +303,7 @@ function buildAnthropicProbe(provider, model, baseUrl, options = {}) {
     ...headers,
     accept: 'application/json',
     'x-app': 'cli',
-    'anthropic-dangerous-direct-browser-access': 'true',
+    'anthropic-dangerous-direct-browser-access': 'true'
   }
   return {
     url: `${joinApiPath(baseUrl, 'messages')}?beta=true`,
@@ -316,19 +318,19 @@ function buildAnthropicProbe(provider, model, baseUrl, options = {}) {
         max_tokens: 1024,
         system: [
           { type: 'text', text: CLAUDE_CODE_BILLING_SYSTEM },
-          { type: 'text', text: CLAUDE_CODE_IDENTITY_SYSTEM },
+          { type: 'text', text: CLAUDE_CODE_IDENTITY_SYSTEM }
         ],
         metadata: {
           user_id: JSON.stringify({
             device_id: CLAUDE_CODE_CLIENT_IDS.deviceId,
             account_uuid: '',
-            session_id: CLAUDE_CODE_CLIENT_IDS.sessionId,
-          }),
+            session_id: CLAUDE_CODE_CLIENT_IDS.sessionId
+          })
         },
         tools: [CLAUDE_CODE_PROBE_TOOL],
-        messages: [{ role: 'user', content: [{ type: 'text', text: PROBE_TEXT }] }],
-      }),
-    },
+        messages: [{ role: 'user', content: [{ type: 'text', text: PROBE_TEXT }] }]
+      })
+    }
   }
 }
 
@@ -340,14 +342,14 @@ function buildOpenAIChatProbe(provider, model, baseUrl) {
       method: 'POST',
       headers: applyCustomUserAgent(provider, {
         'content-type': 'application/json',
-        'authorization': `Bearer ${provider.apiKey}`,
+        authorization: `Bearer ${provider.apiKey}`
       }),
       body: JSON.stringify({
         model,
         max_tokens: 1,
-        messages: [{ role: 'user', content: PROBE_TEXT }],
-      }),
-    },
+        messages: [{ role: 'user', content: PROBE_TEXT }]
+      })
+    }
   }
 }
 
@@ -359,15 +361,15 @@ function buildOpenAIResponsesProbe(provider, model, baseUrl) {
       method: 'POST',
       headers: applyCustomUserAgent(provider, {
         'content-type': 'application/json',
-        'authorization': `Bearer ${provider.apiKey}`,
+        authorization: `Bearer ${provider.apiKey}`
       }),
       body: JSON.stringify({
         model,
         max_output_tokens: 16,
         input: PROBE_TEXT,
-        store: false,
-      }),
-    },
+        store: false
+      })
+    }
   }
 }
 
@@ -381,13 +383,13 @@ function buildGeminiProbe(provider, model, baseUrl) {
       method: 'POST',
       headers: applyCustomUserAgent(provider, {
         'content-type': 'application/json',
-        'x-goog-api-key': provider.apiKey,
+        'x-goog-api-key': provider.apiKey
       }),
       body: JSON.stringify({
         contents: [{ role: 'user', parts: [{ text: PROBE_TEXT }] }],
-        generationConfig: { maxOutputTokens: 1 },
-      }),
-    },
+        generationConfig: { maxOutputTokens: 1 }
+      })
+    }
   }
 }
 
@@ -405,8 +407,8 @@ function buildProbes(provider, model, baseUrl, options = {}) {
       {
         name: 'messages · 拟真',
         clientLike: true,
-        ...buildAnthropicProbe(provider, model, baseUrl, { ...options, clientLike: true }),
-      },
+        ...buildAnthropicProbe(provider, model, baseUrl, { ...options, clientLike: true })
+      }
     ]
   }
   if (provider.protocol === 'gemini') {
@@ -443,11 +445,17 @@ function normalizeProviderBaseUrl(provider, baseUrl) {
 
 /** 按 cc-switch 的主线路和备用线路顺序生成候选地址。 */
 function providerBaseUrls(provider, overrideBaseUrl) {
-  return [...new Set(
-    [overrideBaseUrl, provider.baseUrl, ...(Array.isArray(provider.endpoints) ? provider.endpoints : [])]
-      .map((baseUrl) => normalizeProviderBaseUrl(provider, baseUrl))
-      .filter(Boolean),
-  )]
+  return [
+    ...new Set(
+      [
+        overrideBaseUrl,
+        provider.baseUrl,
+        ...(Array.isArray(provider.endpoints) ? provider.endpoints : [])
+      ]
+        .map((baseUrl) => normalizeProviderBaseUrl(provider, baseUrl))
+        .filter(Boolean)
+    )
+  ]
 }
 
 function formatEndpoint(probeName, baseUrl) {
@@ -472,26 +480,27 @@ function listRequestFor(provider, baseUrl) {
         method: 'GET',
         headers: applyCustomUserAgent(provider, {
           'x-goog-api-key': provider.apiKey,
-          'content-type': 'application/json',
-        }),
-      },
+          'content-type': 'application/json'
+        })
+      }
     }
   }
 
-  const headers = provider.protocol === 'anthropic'
-    ? {
-        ...buildAnthropicAuthHeaders(provider),
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-      }
-    : {
-        'authorization': `Bearer ${provider.apiKey}`,
-        'content-type': 'application/json',
-      }
+  const headers =
+    provider.protocol === 'anthropic'
+      ? {
+          ...buildAnthropicAuthHeaders(provider),
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json'
+        }
+      : {
+          authorization: `Bearer ${provider.apiKey}`,
+          'content-type': 'application/json'
+        }
 
   return {
     url: joinApiPath(baseUrl, 'models'),
-    options: { method: 'GET', headers: applyCustomUserAgent(provider, headers) },
+    options: { method: 'GET', headers: applyCustomUserAgent(provider, headers) }
   }
 }
 
@@ -501,7 +510,9 @@ function listRequestFor(provider, baseUrl) {
  * `glm-5.2`、`GLM5.2`、`moonshotai/kimi-k3-free` 等。
  */
 function compactModelName(model) {
-  return String(model || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+  return String(model || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
 }
 
 /**
@@ -525,7 +536,7 @@ function providerIdentityText(provider) {
   return [
     provider?.name,
     provider?.baseUrl,
-    ...(Array.isArray(provider?.endpoints) ? provider.endpoints : []),
+    ...(Array.isArray(provider?.endpoints) ? provider.endpoints : [])
   ].join(' ')
 }
 
@@ -554,11 +565,13 @@ function isHuanchengProvider(provider) {
  * 模型测试页必须以官方 /models 返回为准，避免显示已下线或别名模型。
  */
 function usesOfficialModelsOnly(provider) {
-  return isZenMuxProvider(provider)
-    || isAnyRouterProvider(provider)
-    || isAgentRouterProvider(provider)
-    || isMofasProvider(provider)
-    || isHuanchengProvider(provider)
+  return (
+    isZenMuxProvider(provider) ||
+    isAnyRouterProvider(provider) ||
+    isAgentRouterProvider(provider) ||
+    isMofasProvider(provider) ||
+    isHuanchengProvider(provider)
+  )
 }
 
 /**
@@ -583,13 +596,13 @@ function configuredModelOptions(provider, modelListSettings) {
   return models
     .map((item) => {
       const parsed = splitOneMModelMarker(
-        typeof item === 'string' ? item : item?.model || item?.id || item?.name,
+        typeof item === 'string' ? item : item?.model || item?.id || item?.name
       )
       const model = parsed.model
       if (!model) return null
       const beta1m = Boolean(item?.beta1m) || parsed.beta1m
       const rawId = String(item?.key || item?.id || '').trim()
-      const id = beta1m ? `${model}|1m` : (rawId.replace(/\|1m$/i, '') || model)
+      const id = beta1m ? `${model}|1m` : rawId.replace(/\|1m$/i, '') || model
       const labelBase = String(item?.label || model)
         .replace(/\s*\[1m\]\s*$/i, '')
         .replace(/\s*·\s*1M\s*$/i, '')
@@ -599,7 +612,7 @@ function configuredModelOptions(provider, modelListSettings) {
         model,
         label: labelBase + (beta1m ? ' · 1M' : ''),
         beta1m,
-        source: 'cc-switch',
+        source: 'cc-switch'
       }
     })
     .filter(Boolean)
@@ -613,7 +626,7 @@ function configuredModelOptions(provider, modelListSettings) {
 function mergeModelOptions(configured, remoteModels) {
   const merged = new Map() // key: 基础模型名（compact）
   const upsert = (raw, defaultSource) => {
-    const item = typeof raw === 'string' ? { id: raw } : (raw || {})
+    const item = typeof raw === 'string' ? { id: raw } : raw || {}
     const parsed = splitOneMModelMarker(item.model || item.id || item.name || '')
     const model = parsed.model
     if (!model) return
@@ -634,11 +647,15 @@ function mergeModelOptions(configured, remoteModels) {
       .replace(/\s*·\s*1M\s*$/i, '')
       .trim()
     merged.set(baseKey, {
-      id: beta1m ? `${model}|1m` : String(item.id || model).replace(/\|1m$/i, '').trim(),
+      id: beta1m
+        ? `${model}|1m`
+        : String(item.id || model)
+            .replace(/\|1m$/i, '')
+            .trim(),
       model,
       label: label + (beta1m ? ' · 1M' : ''),
       beta1m,
-      source: item.source || defaultSource,
+      source: item.source || defaultSource
     })
   }
   for (const item of configured) upsert(item, 'cc-switch')
@@ -658,8 +675,10 @@ function applyCcSwitchOneMFlags(provider, models) {
 
   const oneMBase = new Set(
     oneMModels
-      .map((item) => compactModelName(splitOneMModelMarker(item?.model || item?.id || item?.name || '').model))
-      .filter(Boolean),
+      .map((item) =>
+        compactModelName(splitOneMModelMarker(item?.model || item?.id || item?.name || '').model)
+      )
+      .filter(Boolean)
   )
   return models.map((item) => {
     if (item.beta1m || !oneMBase.has(compactModelName(item.model))) return item
@@ -667,19 +686,22 @@ function applyCcSwitchOneMFlags(provider, models) {
       ...item,
       beta1m: true,
       id: `${item.model}|1m`,
-      label: String(item.label || item.model).replace(/\s*·\s*1M\s*$/i, '').trim() + ' · 1M',
+      label:
+        String(item.label || item.model)
+          .replace(/\s*·\s*1M\s*$/i, '')
+          .trim() + ' · 1M'
     }
   })
 }
 function extractReplyPreview(protocol, data) {
   try {
     if (protocol === 'anthropic') {
-      const block = data?.content?.find(item => item?.type === 'text')
+      const block = data?.content?.find((item) => item?.type === 'text')
       return String(block?.text || '').trim()
     }
     if (protocol === 'gemini') {
       const parts = data?.candidates?.[0]?.content?.parts || []
-      return String(parts.map(p => p?.text || '').join('')).trim()
+      return String(parts.map((p) => p?.text || '').join('')).trim()
     }
     // openai：chat 和 responses 两种结构
     if (data?.choices?.[0]?.message?.content) {
@@ -688,8 +710,8 @@ function extractReplyPreview(protocol, data) {
     if (data?.output_text) return String(data.output_text).trim()
     if (Array.isArray(data?.output)) {
       const text = data.output
-        .flatMap(item => item?.content || [])
-        .map(item => item?.text || '')
+        .flatMap((item) => item?.content || [])
+        .map((item) => item?.text || '')
         .join('')
       return String(text).trim()
     }
@@ -735,7 +757,7 @@ async function testModel(payload = {}, { signal } = {}) {
   for (const baseUrl of baseUrls) {
     const probes = buildProbes(provider, model, baseUrl, {
       beta1m,
-      anthropicBeta: provider.anthropicBeta,
+      anthropicBeta: provider.anthropicBeta
     })
     if (probes.length === 0) {
       return { ok: false, status: 'error', message: `暂不支持的协议：${provider.protocol}` }
@@ -757,7 +779,7 @@ async function testModel(payload = {}, { signal } = {}) {
           httpStatus: 0,
           endpoint: formatEndpoint(probe.name, baseUrl),
           message: aborted ? `请求超时（${timeoutMs / 1000}s）` : describeNetworkError(error),
-          durationMs: Date.now() - startedAt,
+          durationMs: Date.now() - startedAt
         }
         // 同一线路切换 API 格式没有意义；尝试 cc-switch 的备用线路。
         break
@@ -772,29 +794,32 @@ async function testModel(payload = {}, { signal } = {}) {
           endpoint: formatEndpoint(probe.name, baseUrl),
           message: '可用',
           reply: extractReplyPreview(provider.protocol, result.data),
-          durationMs: Date.now() - startedAt,
+          durationMs: Date.now() - startedAt
         }
       }
 
       // 极简探测被网关拒绝时记下标记，让后面的拟真请求有机会执行。
-      const gatewayRejected = provider.protocol === 'anthropic'
-        && !probe.clientLike
-        && shouldRetryAsClientLike(result)
+      const gatewayRejected =
+        provider.protocol === 'anthropic' && !probe.clientLike && shouldRetryAsClientLike(result)
 
       lastFailure = {
         ok: false,
         // 两级探测都被网关拒绝：说明该中转站要求完整 Claude Code 请求特征，
         // 轻量探测无法验证，不能笼统判成模型不可用。
-        status: probe.clientLike && shouldRetryAsClientLike(result)
-          ? 'gateway'
-          : result.status === 401 || result.status === 403 ? 'auth' : 'error',
+        status:
+          probe.clientLike && shouldRetryAsClientLike(result)
+            ? 'gateway'
+            : result.status === 401 || result.status === 403
+              ? 'auth'
+              : 'error',
         httpStatus: result.status,
         endpoint: formatEndpoint(probe.name, baseUrl),
-        message: probe.clientLike && shouldRetryAsClientLike(result)
-          ? `该中转站要求完整 Claude Code 请求特征，轻量探测无法验证（${extractErrorMessage(result.status, result.data)}）`
-          : extractErrorMessage(result.status, result.data),
+        message:
+          probe.clientLike && shouldRetryAsClientLike(result)
+            ? `该中转站要求完整 Claude Code 请求特征，轻量探测无法验证（${extractErrorMessage(result.status, result.data)}）`
+            : extractErrorMessage(result.status, result.data),
         durationMs: Date.now() - startedAt,
-        gatewayRejected,
+        gatewayRejected
       }
 
       // 网关拒绝时继续走拟真请求；否则只有「接口不存在」值得换另一种 API 格式。
@@ -830,7 +855,7 @@ function normalizeModelList(data) {
     models.set(id, {
       ...raw,
       id,
-      name: String(raw?.name || raw?.display_name || raw?.displayName || id).trim(),
+      name: String(raw?.name || raw?.display_name || raw?.displayName || id).trim()
     })
   }
 
@@ -867,7 +892,11 @@ async function listProviderModels(payload = {}) {
     try {
       const result = await requestOnce(request.url, request.options, timeoutMs)
       if (result.ok) {
-        const remoteModels = filterProviderModels(provider, normalizeModelList(result.data), modelListSettings)
+        const remoteModels = filterProviderModels(
+          provider,
+          normalizeModelList(result.data),
+          modelListSettings
+        )
         const models = mergeModelOptions(configured, remoteModels)
 
         // 部分中转站必须以官方 /models 为唯一来源，绝不合并 cc-switch 的旧配置；
@@ -875,19 +904,23 @@ async function listProviderModels(payload = {}) {
         if (officialModelsOnly) {
           // 官方 /models 不含 [1M] 标记；按 cc-switch 就地把对应模型升级为 1M（不新增行）。
           const officialModels = applyCcSwitchOneMFlags(provider, models)
-          const migratedAgentRouter = isAgentRouterProvider(provider)
-            && /^(https?:\/\/)?(www\.)?agentrouter\.org\/?$/i.test(stripTrailingSlash(provider.baseUrl))
+          const migratedAgentRouter =
+            isAgentRouterProvider(provider) &&
+            /^(https?:\/\/)?(www\.)?agentrouter\.org\/?$/i.test(
+              stripTrailingSlash(provider.baseUrl)
+            )
           return {
             ok: true,
             models: officialModels,
             source: 'remote',
             endpoint: baseUrl,
-            warning: officialModels.length === 0
-              ? '官方模型列表中暂无符合当前筛选规则的模型'
-              : migratedAgentRouter
-                ? '已使用 AgentRouter 当前官方地址 co.agentrouter.org 获取模型；建议同步更新 cc-switch 的 baseUrl'
-                : '',
-            durationMs: Date.now() - startedAt,
+            warning:
+              officialModels.length === 0
+                ? '官方模型列表中暂无符合当前筛选规则的模型'
+                : migratedAgentRouter
+                  ? '已使用 AgentRouter 当前官方地址 co.agentrouter.org 获取模型；建议同步更新 cc-switch 的 baseUrl'
+                  : '',
+            durationMs: Date.now() - startedAt
           }
         }
 
@@ -897,32 +930,40 @@ async function listProviderModels(payload = {}) {
             models,
             source: remoteModels.length > 0 ? 'remote' : 'cc-switch',
             endpoint: baseUrl,
-            warning: remoteModels.length === 0 && configured.length > 0
-              ? '接口未返回模型列表，已展示 cc-switch 已配置的模型'
-              : '',
-            durationMs: Date.now() - startedAt,
+            warning:
+              remoteModels.length === 0 && configured.length > 0
+                ? '接口未返回模型列表，已展示 cc-switch 已配置的模型'
+                : '',
+            durationMs: Date.now() - startedAt
           }
         }
         lastFailure = {
           error: '接口返回列表中没有符合当前筛选规则的模型，且 cc-switch 中未配置可用模型',
-          httpStatus: result.status,
+          httpStatus: result.status
         }
       } else {
         lastFailure = {
           error: extractErrorMessage(result.status, result.data),
-          httpStatus: result.status,
+          httpStatus: result.status
         }
       }
     } catch (error) {
       const aborted = error?.name === 'AbortError'
-      lastFailure = { error: aborted ? '获取模型列表超时' : describeNetworkError(error), httpStatus: 0 }
+      lastFailure = {
+        error: aborted ? '获取模型列表超时' : describeNetworkError(error),
+        httpStatus: 0
+      }
     }
 
     // 仅在当前线路本身不可达或接口不存在时切备用线路。
-    if (lastFailure && !shouldTryNextEndpoint({
-      status: lastFailure.httpStatus === 0 && /超时/.test(lastFailure.error) ? 'timeout' : 'network',
-      httpStatus: lastFailure.httpStatus,
-    })) {
+    if (
+      lastFailure &&
+      !shouldTryNextEndpoint({
+        status:
+          lastFailure.httpStatus === 0 && /超时/.test(lastFailure.error) ? 'timeout' : 'network',
+        httpStatus: lastFailure.httpStatus
+      })
+    ) {
       break
     }
   }
@@ -935,7 +976,7 @@ async function listProviderModels(payload = {}) {
       models: configured,
       source: 'cc-switch',
       warning: `无法从 /models 获取列表，已展示 cc-switch 已配置的模型：${lastFailure?.error || '未知错误'}`,
-      durationMs: Date.now() - startedAt,
+      durationMs: Date.now() - startedAt
     }
   }
 
@@ -943,10 +984,9 @@ async function listProviderModels(payload = {}) {
     ok: false,
     error: lastFailure?.error || '获取模型列表失败',
     httpStatus: lastFailure?.httpStatus || 0,
-    durationMs: Date.now() - startedAt,
+    durationMs: Date.now() - startedAt
   }
 }
-
 
 const MAX_MODEL_TEST_HISTORY = 200
 let monitorTimer = null
@@ -980,32 +1020,39 @@ function loadModelTestHistory() {
 }
 
 function saveModelTestSnapshot(snapshot = {}) {
-  const results = Array.isArray(snapshot.results) ? snapshot.results.slice(0, 1000).map(item => ({
-    providerId: String(item.providerId || ''),
-    providerName: String(item.providerName || ''),
-    appType: String(item.appType || ''),
-    model: String(item.model || ''),
-    status: String(item.status || 'error'),
-    durationMs: Number(item.durationMs || 0),
-    httpStatus: Number(item.httpStatus || 0),
-    message: String(item.message || '').slice(0, 500),
-  })) : []
-  const summary = results.reduce((acc, item) => {
-    acc.total += 1
-    if (item.status === 'ok') acc.ok += 1
-    else if (item.status === 'gateway') acc.gateway += 1
-    else acc.failed += 1
-    acc.durationMs += item.durationMs
-    return acc
-  }, { total: 0, ok: 0, failed: 0, gateway: 0, durationMs: 0 })
+  const results = Array.isArray(snapshot.results)
+    ? snapshot.results.slice(0, 1000).map((item) => ({
+        providerId: String(item.providerId || ''),
+        providerName: String(item.providerName || ''),
+        appType: String(item.appType || ''),
+        model: String(item.model || ''),
+        status: String(item.status || 'error'),
+        durationMs: Number(item.durationMs || 0),
+        httpStatus: Number(item.httpStatus || 0),
+        message: String(item.message || '').slice(0, 500)
+      }))
+    : []
+  const summary = results.reduce(
+    (acc, item) => {
+      acc.total += 1
+      if (item.status === 'ok') acc.ok += 1
+      else if (item.status === 'gateway') acc.gateway += 1
+      else acc.failed += 1
+      acc.durationMs += item.durationMs
+      return acc
+    },
+    { total: 0, ok: 0, failed: 0, gateway: 0, durationMs: 0 }
+  )
   const entry = {
     id: String(snapshot.id || crypto.randomUUID()),
     source: snapshot.source === 'scheduled' ? 'scheduled' : 'manual',
-    label: String(snapshot.label || (snapshot.source === 'scheduled' ? '定时巡检' : '手动测试')).slice(0, 100),
+    label: String(
+      snapshot.label || (snapshot.source === 'scheduled' ? '定时巡检' : '手动测试')
+    ).slice(0, 100),
     startedAt: Number(snapshot.startedAt) || Date.now(),
     finishedAt: Number(snapshot.finishedAt) || Date.now(),
     summary,
-    results,
+    results
   }
   const history = loadModelTestHistory()
   history.unshift(entry)
@@ -1033,7 +1080,7 @@ async function refreshProviderCache() {
   }
   const modelListSettings = loadModelListSettings()
   const filteredProviders = result.providers
-    .filter(provider => String(provider.apiKey || '').trim())
+    .filter((provider) => String(provider.apiKey || '').trim())
     .map((provider) => {
       const officialModelsOnly = usesOfficialModelsOnly(provider)
       const filtered = filterProviderModels(provider, provider.models, modelListSettings)
@@ -1041,15 +1088,18 @@ async function refreshProviderCache() {
         ...provider,
         models: officialModelsOnly ? [] : filtered,
         officialModelsOnly,
-        oneMModels: filtered.filter(item => item?.beta1m),
+        oneMModels: filtered.filter((item) => item?.beta1m)
       }
     })
-  providerCache = new Map(filteredProviders.map(item => [`${item.id}::${item.appType}`, item]))
+  providerCache = new Map(filteredProviders.map((item) => [`${item.id}::${item.appType}`, item]))
   return { ok: true, dbPath: result.dbPath, providers: filteredProviders }
 }
 
 function modelMonitorFingerprint(item = {}) {
-  return `model-monitor:${String(item.providerId || '')}:${String(item.appType || '')}:${String(item.model || '')}`.slice(0, 240)
+  return `model-monitor:${String(item.providerId || '')}:${String(item.appType || '')}:${String(item.model || '')}`.slice(
+    0,
+    240
+  )
 }
 
 function recordModelInspectionEvents(snapshot, { desktopNotification = true } = {}) {
@@ -1067,14 +1117,14 @@ function recordModelInspectionEvents(snapshot, { desktopNotification = true } = 
       snapshotId: snapshot.id,
       httpStatus: result.httpStatus,
       durationMs: result.durationMs,
-      desktopNotification,
+      desktopNotification
     }
     if (result.status === 'ok') {
       recoverOpsEvent(userDataPath, fingerprint, {
         message: `${providerLabel} · ${modelLabel} 已恢复可用`,
         relatedId: snapshot.id,
         recoveredAt: snapshot.finishedAt,
-        attributes,
+        attributes
       })
       continue
     }
@@ -1087,14 +1137,14 @@ function recordModelInspectionEvents(snapshot, { desktopNotification = true } = 
       description: `${providerLabel} · ${result.message || (result.status === 'gateway' ? '无法验证' : '巡检失败')}`,
       relatedId: snapshot.id,
       occurredAt: snapshot.finishedAt,
-      attributes,
+      attributes
     })
   }
   recoverOpsEvent(userDataPath, 'model-monitor:scheduled-runner', {
     message: '模型定时巡检任务已恢复执行',
     relatedId: snapshot.id,
     recoveredAt: snapshot.finishedAt,
-    attributes: { desktopNotification },
+    attributes: { desktopNotification }
   })
 }
 
@@ -1113,7 +1163,12 @@ async function runScheduledInspection() {
       const result = await testModel(target)
       results.push({ ...target, status: result.ok ? 'ok' : result.status || 'error', ...result })
     }
-    const snapshot = saveModelTestSnapshot({ source: 'scheduled', label: '定时巡检', startedAt, results })
+    const snapshot = saveModelTestSnapshot({
+      source: 'scheduled',
+      label: '定时巡检',
+      startedAt,
+      results
+    })
     // 巡检期间用户可能已在首页关闭巡检或修改设置。完成时必须重新读取最新值，
     // 只回写本次运行时间，避免用任务启动时的旧设置把用户操作覆盖掉。
     const latestSettings = loadMonitorSettings()
@@ -1135,7 +1190,8 @@ async function runScheduledInspection() {
         const latestSettings = loadMonitorSettings()
         failureDesktopNotification = latestSettings.notifyOnFailure
         const nextSettings = completeMonitorRun(latestSettings)
-        if (!writeJsonFile(monitorSettingsPath(), nextSettings)) console.error('更新巡检运行时间失败')
+        if (!writeJsonFile(monitorSettingsPath(), nextSettings))
+          console.error('更新巡检运行时间失败')
       } catch (recordError) {
         console.error('记录模型巡检失败状态失败:', recordError)
       }
@@ -1149,7 +1205,7 @@ async function runScheduledInspection() {
         title: '模型定时巡检执行失败',
         description: String(error?.message || '未知错误').slice(0, 1000),
         occurredAt: Date.now(),
-        attributes: { startedAt, desktopNotification: failureDesktopNotification },
+        attributes: { startedAt, desktopNotification: failureDesktopNotification }
       })
     } catch (eventError) {
       console.error('记录模型巡检失败事件失败:', eventError)
@@ -1166,7 +1222,7 @@ function startMonitorTimer() {
     const settings = loadMonitorSettings()
     if (!settings.enabled || inspectionRunning || !settings.targets.length) return
     if (!settings.nextRunAt || settings.nextRunAt <= Date.now()) {
-      runScheduledInspection().catch(error => console.error('模型定时巡检失败:', error))
+      runScheduledInspection().catch((error) => console.error('模型定时巡检失败:', error))
     }
   }, 60_000)
   monitorTimer.unref?.()
@@ -1181,8 +1237,8 @@ function dashboardData() {
     monitor: loadMonitorSettings(),
     backup: {
       health: getAutoBackupHealth(app.getPath('userData')),
-      settings: readAutoBackupSettings(app.getPath('userData')),
-    },
+      settings: readAutoBackupSettings(app.getPath('userData'))
+    }
   })
 }
 
@@ -1190,18 +1246,26 @@ function registerModelTestHandlers() {
   ipcMain.handle(IPC_CHANNELS.MODEL_TEST_LIST_PROVIDERS, async () => {
     const result = await refreshProviderCache()
     if (!result.ok) return result
-    const safeProviders = result.providers.map(({ apiKey: _apiKey, oneMModels: _oneMModels, ...rest }) => rest)
+    const safeProviders = result.providers.map(
+      ({ apiKey: _apiKey, oneMModels: _oneMModels, ...rest }) => rest
+    )
     return { ok: true, dbPath: result.dbPath, providers: safeProviders }
   })
 
   ipcMain.handle(IPC_CHANNELS.MODEL_TEST_MODEL_LIST_SETTINGS_GET, async () => ({
     ok: true,
-    settings: loadModelListSettings(),
+    settings: loadModelListSettings()
   }))
-  ipcMain.handle(IPC_CHANNELS.MODEL_TEST_MODEL_LIST_SETTINGS_SAVE, async (_event, settings = {}) => {
-    try { return { ok: true, settings: saveModelListSettings(settings) } }
-    catch (error) { return { ok: false, error: error.message } }
-  })
+  ipcMain.handle(
+    IPC_CHANNELS.MODEL_TEST_MODEL_LIST_SETTINGS_SAVE,
+    async (_event, settings = {}) => {
+      try {
+        return { ok: true, settings: saveModelListSettings(settings) }
+      } catch (error) {
+        return { ok: false, error: error.message }
+      }
+    }
+  )
 
   ipcMain.handle(IPC_CHANNELS.MODEL_TEST_RUN, async (_event, payload = {}) => {
     const runId = String(payload.runId || '').trim()
@@ -1260,26 +1324,43 @@ function registerModelTestHandlers() {
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.MODEL_TEST_HISTORY_GET, async () => ({ ok: true, history: loadModelTestHistory() }))
+  ipcMain.handle(IPC_CHANNELS.MODEL_TEST_HISTORY_GET, async () => ({
+    ok: true,
+    history: loadModelTestHistory()
+  }))
   ipcMain.handle(IPC_CHANNELS.MODEL_TEST_HISTORY_SAVE, async (_event, snapshot = {}) => {
-    try { return { ok: true, entry: saveModelTestSnapshot(snapshot) } }
-    catch (error) { return { ok: false, error: error.message } }
+    try {
+      return { ok: true, entry: saveModelTestSnapshot(snapshot) }
+    } catch (error) {
+      return { ok: false, error: error.message }
+    }
   })
-  ipcMain.handle(IPC_CHANNELS.MODEL_TEST_MONITOR_GET, async () => ({ ok: true, settings: loadMonitorSettings() }))
+  ipcMain.handle(IPC_CHANNELS.MODEL_TEST_MONITOR_GET, async () => ({
+    ok: true,
+    settings: loadMonitorSettings()
+  }))
   ipcMain.handle(IPC_CHANNELS.MODEL_TEST_MONITOR_SAVE, async (_event, settings = {}) => {
-    try { return { ok: true, settings: saveMonitorSettings(settings) } }
-    catch (error) { return { ok: false, error: error.message } }
+    try {
+      return { ok: true, settings: saveMonitorSettings(settings) }
+    } catch (error) {
+      return { ok: false, error: error.message }
+    }
   })
   ipcMain.handle(IPC_CHANNELS.MODEL_TEST_MONITOR_RUN, async () => {
-    try { return { ok: true, entry: await runScheduledInspection() } }
-    catch (error) { return { ok: false, error: error.message } }
+    try {
+      return { ok: true, entry: await runScheduledInspection() }
+    } catch (error) {
+      return { ok: false, error: error.message }
+    }
   })
   ipcMain.handle(IPC_CHANNELS.OPS_DASHBOARD_GET, async () => {
-    try { return { ok: true, data: dashboardData() } }
-    catch (error) { return { ok: false, error: error.message } }
+    try {
+      return { ok: true, data: dashboardData() }
+    } catch (error) {
+      return { ok: false, error: error.message }
+    }
   })
   startMonitorTimer()
-
 }
 
 module.exports = {
@@ -1290,6 +1371,6 @@ module.exports = {
     delay,
     testModel,
     cancelledModelResult,
-    filterProviderModels,
-  },
+    filterProviderModels
+  }
 }

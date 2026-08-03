@@ -5,9 +5,12 @@ const {
   AUTO_BACKUP_INTERVALS,
   readAutoBackupSettings,
   recordAutoBackupFailure,
-  runAutoBackup,
+  runAutoBackup
 } = require('./utils/app-data-backup')
-const { recordAutoBackupExecutionFailure, recoverAutoBackupExecution } = require('./utils/auto-backup-events')
+const {
+  recordAutoBackupExecutionFailure,
+  recoverAutoBackupExecution
+} = require('./utils/auto-backup-events')
 
 let runtime = null
 let timer = null
@@ -26,9 +29,15 @@ function delayUntil(timestamp) {
 
 function recordAutoBackupRunFailure(error) {
   let settings
-  try { settings = recordAutoBackupFailure({ userDataPath: runtime.userDataPath, error }) } catch { return }
+  try {
+    settings = recordAutoBackupFailure({ userDataPath: runtime.userDataPath, error })
+  } catch {
+    return
+  }
   if (!settings?.enabled) return
-  try { recordAutoBackupExecutionFailure({ userDataPath: runtime.userDataPath }) } catch {}
+  try {
+    recordAutoBackupExecutionFailure({ userDataPath: runtime.userDataPath })
+  } catch {}
 }
 
 function scheduleAutoBackup() {
@@ -41,10 +50,15 @@ function scheduleAutoBackup() {
     try {
       const result = runAutoBackup({
         userDataPath: runtime.userDataPath,
-        decryptPassword: value => decryptSecret(safeStorage, value),
-        appVersion: app.getVersion(),
+        decryptPassword: (value) => decryptSecret(safeStorage, value),
+        appVersion: app.getVersion()
       })
-      try { recoverAutoBackupExecution({ userDataPath: runtime.userDataPath, now: result.entry?.createdAt }) } catch {}
+      try {
+        recoverAutoBackupExecution({
+          userDataPath: runtime.userDataPath,
+          now: result.entry?.createdAt
+        })
+      } catch {}
     } catch (error) {
       logger.error('执行自动数据备份失败', { message: error?.message, stack: error?.stack })
       recordAutoBackupRunFailure(error)
@@ -66,7 +80,7 @@ function saveAutoBackupSchedule(input) {
   const settings = saveAutoBackupSettings({
     userDataPath: runtime.userDataPath,
     input,
-    encryptPassword: value => encryptSecret(safeStorage, value),
+    encryptPassword: (value) => encryptSecret(safeStorage, value)
   })
   scheduleAutoBackup()
   return settings
@@ -77,10 +91,15 @@ function runAutoBackupNow() {
   try {
     const result = runAutoBackup({
       userDataPath: runtime.userDataPath,
-      decryptPassword: value => decryptSecret(safeStorage, value),
-      appVersion: app.getVersion(),
+      decryptPassword: (value) => decryptSecret(safeStorage, value),
+      appVersion: app.getVersion()
     })
-    try { recoverAutoBackupExecution({ userDataPath: runtime.userDataPath, now: result.entry?.createdAt }) } catch {}
+    try {
+      recoverAutoBackupExecution({
+        userDataPath: runtime.userDataPath,
+        now: result.entry?.createdAt
+      })
+    } catch {}
     return result
   } catch (error) {
     recordAutoBackupRunFailure(error)
@@ -100,5 +119,5 @@ module.exports = {
   runAutoBackupNow,
   saveAutoBackupSchedule,
   scheduleAutoBackup,
-  stopAutoBackupScheduler,
+  stopAutoBackupScheduler
 }

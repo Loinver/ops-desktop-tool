@@ -1,6 +1,5 @@
 import { createApp, defineComponent, h } from 'vue'
 import { Icon } from 'tdesign-icons-vue-next'
-import 'tdesign-vue-next/es/style/index.css'
 import 'tdesign-vue-next/es/message/style/index.css'
 import App from './App.vue'
 import router from './router'
@@ -13,7 +12,7 @@ const LocalIcon = defineComponent({
   inheritAttrs: false,
   setup(_props, { attrs }) {
     return () => h(Icon, { ...attrs, loadDefaultIcons: false })
-  },
+  }
 })
 
 function loadLocalIconSprite() {
@@ -22,7 +21,9 @@ function loadLocalIconSprite() {
     script.src = './assets/icons/index.js'
     script.defer = true
     script.addEventListener('load', resolve, { once: true })
-    script.addEventListener('error', () => reject(new Error('本地图标资源加载失败')), { once: true })
+    script.addEventListener('error', () => reject(new Error('本地图标资源加载失败')), {
+      once: true
+    })
     document.head.appendChild(script)
   })
 }

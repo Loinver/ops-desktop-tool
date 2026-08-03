@@ -31,7 +31,7 @@ function writeJsonFile(filePath, data) {
     fs.mkdirSync(path.dirname(filePath), { recursive: true })
     fs.writeFileSync(tempPath, JSON.stringify(data, null, 2), {
       encoding: 'utf-8',
-      mode: 0o600,
+      mode: 0o600
     })
     fs.renameSync(tempPath, filePath)
     try {

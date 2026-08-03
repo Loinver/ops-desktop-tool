@@ -64,7 +64,7 @@
             :class="{ active: resultFilter === 'ok' }"
             @click="$emit('toggle-result-filter', 'ok')"
           >
-            只看可用{{ okCount ? ` ${okCount}` : "" }}
+            只看可用{{ okCount ? ` ${okCount}` : '' }}
           </button>
           <button
             type="button"
@@ -72,7 +72,7 @@
             :class="{ active: resultFilter === 'failed' }"
             @click="$emit('toggle-result-filter', 'failed')"
           >
-            只看失败{{ failedCount ? ` ${failedCount}` : "" }}
+            只看失败{{ failedCount ? ` ${failedCount}` : '' }}
           </button>
         </div>
         <button
@@ -120,10 +120,10 @@
 defineProps({
   appTabs: { type: Array, default: () => [] },
   familyTabs: { type: Array, default: () => [] },
-  appFilter: { type: String, default: "all" },
-  familyFilter: { type: String, default: "all" },
-  resultFilter: { type: String, default: "all" },
-  searchQuery: { type: String, default: "" },
+  appFilter: { type: String, default: 'all' },
+  familyFilter: { type: String, default: 'all' },
+  resultFilter: { type: String, default: 'all' },
+  searchQuery: { type: String, default: '' },
   hasActiveFilters: { type: Boolean, default: false },
   failedCount: { type: Number, default: 0 },
   okCount: { type: Number, default: 0 },
@@ -131,17 +131,17 @@ defineProps({
   loading: { type: Boolean, default: false },
   running: { type: Boolean, default: false },
   preparing: { type: Boolean, default: false },
-  visibleCount: { type: Number, default: 0 },
-});
+  visibleCount: { type: Number, default: 0 }
+})
 
 defineEmits([
-  "update:appFilter",
-  "update:familyFilter",
-  "update:searchQuery",
-  "toggle-result-filter",
-  "expand-all",
-  "collapse-all",
-  "clear-filters",
-  "clear-results",
-]);
+  'update:appFilter',
+  'update:familyFilter',
+  'update:searchQuery',
+  'toggle-result-filter',
+  'expand-all',
+  'collapse-all',
+  'clear-filters',
+  'clear-results'
+])
 </script>

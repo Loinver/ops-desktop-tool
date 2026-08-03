@@ -81,7 +81,9 @@ function write(level, message, extra) {
       const file = logFile()
       maybeRoll(file)
       fs.appendFileSync(file, entry + '\n')
-    } catch { /* 写入失败时忽略 */ }
+    } catch {
+      /* 写入失败时忽略 */
+    }
   }
   // 开发模式同时输出到控制台
   const fn = level === 'error' ? console.error : level === 'warn' ? console.warn : console.log
@@ -92,5 +94,5 @@ module.exports = {
   initLogger,
   info: (msg, extra) => write('info', msg, extra),
   warn: (msg, extra) => write('warn', msg, extra),
-  error: (msg, extra) => write('error', msg, extra),
+  error: (msg, extra) => write('error', msg, extra)
 }

@@ -13,7 +13,7 @@
       <div class="progress-fill" :style="{ width: progressPercent + '%' }"></div>
       <span class="progress-text">{{
         stopping
-          ? "停止中，等待进行中的请求结束…"
+          ? '停止中，等待进行中的请求结束…'
           : `测试中 ${progress.done} / ${progress.total}（${progressPercent}%）`
       }}</span>
     </div>
@@ -26,12 +26,12 @@
 
 <script setup>
 defineProps({
-  errorMessage: { type: String, default: "" },
+  errorMessage: { type: String, default: '' },
   preparing: { type: Boolean, default: false },
   running: { type: Boolean, default: false },
   stopping: { type: Boolean, default: false },
   progress: { type: Object, required: true },
   progressPercent: { type: Number, default: 0 },
-  currentLabel: { type: String, default: "" },
-});
+  currentLabel: { type: String, default: '' }
+})
 </script>

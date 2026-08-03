@@ -5,12 +5,16 @@ const theme = ref('light')
 
 function applyTheme(value) {
   document.documentElement.setAttribute('data-theme', value)
-  try { window.localStorage.setItem(THEME_KEY, value) } catch {}
+  try {
+    window.localStorage.setItem(THEME_KEY, value)
+  } catch {}
 }
 
 export function initTheme() {
   let saved
-  try { saved = window.localStorage.getItem(THEME_KEY) } catch {}
+  try {
+    saved = window.localStorage.getItem(THEME_KEY)
+  } catch {}
   if (saved === 'light' || saved === 'dark') {
     theme.value = saved
   } else if (window.matchMedia?.('(prefers-color-scheme: dark)').matches) {

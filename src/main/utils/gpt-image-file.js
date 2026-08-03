@@ -10,11 +10,14 @@ const MIME_EXTENSIONS = {
   'image/avif': 'avif',
   'image/bmp': 'bmp',
   'image/tiff': 'tiff',
-  'image/svg+xml': 'svg',
+  'image/svg+xml': 'svg'
 }
 
 function normalizeContentType(contentType) {
-  return String(contentType || '').split(';', 1)[0].trim().toLowerCase()
+  return String(contentType || '')
+    .split(';', 1)[0]
+    .trim()
+    .toLowerCase()
 }
 
 function extensionForContentType(contentType) {
@@ -48,7 +51,7 @@ function decodeDataImageUrl(value) {
   return {
     buffer,
     contentType,
-    extension: extensionForContentType(contentType),
+    extension: extensionForContentType(contentType)
   }
 }
 
@@ -72,5 +75,5 @@ module.exports = {
   extensionForContentType,
   decodeDataImageUrl,
   buildImageFileName,
-  ensureImageExtension,
+  ensureImageExtension
 }

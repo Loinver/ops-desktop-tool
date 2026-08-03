@@ -4,8 +4,10 @@ const ALLOWED_EXTERNAL_PROTOCOLS = new Set(['http:', 'https:', 'mailto:'])
 const SCHEME_PATTERN = /^[a-zA-Z][a-zA-Z\d+.-]*:/
 const HTTP_SCHEME_PATTERN = /^https?:\/\//i
 const MAILTO_SCHEME_PATTERN = /^mailto:/i
-const HOST_WITH_PORT_PATTERN = /^(?:localhost|(?:\d{1,3}\.){3}\d{1,3}|\[[0-9a-f:]+\]|[a-z0-9.-]+):\d+(?:[/?#]|$)/i
-const LOCAL_HOST_PATTERN = /^(?:localhost|0\.0\.0\.0|127(?:\.\d{1,3}){3}|10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}|\[(?:::1|[0-9a-f:]+)\])(?:[/?#]|$)/i
+const HOST_WITH_PORT_PATTERN =
+  /^(?:localhost|(?:\d{1,3}\.){3}\d{1,3}|\[[0-9a-f:]+\]|[a-z0-9.-]+):\d+(?:[/?#]|$)/i
+const LOCAL_HOST_PATTERN =
+  /^(?:localhost|0\.0\.0\.0|127(?:\.\d{1,3}){3}|10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}|\[(?:::1|[0-9a-f:]+)\])(?:[/?#]|$)/i
 
 /**
  * 为未填写协议的网址选择默认协议。
@@ -17,7 +19,10 @@ const LOCAL_HOST_PATTERN = /^(?:localhost|0\.0\.0\.0|127(?:\.\d{1,3}){3}|10(?:\.
 function addDefaultProtocol(value) {
   const protocolRelativeValue = value.replace(/^\/\//, '')
 
-  if (HOST_WITH_PORT_PATTERN.test(protocolRelativeValue) || LOCAL_HOST_PATTERN.test(protocolRelativeValue)) {
+  if (
+    HOST_WITH_PORT_PATTERN.test(protocolRelativeValue) ||
+    LOCAL_HOST_PATTERN.test(protocolRelativeValue)
+  ) {
     return `http://${protocolRelativeValue}`
   }
 
@@ -41,7 +46,11 @@ function normalizeExternalUrl(rawUrl) {
   let candidate
   if (HTTP_SCHEME_PATTERN.test(value) || MAILTO_SCHEME_PATTERN.test(value)) {
     candidate = value
-  } else if (HOST_WITH_PORT_PATTERN.test(value) || LOCAL_HOST_PATTERN.test(value) || value.startsWith('//')) {
+  } else if (
+    HOST_WITH_PORT_PATTERN.test(value) ||
+    LOCAL_HOST_PATTERN.test(value) ||
+    value.startsWith('//')
+  ) {
     candidate = addDefaultProtocol(value)
   } else if (SCHEME_PATTERN.test(value)) {
     // 保留显式的未知协议，交给下方白名单给出清晰错误，避免将危险协议误当成域名。
@@ -73,7 +82,10 @@ function normalizeExternalUrl(rawUrl) {
  * macOS 上改用原生 `open`：在部分已安装 Electron 应用中，shell.openExternal 虽会
  * resolve，却可能没有将 URL 交给默认浏览器。`open` 会直接走 Launch Services。
  */
-function openExternalUrl(url, { shell, platform = process.platform, execFile = defaultExecFile } = {}) {
+function openExternalUrl(
+  url,
+  { shell, platform = process.platform, execFile = defaultExecFile } = {}
+) {
   if (platform !== 'darwin') {
     if (!shell || typeof shell.openExternal !== 'function') {
       return Promise.reject(new Error('系统浏览器服务不可用'))

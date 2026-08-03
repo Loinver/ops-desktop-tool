@@ -130,7 +130,7 @@ const IPC_CHANNELS = {
   OPS_AUTOMATION_SAVE: 'ops:saveAutomationTask',
   OPS_AUTOMATION_DELETE: 'ops:deleteAutomationTask',
   OPS_AUTOMATION_RUN: 'ops:runAutomationTask',
-  AI_MCP_INFO: 'aiOps:getMcpInfo',
+  AI_MCP_INFO: 'aiOps:getMcpInfo'
 }
 
 module.exports = { IPC_CHANNELS }

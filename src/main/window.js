@@ -55,7 +55,7 @@ function createWindow() {
       sandbox: true,
       webSecurity: true,
       allowRunningInsecureContent: false,
-      devTools: isDev,
+      devTools: isDev
     }
   })
 
@@ -66,7 +66,8 @@ function createWindow() {
   })
 
   if (isDev) {
-    mainWindow.loadURL('http://localhost:5173').catch(err => {
+    const devServerUrl = process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173'
+    mainWindow.loadURL(devServerUrl).catch((err) => {
       console.error('Failed to load Vite dev server:', err)
     })
 

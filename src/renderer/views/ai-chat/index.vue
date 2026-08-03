@@ -2,13 +2,28 @@
   <div class="page page--workspace ai-chat-page">
     <PageHeader :title="title" :description="description">
       <template #actions>
-        <button class="btn-secondary" type="button" :disabled="chatMessages.length === 0" @click="newChat">
+        <button
+          class="btn-secondary"
+          type="button"
+          :disabled="chatMessages.length === 0"
+          @click="newChat"
+        >
           <t-icon name="add" /> 新对话
         </button>
-        <button class="btn-text" type="button" :disabled="chatMessages.length === 0" @click="clearChat">
+        <button
+          class="btn-text"
+          type="button"
+          :disabled="chatMessages.length === 0"
+          @click="clearChat"
+        >
           <t-icon name="trash" /> 清空
         </button>
-        <button v-if="!activeProviderReady" class="btn-primary" type="button" @click="configureProvider">
+        <button
+          v-if="!activeProviderReady"
+          class="btn-primary"
+          type="button"
+          @click="configureProvider"
+        >
           <t-icon name="server" /> 配置 Provider
         </button>
       </template>
@@ -31,12 +46,20 @@
             <input v-model="knowledgeUseAi" type="checkbox" />
             <span>基于检索结果回答</span>
           </label>
-          <button class="btn-secondary knowledge-search-button" type="button" @click="searchKnowledge">
+          <button
+            class="btn-secondary knowledge-search-button"
+            type="button"
+            @click="searchKnowledge"
+          >
             检索
           </button>
         </div>
 
-        <div ref="chatHistory" :class="['chat-history', { 'chat-history--empty': chatMessages.length === 0 }]" aria-live="polite">
+        <div
+          ref="chatHistory"
+          :class="['chat-history', { 'chat-history--empty': chatMessages.length === 0 }]"
+          aria-live="polite"
+        >
           <div v-if="chatMessages.length" class="chat-history__status">
             <span><t-icon name="chat" /> 当前会话</span>
             <small>{{ chatMessages.length }} 条消息 · 本机暂存</small>
@@ -77,14 +100,21 @@
                 <p class="message-content">{{ message.content }}</p>
               </div>
               <div class="message-actions">
-                <button type="button" :title="message.role === 'assistant' ? '复制回答' : '复制提问'" @click="copyMessage(message)">
+                <button
+                  type="button"
+                  :title="message.role === 'assistant' ? '复制回答' : '复制提问'"
+                  @click="copyMessage(message)"
+                >
                   <t-icon name="file-copy" /> 复制
                 </button>
               </div>
             </div>
           </article>
 
-          <article v-if="chatBusy" class="chat-message chat-message--assistant chat-message--pending">
+          <article
+            v-if="chatBusy"
+            class="chat-message chat-message--assistant chat-message--pending"
+          >
             <div class="message-avatar" aria-hidden="true"><t-icon name="chat" /></div>
             <div class="message-stack">
               <div class="message-meta"><strong>智能助手</strong></div>
@@ -127,7 +157,12 @@
             <div class="composer__footer">
               <span class="composer-shortcut">Enter 发送 · Shift + Enter 换行</span>
               <div class="composer-actions">
-                <button v-if="activeProvider" class="provider-switch" type="button" @click="switchProvider">
+                <button
+                  v-if="activeProvider"
+                  class="provider-switch"
+                  type="button"
+                  @click="switchProvider"
+                >
                   <t-icon name="refresh" /> 切换模型
                 </button>
                 <button
@@ -137,13 +172,19 @@
                   :disabled="chatBusy || !activeProviderReady || !chatInput.trim()"
                   @click="sendAiChat"
                 >
-                  <t-icon :name="chatBusy ? 'loading' : 'arrow-up'" :class="{ spinning: chatBusy }" />
+                  <t-icon
+                    :name="chatBusy ? 'loading' : 'arrow-up'"
+                    :class="{ spinning: chatBusy }"
+                  />
                   <span>{{ chatBusy ? '发送中' : '发送' }}</span>
                 </button>
               </div>
             </div>
           </div>
-          <p class="composer-note"><t-icon name="secured" /> API Key 仅在主进程使用；提交内容会先脱敏常见密钥、Token 和密码字段。</p>
+          <p class="composer-note">
+            <t-icon name="secured" /> API Key 仅在主进程使用；提交内容会先脱敏常见密钥、Token
+            和密码字段。
+          </p>
         </footer>
       </section>
     </main>
@@ -151,6 +192,7 @@
 </template>
 
 <script setup>
+import { opsApi } from '../../api/opsApi.js'
 import { computed, nextTick, onActivated, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import PageHeader from '../../components/common/PageHeader.vue'
@@ -174,9 +216,22 @@ const knowledgeResults = ref([])
 const searched = ref(false)
 
 const providerState = ref({ activeProviderId: '', providers: [] })
-const activeProvider = computed(() => providerState.value.providers.find(provider => provider.id === providerState.value.activeProviderId) || null)
-const activeProviderReady = computed(() => Boolean(activeProvider.value?.enabled && activeProvider.value?.available && activeProvider.value?.hasApiKey))
-const latestUserMessage = computed(() => [...chatMessages.value].reverse().find(message => message.role === 'user') || null)
+const activeProvider = computed(
+  () =>
+    providerState.value.providers.find(
+      (provider) => provider.id === providerState.value.activeProviderId
+    ) || null
+)
+const activeProviderReady = computed(() =>
+  Boolean(
+    activeProvider.value?.enabled &&
+    activeProvider.value?.available &&
+    activeProvider.value?.hasApiKey
+  )
+)
+const latestUserMessage = computed(
+  () => [...chatMessages.value].reverse().find((message) => message.role === 'user') || null
+)
 
 const examplePrompts = [
   '如何为当前项目设计安全的备份策略？',
@@ -189,7 +244,7 @@ const composerInput = ref(null)
 
 async function loadProviderState() {
   try {
-    const result = await window.opsApi.getAiOpsState()
+    const result = await opsApi.getAiOpsState()
     if (result?.ok && Array.isArray(result.providers?.providers)) {
       providerState.value = result.providers
     } else if (!result?.ok) {
@@ -230,7 +285,7 @@ function loadHistory() {
   try {
     const messages = JSON.parse(saved)
     chatMessages.value = Array.isArray(messages)
-      ? messages.map(message => ({ ...message, createdAt: message.createdAt || null }))
+      ? messages.map((message) => ({ ...message, createdAt: message.createdAt || null }))
       : []
   } catch {
     chatMessages.value = []
@@ -255,10 +310,13 @@ async function requestAssistantReply() {
   chatBusy.value = true
   let completed = false
   try {
-    const result = await window.opsApi.askAiChat({
+    const result = await opsApi.askAiChat({
       providerId: providerState.value.activeProviderId,
-      messages: chatMessages.value.map(message => ({ role: message.role, content: message.content })),
-      knowledgeResults: searched.value && knowledgeUseAi.value ? knowledgeResults.value : [],
+      messages: chatMessages.value.map((message) => ({
+        role: message.role,
+        content: message.content
+      })),
+      knowledgeResults: searched.value && knowledgeUseAi.value ? knowledgeResults.value : []
     })
 
     if (!result?.ok) {
@@ -318,16 +376,19 @@ async function searchKnowledge() {
   knowledgeResults.value = []
   chatError.value = ''
   try {
-    const result = await window.opsApi.searchAiKnowledge(query)
+    const result = await opsApi.searchAiKnowledge(query)
     if (!result?.ok) {
       chatError.value = result?.error || '知识检索失败'
       return
     }
     knowledgeResults.value = result.results || []
     searched.value = true
-    addMessage('assistant', knowledgeResults.value.length
-      ? `已检索到 ${knowledgeResults.value.length} 条本地知识。开启“基于检索结果回答”后，下一次提问会引用这些片段。`
-      : '没有检索到匹配的知识。')
+    addMessage(
+      'assistant',
+      knowledgeResults.value.length
+        ? `已检索到 ${knowledgeResults.value.length} 条本地知识。开启“基于检索结果回答”后，下一次提问会引用这些片段。`
+        : '没有检索到匹配的知识。'
+    )
   } catch {
     chatError.value = '知识检索失败'
   }
@@ -393,7 +454,13 @@ function configureProvider() {
   font-weight: 600;
   line-height: 1;
   white-space: nowrap;
-  transition: color var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast), opacity var(--transition-fast);
+  transition:
+    color var(--transition-fast),
+    border-color var(--transition-fast),
+    background var(--transition-fast),
+    box-shadow var(--transition-fast),
+    transform var(--transition-fast),
+    opacity var(--transition-fast);
 }
 
 .ai-chat-page :deep(.btn-primary) {
@@ -489,7 +556,9 @@ function configureProvider() {
   background: transparent;
   cursor: pointer;
   font-size: 12px;
-  transition: color var(--transition-fast), background var(--transition-fast);
+  transition:
+    color var(--transition-fast),
+    background var(--transition-fast);
 }
 
 .provider-switch:hover {
@@ -550,7 +619,11 @@ function configureProvider() {
   overflow-y: auto;
   padding: 0 var(--panel-padding) clamp(24px, 3vw, 40px);
   background:
-    radial-gradient(circle at 12% 0, color-mix(in srgb, var(--primary) 5%, transparent), transparent 26%),
+    radial-gradient(
+      circle at 12% 0,
+      color-mix(in srgb, var(--primary) 5%, transparent),
+      transparent 26%
+    ),
     linear-gradient(180deg, color-mix(in srgb, var(--bg-subtle) 68%, transparent), transparent 34%);
   scroll-behavior: smooth;
 }
@@ -643,7 +716,11 @@ function configureProvider() {
   font-size: 13px;
   line-height: 20px;
   text-align: left;
-  transition: border-color var(--transition), box-shadow var(--transition), transform var(--transition), color var(--transition);
+  transition:
+    border-color var(--transition),
+    box-shadow var(--transition),
+    transform var(--transition),
+    color var(--transition);
 }
 
 .suggestion-card :deep(svg) {
@@ -733,7 +810,10 @@ function configureProvider() {
   box-shadow: 0 2px 7px rgba(15, 23, 42, 0.035);
   font-size: 14px;
   line-height: 1.72;
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background var(--transition-fast);
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast),
+    background var(--transition-fast);
 }
 
 .chat-message--assistant:hover .message-bubble {
@@ -744,7 +824,11 @@ function configureProvider() {
 .chat-message--user .message-bubble {
   border-color: color-mix(in srgb, var(--primary) 20%, var(--border-light));
   border-radius: 15px 5px 15px 15px;
-  background: linear-gradient(135deg, var(--primary-light), color-mix(in srgb, var(--primary-light) 78%, #fff));
+  background: linear-gradient(
+    135deg,
+    var(--primary-light),
+    color-mix(in srgb, var(--primary-light) 78%, #fff)
+  );
   box-shadow: 0 2px 8px color-mix(in srgb, var(--primary) 8%, transparent);
 }
 
@@ -783,7 +867,10 @@ function configureProvider() {
   font: inherit;
   font-size: 11px;
   opacity: 1;
-  transition: color var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast);
+  transition:
+    color var(--transition-fast),
+    border-color var(--transition-fast),
+    background var(--transition-fast);
 }
 
 .message-actions button:hover {
@@ -871,7 +958,9 @@ function configureProvider() {
   border-radius: var(--radius-md);
   background: var(--card-bg);
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
 }
 
 .composer:focus-within {
@@ -939,7 +1028,10 @@ function configureProvider() {
   font: inherit;
   font-size: 12px;
   font-weight: 600;
-  transition: filter var(--transition-fast), transform var(--transition-fast), opacity var(--transition-fast);
+  transition:
+    filter var(--transition-fast),
+    transform var(--transition-fast),
+    opacity var(--transition-fast);
 }
 
 .send-button:hover:not(:disabled) {
@@ -969,7 +1061,9 @@ function configureProvider() {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @media (max-width: 760px) {
@@ -1003,7 +1097,6 @@ function configureProvider() {
     min-height: 340px;
     padding: var(--spacing-lg) var(--spacing-md);
   }
-
 
   .prompt-suggestions {
     grid-template-columns: 1fr;

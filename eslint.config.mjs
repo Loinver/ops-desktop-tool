@@ -11,8 +11,8 @@ export default [
       'node_modules/**',
       'src/renderer/assets/icons/index.js',
       'src/renderer/public/assets/icons/index.js',
-      '**/*.test.cjs',
-    ],
+      '**/*.test.cjs'
+    ]
   },
   {
     rules: {
@@ -23,10 +23,14 @@ export default [
       'vue/multi-word-component-names': 'off',
       'vue/max-attributes-per-line': 'off',
       'vue/singleline-html-element-content-newline': 'off',
+      // 交给 Prettier 统一处理模板换行和引号，避免重复的格式化规则产生噪声。
+      'vue/html-closing-bracket-newline': 'off',
+      'vue/multiline-html-element-content-newline': 'off',
+      'vue/html-quotes': 'off',
       'vue/html-self-closing': 'off',
       'vue/attributes-order': 'off',
-      'vue/html-indent': 'off',
-    },
+      'vue/html-indent': 'off'
+    }
   },
   {
     files: ['src/main/**/*.js', 'src/shared/**/*.js', 'scripts/**/*.cjs'],
@@ -44,12 +48,12 @@ export default [
         clearTimeout: 'readonly',
         setImmediate: 'readonly',
         setInterval: 'readonly',
-        clearInterval: 'readonly',
-      },
-    },
+        clearInterval: 'readonly'
+      }
+    }
   },
   {
-   files: ['**/*.cjs', '**/*.mjs'],
+    files: ['**/*.cjs', '**/*.mjs'],
     languageOptions: {
       sourceType: 'commonjs',
       globals: {
@@ -59,9 +63,9 @@ export default [
         process: 'readonly',
         __dirname: 'readonly',
         Buffer: 'readonly',
-        console: 'readonly',
-      },
-    },
+        console: 'readonly'
+      }
+    }
   },
   {
     files: ['**/*.mjs'],
@@ -70,9 +74,9 @@ export default [
       globals: {
         process: 'readonly',
         Buffer: 'readonly',
-        console: 'readonly',
-      },
-    },
+        console: 'readonly'
+      }
+    }
   },
   {
     files: ['src/renderer/**/*.vue', 'src/renderer/**/*.js'],
@@ -85,8 +89,8 @@ export default [
         setTimeout: 'readonly',
         clearTimeout: 'readonly',
         setInterval: 'readonly',
-        clearInterval: 'readonly',
-      },
-    },
-  },
+        clearInterval: 'readonly'
+      }
+    }
+  }
 ]

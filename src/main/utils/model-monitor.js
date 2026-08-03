@@ -3,17 +3,25 @@ const MAX_INTERVAL_MINUTES = 1440
 const DEFAULT_INTERVAL_MINUTES = 60
 
 function normalizeIntervalMinutes(value) {
-  return Math.min(MAX_INTERVAL_MINUTES, Math.max(MIN_INTERVAL_MINUTES, Number(value) || DEFAULT_INTERVAL_MINUTES))
+  return Math.min(
+    MAX_INTERVAL_MINUTES,
+    Math.max(MIN_INTERVAL_MINUTES, Number(value) || DEFAULT_INTERVAL_MINUTES)
+  )
 }
 
 function normalizeMonitorTargets(value) {
-  return Array.isArray(value) ? value.slice(0, 200).map(item => ({
-    providerId: String(item?.providerId || ''),
-    providerName: String(item?.providerName || ''),
-    appType: String(item?.appType || ''),
-    model: String(item?.model || ''),
-    beta1m: Boolean(item?.beta1m),
-  })).filter(item => item.providerId && item.appType && item.model) : []
+  return Array.isArray(value)
+    ? value
+        .slice(0, 200)
+        .map((item) => ({
+          providerId: String(item?.providerId || ''),
+          providerName: String(item?.providerName || ''),
+          appType: String(item?.appType || ''),
+          model: String(item?.model || ''),
+          beta1m: Boolean(item?.beta1m)
+        }))
+        .filter((item) => item.providerId && item.appType && item.model)
+    : []
 }
 
 function normalizeMonitorSettings(value = {}) {
@@ -25,13 +33,13 @@ function normalizeMonitorSettings(value = {}) {
     notifyOnFailure: value.notifyOnFailure !== false,
     targets,
     lastRunAt: Number(value.lastRunAt) || 0,
-    nextRunAt: enabled ? Number(value.nextRunAt) || 0 : 0,
+    nextRunAt: enabled ? Number(value.nextRunAt) || 0 : 0
   }
 }
 
 function updateMonitorSettings(currentValue = {}, changes = {}, savedAt = Date.now()) {
   const current = normalizeMonitorSettings(currentValue)
-  const has = key => Object.prototype.hasOwnProperty.call(changes, key)
+  const has = (key) => Object.prototype.hasOwnProperty.call(changes, key)
   const targets = has('targets') ? normalizeMonitorTargets(changes.targets) : current.targets
   const requestedEnabled = has('enabled') ? Boolean(changes.enabled) : current.enabled
   // 显式启用仍应给出清晰错误；仅清空目标时则自动关闭，避免留下
@@ -48,7 +56,8 @@ function updateMonitorSettings(currentValue = {}, changes = {}, savedAt = Date.n
     ? changes.notifyOnFailure !== false
     : current.notifyOnFailure
   const timestamp = Number(savedAt) || Date.now()
-  const shouldReschedule = !current.enabled || intervalMinutes !== current.intervalMinutes || !current.nextRunAt
+  const shouldReschedule =
+    !current.enabled || intervalMinutes !== current.intervalMinutes || !current.nextRunAt
 
   return {
     enabled,
@@ -56,7 +65,11 @@ function updateMonitorSettings(currentValue = {}, changes = {}, savedAt = Date.n
     notifyOnFailure,
     targets,
     lastRunAt: current.lastRunAt,
-    nextRunAt: enabled ? (shouldReschedule ? timestamp + intervalMinutes * 60_000 : current.nextRunAt) : 0,
+    nextRunAt: enabled
+      ? shouldReschedule
+        ? timestamp + intervalMinutes * 60_000
+        : current.nextRunAt
+      : 0
   }
 }
 
@@ -70,7 +83,7 @@ function completeMonitorRun(settings = {}, completedAt = Date.now()) {
   return {
     ...current,
     lastRunAt: timestamp,
-    nextRunAt: current.enabled ? timestamp + current.intervalMinutes * 60_000 : 0,
+    nextRunAt: current.enabled ? timestamp + current.intervalMinutes * 60_000 : 0
   }
 }
 
@@ -85,5 +98,5 @@ module.exports = {
   countMonitorAnomalies,
   normalizeMonitorSettings,
   normalizeMonitorTargets,
-  updateMonitorSettings,
+  updateMonitorSettings
 }

@@ -497,6 +497,24 @@ textarea:focus {
   --td-radius-default: var(--radius);
   --td-radius-medium: var(--radius);
   --td-radius-large: var(--radius-lg);
+  --td-success-color: var(--success);
+  --td-warning-color: var(--warning);
+  --td-error-color: var(--danger);
+  --td-bg-color-container: var(--card-bg);
+  --td-bg-color-container-hover: var(--bg-subtle);
+  --td-bg-color-container-active: var(--border);
+  --td-text-color-primary: var(--text);
+  --td-text-color-secondary: var(--text-secondary);
+  --td-font-body-medium: var(--font-size-md) / 1.5 var(--font-family);
+  --td-comp-paddingTB-m: 12px;
+  --td-comp-paddingLR-l: 16px;
+  --td-comp-margin-s: var(--spacing-sm);
+  --td-comp-margin-xxl: var(--spacing-xl);
+  --td-shadow-3: var(--shadow-xl);
+  --td-shadow-inset-top: none;
+  --td-shadow-inset-right: none;
+  --td-shadow-inset-bottom: none;
+  --td-shadow-inset-left: none;
 }
 
 /* TDesign Message 覆盖：右侧定位容器占满可用宽度，让提示向视口内侧展开。 */

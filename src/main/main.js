@@ -10,8 +10,14 @@ const { registerGptImageHandlers } = require('./ipc/gpt-image')
 const { registerModelTestHandlers } = require('./ipc/model-test')
 const { registerAiOpsHandlers } = require('./ipc/ai-ops')
 const { registerDataBackupHandlers } = require('./ipc/data-backup')
-const { initializeOpsNotificationService, stopOpsNotificationService } = require('./ops-notification-service')
-const { initializeAutoBackupScheduler, stopAutoBackupScheduler } = require('./ops-auto-backup-scheduler')
+const {
+  initializeOpsNotificationService,
+  stopOpsNotificationService
+} = require('./ops-notification-service')
+const {
+  initializeAutoBackupScheduler,
+  stopAutoBackupScheduler
+} = require('./ops-auto-backup-scheduler')
 const logger = require('./utils/logger')
 
 const isMcpMode = process.argv.includes('--mcp')
@@ -66,7 +72,10 @@ if (isMcpMode) {
     logger.initLogger({ userDataPath: app.getPath('userData') })
     logger.info('应用启动', { version: app.getVersion(), platform: process.platform })
     createWindow()
-    initializeOpsNotificationService({ userDataPath: app.getPath('userData'), getWindow: getMainWindow })
+    initializeOpsNotificationService({
+      userDataPath: app.getPath('userData'),
+      getWindow: getMainWindow
+    })
     initializeAutoBackupScheduler({ userDataPath: app.getPath('userData') })
     registerAllHandlers()
 

@@ -20,11 +20,12 @@ function registerSystemHandlers() {
     const minutes = Math.floor((uptime % 3600) / 60)
 
     return {
-      platform: os.platform() === 'darwin' ? 'macOS' : os.platform() === 'win32' ? 'Windows' : 'Linux',
+      platform:
+        os.platform() === 'darwin' ? 'macOS' : os.platform() === 'win32' ? 'Windows' : 'Linux',
       arch: os.arch(),
       nodeVersion: process.version,
       uptime: `${hours} 小时 ${minutes} 分钟`,
-      memory: `${Math.round(usedMem / 1024 / 1024 / 1024 * 10) / 10} GB / ${Math.round(totalMem / 1024 / 1024 / 1024 * 10) / 10} GB (${memPercent}%)`,
+      memory: `${Math.round((usedMem / 1024 / 1024 / 1024) * 10) / 10} GB / ${Math.round((totalMem / 1024 / 1024 / 1024) * 10) / 10} GB (${memPercent}%)`,
       cpu: cpuModel.length > 40 ? cpuModel.substring(0, 40) + '...' : cpuModel,
       hostname: os.hostname()
     }

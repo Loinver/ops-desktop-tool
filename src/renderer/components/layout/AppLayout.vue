@@ -13,7 +13,11 @@
         </router-view>
       </main>
     </section>
-    <CommandPalette :open="commandPaletteOpen" @close="commandPaletteOpen = false" @open-request="commandPaletteOpen = true" />
+    <CommandPalette
+      :open="commandPaletteOpen"
+      @close="commandPaletteOpen = false"
+      @open-request="commandPaletteOpen = true"
+    />
   </div>
 </template>
 
@@ -26,27 +30,83 @@ import Topbar from './Topbar.vue'
 
 const router = useRouter()
 const keepAliveNames = computed(() =>
-  router.getRoutes().filter(r => r.meta?.keepAlive && r.name).map(r => r.name)
+  router
+    .getRoutes()
+    .filter((r) => r.meta?.keepAlive && r.name)
+    .map((r) => r.name)
 )
 const SIDEBAR_COLLAPSED_KEY = 'ops-desktop.sidebar-collapsed'
 const sidebarCollapsed = ref(readSidebarPreference())
 const commandPaletteOpen = ref(false)
 
 function readSidebarPreference() {
-  try { return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true' } catch { return false }
+  try {
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true'
+  } catch {
+    return false
+  }
 }
 
 function toggleSidebar() {
   sidebarCollapsed.value = !sidebarCollapsed.value
-  try { window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(sidebarCollapsed.value)) } catch {}
+  try {
+    window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(sidebarCollapsed.value))
+  } catch {}
 }
 </script>
 
 <style scoped>
-.app-layout { width: 100vw; height: 100vh; display: flex; overflow: hidden; background: var(--shell-bg); }
-.app-shell { min-width: 0; flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--shell-bg); }
-.workspace { position: relative; z-index: 0; min-width: 0; min-height: 0; flex: 1; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
-.workspace::before { position: absolute; z-index: 0; inset: 0; pointer-events: none; content: ''; background-image: radial-gradient(circle at 83% -10%, rgba(99,102,241,.08), transparent 25%), radial-gradient(circle at 6% 100%, rgba(14,165,233,.055), transparent 23%); }
-.workspace :deep(> *) { position: relative; z-index: 1; }
-.page-fade-enter-active,.page-fade-leave-active { transition: opacity .18s ease, transform .18s ease; }.page-fade-enter-from { opacity: 0; transform: translateY(6px); }.page-fade-leave-to { opacity: 0; transform: translateY(-3px); }
+.app-layout {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  overflow: hidden;
+  background: var(--shell-bg);
+}
+.app-shell {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--shell-bg);
+}
+.workspace {
+  position: relative;
+  z-index: 0;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.workspace::before {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  pointer-events: none;
+  content: '';
+  background-image:
+    radial-gradient(circle at 83% -10%, rgba(99, 102, 241, 0.08), transparent 25%),
+    radial-gradient(circle at 6% 100%, rgba(14, 165, 233, 0.055), transparent 23%);
+}
+.workspace :deep(> *) {
+  position: relative;
+  z-index: 1;
+}
+.page-fade-enter-active,
+.page-fade-leave-active {
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+.page-fade-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+.page-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-3px);
+}
 </style>

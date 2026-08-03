@@ -9,96 +9,98 @@
       </div>
       <div class="page-actions">
         <button type="button" class="btn-refresh" :disabled="store.loading" @click="refresh">
-        <t-icon name="refresh" :class="{ spinning: store.loading }" />
-        <span>刷新</span>
-      </button>
+          <t-icon name="refresh" :class="{ spinning: store.loading }" />
+          <span>刷新</span>
+        </button>
       </div>
     </header>
 
     <main class="page-content">
-    <!-- 基本信息 -->
-    <section class="section">
-      <h3 class="section-title">
-        <t-icon name="info-circle" />
-        基本信息
-      </h3>
-      <div class="info-grid">
-        <div class="info-card interactive-surface" v-for="item in basicInfo" :key="item.label">
-          <div class="info-icon-wrap" :style="{ background: item.bg, color: item.color }">
-            <t-icon :name="item.icon" />
-          </div>
-          <div class="info-body">
-            <span class="info-label">{{ item.label }}</span>
-            <span class="info-value" :title="item.value">{{ item.value }}</span>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- 硬件信息 -->
-    <section class="section">
-      <h3 class="section-title">
-        <t-icon name="server" />
-        硬件信息
-      </h3>
-      <div class="info-grid">
-        <div class="info-card interactive-surface" v-for="item in hardwareInfo" :key="item.label">
-          <div class="info-icon-wrap" :style="{ background: item.bg, color: item.color }">
-            <t-icon :name="item.icon" />
-          </div>
-          <div class="info-body">
-            <span class="info-label">{{ item.label }}</span>
-            <span class="info-value" :title="item.value">{{ item.value }}</span>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- 内存详情 -->
-    <section class="section">
-      <h3 class="section-title">
-        <t-icon name="chart-area" />
-        内存使用
-      </h3>
-      <div class="memory-card">
-        <div class="memory-visual">
-          <div class="memory-ring">
-            <svg viewBox="0 0 120 120">
-              <circle cx="60" cy="60" r="50" fill="none" stroke="#e2e8f0" stroke-width="10" />
-              <circle
-                cx="60" cy="60" r="50"
-                fill="none"
-                :stroke="memoryColor"
-                stroke-width="10"
-                stroke-linecap="round"
-                :stroke-dasharray="memoryDashArray"
-                stroke-dashoffset="0"
-                transform="rotate(-90 60 60)"
-                class="memory-progress"
-              />
-            </svg>
-            <div class="memory-percent">
-              <span class="percent-num">{{ memoryPercent }}</span>
-              <span class="percent-sign">%</span>
+      <!-- 基本信息 -->
+      <section class="section">
+        <h3 class="section-title">
+          <t-icon name="info-circle" />
+          基本信息
+        </h3>
+        <div class="info-grid">
+          <div class="info-card interactive-surface" v-for="item in basicInfo" :key="item.label">
+            <div class="info-icon-wrap" :style="{ background: item.bg, color: item.color }">
+              <t-icon :name="item.icon" />
+            </div>
+            <div class="info-body">
+              <span class="info-label">{{ item.label }}</span>
+              <span class="info-value" :title="item.value">{{ item.value }}</span>
             </div>
           </div>
         </div>
-        <div class="memory-details">
-          <div class="memory-row">
-            <span class="memory-label">已使用</span>
-            <span class="memory-value used">{{ memoryUsed }}</span>
-          </div>
-          <div class="memory-row">
-            <span class="memory-label">总内存</span>
-            <span class="memory-value total">{{ memoryTotal }}</span>
-          </div>
-          <div class="memory-row">
-            <span class="memory-label">可用</span>
-            <span class="memory-value free">{{ memoryFree }}</span>
+      </section>
+
+      <!-- 硬件信息 -->
+      <section class="section">
+        <h3 class="section-title">
+          <t-icon name="server" />
+          硬件信息
+        </h3>
+        <div class="info-grid">
+          <div class="info-card interactive-surface" v-for="item in hardwareInfo" :key="item.label">
+            <div class="info-icon-wrap" :style="{ background: item.bg, color: item.color }">
+              <t-icon :name="item.icon" />
+            </div>
+            <div class="info-body">
+              <span class="info-label">{{ item.label }}</span>
+              <span class="info-value" :title="item.value">{{ item.value }}</span>
+            </div>
           </div>
         </div>
-      </div>
-    </section>
+      </section>
+
+      <!-- 内存详情 -->
+      <section class="section">
+        <h3 class="section-title">
+          <t-icon name="chart-area" />
+          内存使用
+        </h3>
+        <div class="memory-card">
+          <div class="memory-visual">
+            <div class="memory-ring">
+              <svg viewBox="0 0 120 120">
+                <circle cx="60" cy="60" r="50" fill="none" stroke="#e2e8f0" stroke-width="10" />
+                <circle
+                  cx="60"
+                  cy="60"
+                  r="50"
+                  fill="none"
+                  :stroke="memoryColor"
+                  stroke-width="10"
+                  stroke-linecap="round"
+                  :stroke-dasharray="memoryDashArray"
+                  stroke-dashoffset="0"
+                  transform="rotate(-90 60 60)"
+                  class="memory-progress"
+                />
+              </svg>
+              <div class="memory-percent">
+                <span class="percent-num">{{ memoryPercent }}</span>
+                <span class="percent-sign">%</span>
+              </div>
+            </div>
+          </div>
+          <div class="memory-details">
+            <div class="memory-row">
+              <span class="memory-label">已使用</span>
+              <span class="memory-value used">{{ memoryUsed }}</span>
+            </div>
+            <div class="memory-row">
+              <span class="memory-label">总内存</span>
+              <span class="memory-value total">{{ memoryTotal }}</span>
+            </div>
+            <div class="memory-row">
+              <span class="memory-label">可用</span>
+              <span class="memory-value free">{{ memoryFree }}</span>
+            </div>
+          </div>
+        </div>
+      </section>
     </main>
   </div>
 </template>
@@ -115,22 +117,22 @@ const basicInfo = computed(() => [
     value: `${store.system.platform || '-'} ${store.system.arch || ''}`,
     icon: 'logo-apple',
     bg: 'linear-gradient(135deg, #f1f5f9, #e2e8f0)',
-    color: '#475569',
+    color: '#475569'
   },
   {
     label: '主机名',
     value: store.system.hostname || '-',
     icon: 'server',
     bg: 'linear-gradient(135deg, #fdf2f8, #fce7f3)',
-    color: '#ec4899',
+    color: '#ec4899'
   },
   {
     label: '运行时间',
     value: store.system.uptime || '-',
     icon: 'time',
     bg: 'linear-gradient(135deg, #eff6ff, #dbeafe)',
-    color: '#3b82f6',
-  },
+    color: '#3b82f6'
+  }
 ])
 
 const hardwareInfo = computed(() => [
@@ -139,22 +141,22 @@ const hardwareInfo = computed(() => [
     value: store.system.cpu || '-',
     icon: 'setting',
     bg: 'linear-gradient(135deg, #eef2ff, #e0e7ff)',
-    color: '#6366f1',
+    color: '#6366f1'
   },
   {
     label: 'Node.js',
     value: store.system.nodeVersion || '-',
     icon: 'code',
     bg: 'linear-gradient(135deg, #ecfdf5, #d1fae5)',
-    color: '#10b981',
+    color: '#10b981'
   },
   {
     label: '平台架构',
     value: store.system.arch || '-',
     icon: 'cpu',
     bg: 'linear-gradient(135deg, #fef3c7, #fde68a)',
-    color: '#f59e0b',
-  },
+    color: '#f59e0b'
+  }
 ])
 
 const memoryUsed = computed(() => {
@@ -235,8 +237,12 @@ onMounted(() => {
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* 分区 */
@@ -413,7 +419,6 @@ onMounted(() => {
 .memory-value.free {
   color: var(--success);
 }
-
 
 @media (max-width: 960px) {
   .info-grid {

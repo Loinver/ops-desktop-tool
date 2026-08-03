@@ -10,7 +10,9 @@ function monitorPath(userDataPath) {
 }
 
 function text(input, max = 300) {
-  return String(input || '').trim().slice(0, max)
+  return String(input || '')
+    .trim()
+    .slice(0, max)
 }
 
 function normalizeProtocol(input) {
@@ -21,7 +23,8 @@ function normalizeProtocol(input) {
 
 function normalizePort(input) {
   const port = Number.parseInt(String(input), 10)
-  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('端口必须是 1 到 65535 之间的整数')
+  if (!Number.isInteger(port) || port < 1 || port > 65535)
+    throw new Error('端口必须是 1 到 65535 之间的整数')
   return port
 }
 
@@ -46,9 +49,11 @@ function normalizeWatch(input = {}) {
     createdAt: Number(input.createdAt) || now,
     updatedAt: Number(input.updatedAt) || now,
     lastSeenAt: Number(input.lastSeenAt) || 0,
-    lastState: ['online', 'offline', 'unknown'].includes(input.lastState) ? input.lastState : 'unknown',
+    lastState: ['online', 'offline', 'unknown'].includes(input.lastState)
+      ? input.lastState
+      : 'unknown',
     lastPid: Math.max(0, Number(input.lastPid || input.pid) || 0),
-    lastAddress: text(input.lastAddress || input.address, 200),
+    lastAddress: text(input.lastAddress || input.address, 200)
   }
 }
 
@@ -69,7 +74,9 @@ function loadNodeServiceMonitorState(userDataPath) {
 }
 
 function saveNodeServiceMonitorState(userDataPath, state) {
-  const items = (Array.isArray(state?.items) ? state.items : []).slice(0, MAX_WATCHES).map(normalizeWatch)
+  const items = (Array.isArray(state?.items) ? state.items : [])
+    .slice(0, MAX_WATCHES)
+    .map(normalizeWatch)
   if (!writeJsonFile(monitorPath(userDataPath), { version: STATE_VERSION, items })) {
     throw new Error('保存 Node 服务关注列表失败')
   }
@@ -85,7 +92,7 @@ function watchNodeService(userDataPath, input = {}) {
   const protocol = normalizeProtocol(input.protocol)
   const port = normalizePort(input.port)
   const id = watchId(protocol, port)
-  const existingIndex = state.items.findIndex(item => item.id === id)
+  const existingIndex = state.items.findIndex((item) => item.id === id)
   const existing = existingIndex >= 0 ? state.items[existingIndex] : null
   const now = Date.now()
   const item = normalizeWatch({
@@ -100,7 +107,7 @@ function watchNodeService(userDataPath, input = {}) {
     lastSeenAt: Number(input.lastSeenAt) || existing?.lastSeenAt || now,
     lastState: input.lastState || 'online',
     lastPid: input.pid || existing?.lastPid,
-    lastAddress: input.address || existing?.lastAddress,
+    lastAddress: input.address || existing?.lastAddress
   })
   if (existingIndex >= 0) state.items.splice(existingIndex, 1, item)
   else state.items.unshift(item)
@@ -109,7 +116,7 @@ function watchNodeService(userDataPath, input = {}) {
     message: `Node 服务 ${protocol} ${port} 已重新加入关注并处于运行状态`,
     relatedId: id,
     recoveredAt: now,
-    attributes: { protocol, port, currentPid: item.lastPid },
+    attributes: { protocol, port, currentPid: item.lastPid }
   })
   return item
 }
@@ -119,13 +126,13 @@ function unwatchNodeService(userDataPath, input = {}) {
   const port = normalizePort(input.port)
   const id = watchId(protocol, port)
   const state = loadNodeServiceMonitorState(userDataPath)
-  const existing = state.items.find(item => item.id === id)
-  state.items = state.items.filter(item => item.id !== id)
+  const existing = state.items.find((item) => item.id === id)
+  state.items = state.items.filter((item) => item.id !== id)
   saveNodeServiceMonitorState(userDataPath, state)
   recoverOpsEvent(userDataPath, eventFingerprint(protocol, port), {
     message: `已取消关注 Node 服务 ${protocol} ${port}，关联异常事件自动关闭`,
     relatedId: id,
-    attributes: { protocol, port },
+    attributes: { protocol, port }
   })
   return existing || null
 }
@@ -138,9 +145,12 @@ function checkWatchedNodeServices(userDataPath, entries = [], options = {}) {
 
   for (const item of state.items) {
     if (!item.enabled) continue
-    const matched = activeEntries.find(entry => {
+    const matched = activeEntries.find((entry) => {
       try {
-        return normalizeProtocol(entry.protocol) === item.protocol && normalizePort(entry.port) === item.port
+        return (
+          normalizeProtocol(entry.protocol) === item.protocol &&
+          normalizePort(entry.port) === item.port
+        )
       } catch {
         return false
       }
@@ -165,8 +175,8 @@ function checkWatchedNodeServices(userDataPath, entries = [], options = {}) {
             port: item.port,
             previousPid,
             currentPid: matched.pid,
-            command: matched.command || item.commandLabel,
-          },
+            command: matched.command || item.commandLabel
+          }
         })
         changes.push({ id: item.id, type: 'recovered' })
       }
@@ -193,8 +203,8 @@ function checkWatchedNodeServices(userDataPath, entries = [], options = {}) {
           port: item.port,
           command: item.commandLabel,
           previousPid,
-          currentPid: 0,
-        },
+          currentPid: 0
+        }
       })
       changes.push({ id: item.id, type: 'offline' })
     }
@@ -211,5 +221,5 @@ module.exports = {
   loadNodeServiceMonitorState,
   saveNodeServiceMonitorState,
   unwatchNodeService,
-  watchNodeService,
+  watchNodeService
 }

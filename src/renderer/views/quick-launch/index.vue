@@ -8,28 +8,56 @@
       </div>
       <div class="page-actions header-actions">
         <button
-type="button"
+          type="button"
           class="btn-primary"
           :disabled="batchOpening"
-          :title="store.quickOpenItems.length ? `打开已配置的 ${store.quickOpenItems.length} 个网站` : '请先配置一键打开的网站'"
+          :title="
+            store.quickOpenItems.length
+              ? `打开已配置的 ${store.quickOpenItems.length} 个网站`
+              : '请先配置一键打开的网站'
+          "
           @click="openConfiguredWebsites"
         >
           <t-icon name="rocket" />
-          <span>{{ batchOpening ? '正在打开…' : `一键打开${store.quickOpenItems.length ? `（${store.quickOpenItems.length}）` : ''}` }}</span>
+          <span>{{
+            batchOpening
+              ? '正在打开…'
+              : `一键打开${store.quickOpenItems.length ? `（${store.quickOpenItems.length}）` : ''}`
+          }}</span>
         </button>
-        <button type="button" class="btn-secondary" title="选择一键打开的网站" @click="showQuickOpenDialog = true">
+        <button
+          type="button"
+          class="btn-secondary"
+          title="选择一键打开的网站"
+          @click="showQuickOpenDialog = true"
+        >
           <t-icon name="setting" />
           <span>配置网站</span>
         </button>
-        <button type="button" class="btn-secondary" title="粘贴 JSON 文本，批量添加网址快捷方式" @click="showBatchTextDialog = true">
+        <button
+          type="button"
+          class="btn-secondary"
+          title="粘贴 JSON 文本，批量添加网址快捷方式"
+          @click="showBatchTextDialog = true"
+        >
           <t-icon name="edit" />
           <span>粘贴 JSON</span>
         </button>
-        <button type="button" class="btn-secondary" title="从 JSON 文件批量导入网址快捷方式" @click="importWebsites">
+        <button
+          type="button"
+          class="btn-secondary"
+          title="从 JSON 文件批量导入网址快捷方式"
+          @click="importWebsites"
+        >
           <t-icon name="upload" />
           <span>导入</span>
         </button>
-        <button type="button" class="btn-secondary" title="导出当前网址快捷方式" @click="exportWebsites">
+        <button
+          type="button"
+          class="btn-secondary"
+          title="导出当前网址快捷方式"
+          @click="exportWebsites"
+        >
           <t-icon name="download" />
           <span>导出</span>
         </button>
@@ -42,84 +70,90 @@ type="button"
 
     <main class="page-content">
       <div class="list-toolbar">
-          <div class="filter-bar" role="tablist" aria-label="快捷方式类型筛选">
-        <button
-type="button"
-          v-for="tab in tabs"
-          :key="tab.id"
-          :class="['filter-chip', { active: store.currentTab === tab.id }]"
-          role="tab"
-          :aria-selected="store.currentTab === tab.id"
-          @click="store.currentTab = tab.id"
-        >
-          <t-icon :name="tab.icon" />
-          <span>{{ tab.name }}</span>
-          <span v-if="tab.count > 0" class="chip-badge">{{ tab.count }}</span>
-        </button>
+        <div class="filter-bar" role="tablist" aria-label="快捷方式类型筛选">
+          <button
+            type="button"
+            v-for="tab in tabs"
+            :key="tab.id"
+            :class="['filter-chip', { active: store.currentTab === tab.id }]"
+            role="tab"
+            :aria-selected="store.currentTab === tab.id"
+            @click="store.currentTab = tab.id"
+          >
+            <t-icon :name="tab.icon" />
+            <span>{{ tab.name }}</span>
+            <span v-if="tab.count > 0" class="chip-badge">{{ tab.count }}</span>
+          </button>
+        </div>
+        <label class="page-search">
+          <t-icon name="search" />
+          <input v-model="store.searchQuery" type="search" placeholder="搜索名称或地址" />
+          <button
+            v-if="store.searchQuery"
+            type="button"
+            title="清除搜索"
+            @click="store.searchQuery = ''"
+          >
+            <t-icon name="close" />
+          </button>
+        </label>
       </div>
-      <label class="page-search">
-        <t-icon name="search" />
-        <input v-model="store.searchQuery" type="search" placeholder="搜索名称或地址" />
-        <button v-if="store.searchQuery" type="button" title="清除搜索" @click="store.searchQuery = ''">
-          <t-icon name="close" />
-        </button>
-      </label>
-    </div>
 
       <section class="content" aria-live="polite">
-      <div v-if="loading" class="loading-state">
-        <t-icon name="loading" />
-        <span>正在加载快捷方式…</span>
-      </div>
-
-      <div v-else-if="store.filteredItems.length === 0" class="empty-state">
-        <div class="empty-illustration">
-          <div class="empty-circle">
-            <t-icon :name="store.searchQuery ? 'search' : 'rocket'" />
-          </div>
-          <div v-if="!store.searchQuery" class="empty-particles">
-            <span class="particle p1"></span>
-            <span class="particle p2"></span>
-            <span class="particle p3"></span>
-          </div>
+        <div v-if="loading" class="loading-state">
+          <t-icon name="loading" />
+          <span>正在加载快捷方式…</span>
         </div>
-        <h3>{{ store.searchQuery ? '没有匹配的快捷方式' : '暂无快捷方式' }}</h3>
-        <p>{{ store.searchQuery ? '请更换关键词，或清除搜索条件' : '点击右上角“添加”创建快捷启动，或从 JSON 文件导入网址' }}</p>
-        <button type="button" v-if="store.searchQuery" class="btn-text" @click="store.searchQuery = ''">
-          清除搜索
-        </button>
-        <button type="button" v-else class="btn-text" @click="openAdd">
-          <t-icon name="add" />
-          立即添加
-        </button>
-      </div>
 
-      <div v-else class="launch-grid">
-        <LaunchCard
-          v-for="item in store.filteredItems"
-          :key="item.id"
-          :item="item"
-          @launch="handleLaunch"
-          @edit="editItem"
-          @delete="deleteItem"
-        />
-      </div>
+        <div v-else-if="store.filteredItems.length === 0" class="empty-state">
+          <div class="empty-illustration">
+            <div class="empty-circle">
+              <t-icon :name="store.searchQuery ? 'search' : 'rocket'" />
+            </div>
+            <div v-if="!store.searchQuery" class="empty-particles">
+              <span class="particle p1"></span>
+              <span class="particle p2"></span>
+              <span class="particle p3"></span>
+            </div>
+          </div>
+          <h3>{{ store.searchQuery ? '没有匹配的快捷方式' : '暂无快捷方式' }}</h3>
+          <p>
+            {{
+              store.searchQuery
+                ? '请更换关键词，或清除搜索条件'
+                : '点击右上角“添加”创建快捷启动，或从 JSON 文件导入网址'
+            }}
+          </p>
+          <button
+            type="button"
+            v-if="store.searchQuery"
+            class="btn-text"
+            @click="store.searchQuery = ''"
+          >
+            清除搜索
+          </button>
+          <button type="button" v-else class="btn-text" @click="openAdd">
+            <t-icon name="add" />
+            立即添加
+          </button>
+        </div>
+
+        <div v-else class="launch-grid">
+          <LaunchCard
+            v-for="item in store.filteredItems"
+            :key="item.id"
+            :item="item"
+            @launch="handleLaunch"
+            @edit="editItem"
+            @delete="deleteItem"
+          />
+        </div>
       </section>
     </main>
 
-    <LaunchDialog
-      v-model="showAddDialog"
-      :editing-item="editingItem"
-      @saved="onSaved"
-    />
-    <BatchWebsiteDialog
-      v-model="showBatchTextDialog"
-      @parsed="addImportedWebsites"
-    />
-    <QuickOpenDialog
-      v-model="showQuickOpenDialog"
-      @saved="onQuickOpenSaved"
-    />
+    <LaunchDialog v-model="showAddDialog" :editing-item="editingItem" @saved="onSaved" />
+    <BatchWebsiteDialog v-model="showBatchTextDialog" @parsed="addImportedWebsites" />
+    <QuickOpenDialog v-model="showQuickOpenDialog" @saved="onQuickOpenSaved" />
   </div>
 </template>
 
@@ -145,9 +179,19 @@ const editingItem = ref(null)
 
 const tabs = computed(() => [
   { id: 'all', name: '全部', icon: 'folder-open', count: store.items.length },
-  { id: 'app', name: '应用', icon: 'app', count: store.items.filter(item => item.type === 'app').length },
+  {
+    id: 'app',
+    name: '应用',
+    icon: 'app',
+    count: store.items.filter((item) => item.type === 'app').length
+  },
   { id: 'url', name: '网址', icon: 'earth', count: store.websiteItems.length },
-  { id: 'folder', name: '文件夹', icon: 'folder', count: store.items.filter(item => item.type === 'folder').length },
+  {
+    id: 'folder',
+    name: '文件夹',
+    icon: 'folder',
+    count: store.items.filter((item) => item.type === 'folder').length
+  }
 ])
 
 function openAdd() {
@@ -166,20 +210,21 @@ async function handleLaunch(item) {
     const ok = typeof result === 'boolean' ? result : result?.ok
 
     if (ok) {
-      const content = item.type === 'url'
-        ? `已在默认浏览器打开 ${result?.target || item.name}`
-        : `正在启动 ${item.name}`
+      const content =
+        item.type === 'url'
+          ? `已在默认浏览器打开 ${result?.target || item.name}`
+          : `正在启动 ${item.name}`
       MessagePlugin.success({ content, placement: 'bottom-right' })
     } else {
       MessagePlugin.error({
         content: result?.error || '启动失败，请检查目标地址或路径',
-        placement: 'bottom-right',
+        placement: 'bottom-right'
       })
     }
   } catch (error) {
     MessagePlugin.error({
       content: error instanceof Error ? error.message : '启动失败，请检查目标地址或路径',
-      placement: 'bottom-right',
+      placement: 'bottom-right'
     })
   }
 }
@@ -197,23 +242,23 @@ async function openConfiguredWebsites() {
     if (result?.opened && result?.failed) {
       MessagePlugin.warning({
         content: `已打开 ${result.opened} 个网站，${result.failed} 个打开失败`,
-        placement: 'bottom-right',
+        placement: 'bottom-right'
       })
     } else if (result?.ok) {
       MessagePlugin.success({
         content: `已在默认浏览器打开 ${result.opened} 个网站`,
-        placement: 'bottom-right',
+        placement: 'bottom-right'
       })
     } else {
       MessagePlugin.error({
         content: result?.error || '一键打开网站失败',
-        placement: 'bottom-right',
+        placement: 'bottom-right'
       })
     }
   } catch (error) {
     MessagePlugin.error({
       content: error instanceof Error ? error.message : '一键打开网站失败',
-      placement: 'bottom-right',
+      placement: 'bottom-right'
     })
   } finally {
     batchOpening.value = false
@@ -224,7 +269,7 @@ async function deleteItem(item) {
   const confirmed = await confirm({
     title: '删除快捷方式',
     content: `确定删除「${item.name}」吗？`,
-    theme: 'warning',
+    theme: 'warning'
   })
   if (!confirmed) return
 
@@ -238,7 +283,7 @@ async function deleteItem(item) {
   } catch (error) {
     MessagePlugin.error({
       content: error instanceof Error ? error.message : '删除快捷方式失败',
-      placement: 'bottom-right',
+      placement: 'bottom-right'
     })
   }
 }
@@ -251,14 +296,17 @@ async function importWebsites() {
   } catch (error) {
     MessagePlugin.error({
       content: error instanceof Error ? error.message : '导入网址 JSON 失败',
-      placement: 'bottom-right',
+      placement: 'bottom-right'
     })
   }
 }
 
 async function addImportedWebsites(result) {
   if (!result?.ok) {
-    MessagePlugin.error({ content: result?.error || '导入网址 JSON 失败', placement: 'bottom-right' })
+    MessagePlugin.error({
+      content: result?.error || '导入网址 JSON 失败',
+      placement: 'bottom-right'
+    })
     return
   }
 
@@ -280,18 +328,21 @@ async function exportWebsites() {
     const result = await store.exportWebsiteItems()
     if (result?.canceled) return
     if (!result?.ok) {
-      MessagePlugin.error({ content: result?.error || '导出网址 JSON 失败', placement: 'bottom-right' })
+      MessagePlugin.error({
+        content: result?.error || '导出网址 JSON 失败',
+        placement: 'bottom-right'
+      })
       return
     }
 
     MessagePlugin.success({
       content: `已导出 ${result.count} 个网址${result.count ? '' : '（空白模板）'}`,
-      placement: 'bottom-right',
+      placement: 'bottom-right'
     })
   } catch (error) {
     MessagePlugin.error({
       content: error instanceof Error ? error.message : '导出网址 JSON 失败',
-      placement: 'bottom-right',
+      placement: 'bottom-right'
     })
   }
 }
@@ -304,7 +355,7 @@ function onSaved() {
 function onQuickOpenSaved(count) {
   MessagePlugin.success({
     content: count ? `已配置一键打开 ${count} 个网站` : '已清空一键打开配置',
-    placement: 'bottom-right',
+    placement: 'bottom-right'
   })
 }
 
@@ -317,7 +368,7 @@ onMounted(async () => {
   } catch (error) {
     MessagePlugin.error({
       content: error instanceof Error ? error.message : '快捷启动配置加载失败',
-      placement: 'bottom-right',
+      placement: 'bottom-right'
     })
   } finally {
     loading.value = false
@@ -464,7 +515,9 @@ onMounted(async () => {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* 空状态 */
@@ -498,8 +551,13 @@ onMounted(async () => {
 }
 
 @keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-8px); }
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
 }
 
 .empty-particles {
@@ -520,13 +578,32 @@ onMounted(async () => {
   animation: sparkle 2s ease-in-out infinite;
 }
 
-.p1 { top: 10%; left: -10%; animation-delay: 0s; }
-.p2 { top: 0%; right: -5%; animation-delay: 0.5s; }
-.p3 { bottom: 10%; left: 5%; animation-delay: 1s; }
+.p1 {
+  top: 10%;
+  left: -10%;
+  animation-delay: 0s;
+}
+.p2 {
+  top: 0%;
+  right: -5%;
+  animation-delay: 0.5s;
+}
+.p3 {
+  bottom: 10%;
+  left: 5%;
+  animation-delay: 1s;
+}
 
 @keyframes sparkle {
-  0%, 100% { opacity: 0.3; transform: scale(1); }
-  50% { opacity: 0.6; transform: scale(1.5); }
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.5);
+  }
 }
 
 .empty-state h3 {

@@ -6,7 +6,7 @@ const SOURCE_ROUTES = {
   log: '/ai-operations',
   copilot: '/ai-operations',
   'node-service': '/node-services',
-  'data-backup': '/data-management',
+  'data-backup': '/data-management'
 }
 
 function queryValue(input) {
@@ -19,14 +19,16 @@ export function routeForOpsEvent(event = {}) {
   const path = SOURCE_ROUTES[sourceType] || '/ops-control-center'
   const query = {
     event: queryValue(event.id),
-    sourceId: queryValue(event.sourceId || event.relatedId),
+    sourceId: queryValue(event.sourceId || event.relatedId)
   }
   if (sourceType === 'node-service') {
-    query.protocol = queryValue(event.attributes?.protocol || String(event.sourceId || '').split(':')[0])
+    query.protocol = queryValue(
+      event.attributes?.protocol || String(event.sourceId || '').split(':')[0]
+    )
     query.port = queryValue(event.attributes?.port || String(event.sourceId || '').split(':')[1])
   }
   return {
     path,
-    query: Object.fromEntries(Object.entries(query).filter(([, value]) => value !== undefined)),
+    query: Object.fromEntries(Object.entries(query).filter(([, value]) => value !== undefined))
   }
 }

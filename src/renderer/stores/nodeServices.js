@@ -1,3 +1,4 @@
+import { opsApi } from '../api/opsApi.js'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
@@ -12,16 +13,16 @@ export const useNodeServicesStore = defineStore('nodeServices', () => {
   const checking = ref(false)
   const lastScan = ref('未扫描')
 
-  const tcpCount = computed(() => services.value.filter(s => s.protocol === 'TCP').length)
-  const udpCount = computed(() => services.value.filter(s => s.protocol === 'UDP').length)
-  const watchedCount = computed(() => watches.value.filter(item => item.enabled !== false).length)
+  const tcpCount = computed(() => services.value.filter((s) => s.protocol === 'TCP').length)
+  const udpCount = computed(() => services.value.filter((s) => s.protocol === 'UDP').length)
+  const watchedCount = computed(() => watches.value.filter((item) => item.enabled !== false).length)
   const watchedKeys = computed(() => new Set(watches.value.map(serviceKey)))
 
   function applyEntries(result) {
     if (!result?.ok) return
-    services.value = (result.entries || []).map(entry => ({
+    services.value = (result.entries || []).map((entry) => ({
       ...entry,
-      id: `${entry.protocol}-${entry.port}-${entry.pid}`,
+      id: `${entry.protocol}-${entry.port}-${entry.pid}`
     }))
     lastScan.value = formatTime(result.scannedAt || result.checkedAt)
   }
@@ -29,7 +30,7 @@ export const useNodeServicesStore = defineStore('nodeServices', () => {
   async function fetchServices() {
     loading.value = true
     try {
-      const result = await window.opsApi.listPorts()
+      const result = await opsApi.listPorts()
       applyEntries(result)
       return result
     } finally {
@@ -38,7 +39,7 @@ export const useNodeServicesStore = defineStore('nodeServices', () => {
   }
 
   async function fetchWatches() {
-    const result = await window.opsApi.getNodeServiceWatches()
+    const result = await opsApi.getNodeServiceWatches()
     if (result?.ok) watches.value = result.items || []
     return result
   }
@@ -47,8 +48,8 @@ export const useNodeServicesStore = defineStore('nodeServices', () => {
     loading.value = true
     try {
       const [servicesResult, watchesResult] = await Promise.all([
-        window.opsApi.listPorts(),
-        window.opsApi.getNodeServiceWatches(),
+        opsApi.listPorts(),
+        opsApi.getNodeServiceWatches()
       ])
       applyEntries(servicesResult)
       if (watchesResult?.ok) watches.value = watchesResult.items || []
@@ -61,7 +62,7 @@ export const useNodeServicesStore = defineStore('nodeServices', () => {
   async function checkWatches() {
     checking.value = true
     try {
-      const result = await window.opsApi.checkNodeServiceWatches()
+      const result = await opsApi.checkNodeServiceWatches()
       applyEntries(result)
       if (result?.ok) watches.value = result.items || []
       return result
@@ -71,21 +72,24 @@ export const useNodeServicesStore = defineStore('nodeServices', () => {
   }
 
   async function watchService(service) {
-    const result = await window.opsApi.watchNodeService({
+    const result = await opsApi.watchNodeService({
       protocol: service.protocol,
       port: service.port,
       pid: service.pid,
       command: service.command,
       address: service.address,
       lastSeenAt: Date.now(),
-      lastState: 'online',
+      lastState: 'online'
     })
     if (result?.ok) await fetchWatches()
     return result
   }
 
   async function unwatchService(service) {
-    const result = await window.opsApi.unwatchNodeService({ protocol: service.protocol, port: service.port })
+    const result = await opsApi.unwatchNodeService({
+      protocol: service.protocol,
+      port: service.port
+    })
     if (result?.ok) await fetchWatches()
     return result
   }
@@ -95,7 +99,7 @@ export const useNodeServicesStore = defineStore('nodeServices', () => {
   }
 
   async function killProcess(pid, signal = 'SIGTERM') {
-    return await window.opsApi.killPid(pid, signal)
+    return await opsApi.killPid(pid, signal)
   }
 
   function formatTime(iso) {
@@ -103,7 +107,7 @@ export const useNodeServicesStore = defineStore('nodeServices', () => {
     return new Intl.DateTimeFormat('zh-CN', {
       hour: '2-digit',
       minute: '2-digit',
-      second: '2-digit',
+      second: '2-digit'
     }).format(new Date(iso))
   }
 
@@ -123,6 +127,6 @@ export const useNodeServicesStore = defineStore('nodeServices', () => {
     watchService,
     unwatchService,
     isWatched,
-    killProcess,
+    killProcess
   }
 })

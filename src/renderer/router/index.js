@@ -41,16 +41,17 @@ const routes = [
       },
       {
         path: 'ai-ops',
-        redirect: to => {
+        redirect: (to) => {
           const tab = String(to.query.tab || '')
-          const target = {
-            providers: '/ai-models',
-            evaluation: '/ai-models',
-            logs: '/ai-operations',
-            workflow: '/ai-operations',
-            knowledge: '/knowledge-base',
-            mcp: '/ai-integrations',
-          }[tab] || '/ai-models'
+          const target =
+            {
+              providers: '/ai-models',
+              evaluation: '/ai-models',
+              logs: '/ai-operations',
+              workflow: '/ai-operations',
+              knowledge: '/knowledge-base',
+              mcp: '/ai-integrations'
+            }[tab] || '/ai-models'
           return { path: target, query: to.query }
         }
       },

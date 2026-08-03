@@ -11,16 +11,20 @@
 1. 拉取最新 `main` 分支
 2. 创建功能分支 `feature/xxx` 或 `bugfix/xxx`
 3. 编写对应单元测试
-4. 运行 `pnpm check`（包含 lint、测试和生产构建）
+4. 运行 `pnpm check`（包含 Prettier、lint、Node/Renderer 测试、Electron E2E 和生产构建）
 5. 提交时附带描述性 commit message
 
 ### 3. 构建与测试
 ```bash
 pnpm install
-pnpm verify
-pnpm check
+pnpm test          # Node、Renderer 与边界检查
+pnpm test:e2e      # Playwright Electron 冒烟测试
+pnpm verify        # Prettier + ESLint + 全部测试
+pnpm check         # verify + 生产构建
 pnpm electron:build:mac
 ```
+
+Linux CI 通过 `xvfb-run` 运行 Electron E2E；本地无图形会话时也应使用等效的虚拟显示环境。
 
 ### 4. 文档要求
 - 新功能必须更新 `README.md` 或 `ARCHITECTURE.md`

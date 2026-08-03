@@ -36,14 +36,14 @@ function readSecretField({ safeStorage, record = {}, encryptedKey, legacyKey }) 
   if (encryptedValue) {
     return {
       value: decryptSecret(safeStorage, encryptedValue),
-      needsMigration: false,
+      needsMigration: false
     }
   }
 
   const legacyValue = String(record?.[legacyKey] || '')
   return {
     value: legacyValue,
-    needsMigration: Boolean(legacyValue),
+    needsMigration: Boolean(legacyValue)
   }
 }
 
@@ -59,5 +59,5 @@ module.exports = {
   encryptSecret,
   decryptSecret,
   readSecretField,
-  maskSecret,
+  maskSecret
 }

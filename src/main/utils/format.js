@@ -31,7 +31,7 @@ function formatTime(timestamp) {
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
-    second: '2-digit',
+    second: '2-digit'
   })
 }
 
@@ -55,13 +55,31 @@ function getFileTypeIcon(item) {
   const path = require('node:path')
   const ext = path.extname(item.name).toLowerCase()
   const iconMap = {
-    '.js': 'code', '.ts': 'code', '.vue': 'code', '.jsx': 'code', '.tsx': 'code',
-    '.json': 'file', '.md': 'file', '.txt': 'file', '.log': 'file',
-    '.html': 'earth', '.css': 'image', '.scss': 'image',
-    '.png': 'image', '.jpg': 'image', '.jpeg': 'image', '.gif': 'image', '.svg': 'image',
-    '.zip': 'folder-zip', '.tar': 'folder-zip', '.gz': 'folder-zip',
-    '.sh': 'setting', '.conf': 'setting', '.yml': 'setting',
-    '.sql': 'object-storage', '.db': 'object-storage',
+    '.js': 'code',
+    '.ts': 'code',
+    '.vue': 'code',
+    '.jsx': 'code',
+    '.tsx': 'code',
+    '.json': 'file',
+    '.md': 'file',
+    '.txt': 'file',
+    '.log': 'file',
+    '.html': 'earth',
+    '.css': 'image',
+    '.scss': 'image',
+    '.png': 'image',
+    '.jpg': 'image',
+    '.jpeg': 'image',
+    '.gif': 'image',
+    '.svg': 'image',
+    '.zip': 'folder-zip',
+    '.tar': 'folder-zip',
+    '.gz': 'folder-zip',
+    '.sh': 'setting',
+    '.conf': 'setting',
+    '.yml': 'setting',
+    '.sql': 'object-storage',
+    '.db': 'object-storage'
   }
   return iconMap[ext] || 'file'
 }

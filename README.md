@@ -56,10 +56,13 @@ OPEN_DEVTOOLS=false pnpm start
 ## 测试与检查
 
 ```bash
-# Node 测试 + 端口解析检查
+# Node / Renderer 测试、端口解析与 Renderer IPC 边界检查
 pnpm test
 
-# 质量检查：lint + 测试
+# Electron 桌面壳与关键路由 Playwright 冒烟测试
+pnpm test:e2e
+
+# 质量检查：Prettier、ESLint、全部测试与 Electron E2E
 pnpm verify
 
 # 完整检查：质量检查后执行生产构建
@@ -72,7 +75,7 @@ pnpm test:sftp
 pnpm mcp
 ```
 
-测试覆盖安全凭证迁移、IPC 通道一致性、路径边界、SFTP 部署安全、AI 图片文件处理、AI 运维核心能力和端口解析。
+测试覆盖安全凭证迁移、IPC 通道一致性、Renderer IPC 边界、路径边界、SFTP 部署安全、AI 图片文件处理、AI 运维核心能力和端口解析；`pnpm test:e2e` 会启动临时 Vite 服务与 Electron，验证桌面壳及关键路由可用。
 
 ## 构建与打包
 
@@ -192,7 +195,7 @@ MCP 服务通过 stdio 提供严格只读的 `get_release_history`、`get_model_
 
 ### 发布前检查清单
 
-- [ ] `pnpm verify`（lint + 测试）全部通过
+- [ ] `pnpm verify`（Prettier、lint、单元/Renderer 测试与 Electron E2E）全部通过
 - [ ] `pnpm check` 运行成功
 - [ ] 构建输出在 `release/` 目录中完整（含 .dmg / .exe / .AppImage）
 - [ ] `CHANGELOG.md` 已更新

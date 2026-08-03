@@ -1,123 +1,123 @@
 <template>
   <Teleport to="body">
-  <div v-if="modelValue" class="dialog-overlay">
-    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="launch-dialog-title">
-      <div class="dialog-header">
-        <h3 id="launch-dialog-title">{{ editingItem ? '编辑快捷方式' : '添加快捷方式' }}</h3>
-        <button type="button" class="close-btn" title="关闭" aria-label="关闭" @click="close">
-          <t-icon name="close" />
-        </button>
-      </div>
-
-      <div class="dialog-body">
-        <!-- 名称 -->
-        <div class="form-group">
-          <label class="form-label">名称</label>
-          <input
-            v-model="form.name"
-            type="text"
-            class="form-input"
-            placeholder="例如：VS Code、Google"
-          />
+    <div v-if="modelValue" class="dialog-overlay">
+      <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="launch-dialog-title">
+        <div class="dialog-header">
+          <h3 id="launch-dialog-title">{{ editingItem ? '编辑快捷方式' : '添加快捷方式' }}</h3>
+          <button type="button" class="close-btn" title="关闭" aria-label="关闭" @click="close">
+            <t-icon name="close" />
+          </button>
         </div>
 
-        <!-- 类型选择 -->
-        <div class="form-group">
-          <label class="form-label">类型</label>
-          <div class="type-selector">
-            <button
-type="button"
-              v-for="t in typeOptions"
-              :key="t.value"
-              :class="['type-btn', { active: form.type === t.value }]"
-              @click="form.type = t.value"
-            >
-              <t-icon :name="t.icon" />
-              <span>{{ t.label }}</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- 路径/网址 -->
-        <div class="form-group">
-          <label class="form-label">{{ targetLabel }}</label>
-          <div class="input-with-btn">
+        <div class="dialog-body">
+          <!-- 名称 -->
+          <div class="form-group">
+            <label class="form-label">名称</label>
             <input
-              v-model="form.target"
-              :type="form.type === 'url' ? 'url' : 'text'"
+              v-model="form.name"
+              type="text"
               class="form-input"
-              :placeholder="targetPlaceholder"
+              placeholder="例如：VS Code、Google"
             />
-            <button
-type="button"
-              v-if="form.type !== 'url'"
-              class="browse-btn"
-              @click="browseFile"
-            >
-              <t-icon name="folder-open" />
-              浏览
-            </button>
-          </div>
-        </div>
-
-        <label v-if="form.type === 'url'" class="quick-open-option">
-          <input v-model="form.quickOpen" type="checkbox" />
-          <span>
-            <strong>加入一键打开</strong>
-            <small>在页面顶部点击“一键打开”时同时打开此网站</small>
-          </span>
-        </label>
-
-        <!-- 图标 -->
-        <div class="form-row">
-          <div class="form-group flex-1">
-            <label class="form-label">图标</label>
-            <div class="icon-input-wrap">
-              <div class="icon-preview" :style="{ background: form.color }">
-                <span v-if="form.icon">{{ form.icon }}</span>
-                <t-icon v-else :name="getDefaultIcon(form.type)" />
-              </div>
-              <input
-                v-model="form.icon"
-                type="text"
-                class="form-input"
-                maxlength="4"
-                placeholder="emoji 或留空"
-              />
-            </div>
           </div>
 
-          <div class="form-group flex-2">
-            <label class="form-label">颜色</label>
-            <div class="color-grid">
+          <!-- 类型选择 -->
+          <div class="form-group">
+            <label class="form-label">类型</label>
+            <div class="type-selector">
               <button
-type="button"
-                v-for="color in colors"
-                :key="color"
-                :class="['color-dot', { active: form.color === color }]"
-                :style="{ background: color }"
-                @click="form.color = color"
+                type="button"
+                v-for="t in typeOptions"
+                :key="t.value"
+                :class="['type-btn', { active: form.type === t.value }]"
+                @click="form.type = t.value"
               >
-                <t-icon v-if="form.color === color" name="check" />
+                <t-icon :name="t.icon" />
+                <span>{{ t.label }}</span>
               </button>
             </div>
           </div>
+
+          <!-- 路径/网址 -->
+          <div class="form-group">
+            <label class="form-label">{{ targetLabel }}</label>
+            <div class="input-with-btn">
+              <input
+                v-model="form.target"
+                :type="form.type === 'url' ? 'url' : 'text'"
+                class="form-input"
+                :placeholder="targetPlaceholder"
+              />
+              <button
+                type="button"
+                v-if="form.type !== 'url'"
+                class="browse-btn"
+                @click="browseFile"
+              >
+                <t-icon name="folder-open" />
+                浏览
+              </button>
+            </div>
+          </div>
+
+          <label v-if="form.type === 'url'" class="quick-open-option">
+            <input v-model="form.quickOpen" type="checkbox" />
+            <span>
+              <strong>加入一键打开</strong>
+              <small>在页面顶部点击“一键打开”时同时打开此网站</small>
+            </span>
+          </label>
+
+          <!-- 图标 -->
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label class="form-label">图标</label>
+              <div class="icon-input-wrap">
+                <div class="icon-preview" :style="{ background: form.color }">
+                  <span v-if="form.icon">{{ form.icon }}</span>
+                  <t-icon v-else :name="getDefaultIcon(form.type)" />
+                </div>
+                <input
+                  v-model="form.icon"
+                  type="text"
+                  class="form-input"
+                  maxlength="4"
+                  placeholder="emoji 或留空"
+                />
+              </div>
+            </div>
+
+            <div class="form-group flex-2">
+              <label class="form-label">颜色</label>
+              <div class="color-grid">
+                <button
+                  type="button"
+                  v-for="color in colors"
+                  :key="color"
+                  :class="['color-dot', { active: form.color === color }]"
+                  :style="{ background: color }"
+                  @click="form.color = color"
+                >
+                  <t-icon v-if="form.color === color" name="check" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="dialog-footer">
+          <button type="button" class="btn-cancel" @click="close">取消</button>
+          <button
+            type="button"
+            class="btn-confirm"
+            :disabled="saving || !form.name.trim() || !form.target.trim()"
+            @click="save"
+          >
+            {{ saving ? '保存中…' : editingItem ? '保存' : '添加' }}
+          </button>
         </div>
       </div>
-
-      <div class="dialog-footer">
-        <button type="button" class="btn-cancel" @click="close">取消</button>
-        <button
-type="button"
-          class="btn-confirm"
-          :disabled="saving || !form.name.trim() || !form.target.trim()"
-          @click="save"
-        >
-          {{ saving ? '保存中…' : (editingItem ? '保存' : '添加') }}
-        </button>
-      </div>
     </div>
-  </div>
   </Teleport>
 </template>
 
@@ -142,19 +142,28 @@ const form = ref({
   target: '',
   icon: '',
   color: '#6366f1',
-  quickOpen: false,
+  quickOpen: false
 })
 
 const colors = [
-  '#6366f1', '#8b5cf6', '#a855f7', '#ec4899',
-  '#ef4444', '#f97316', '#eab308', '#22c55e',
-  '#14b8a6', '#06b6d4', '#3b82f6', '#6b7280',
+  '#6366f1',
+  '#8b5cf6',
+  '#a855f7',
+  '#ec4899',
+  '#ef4444',
+  '#f97316',
+  '#eab308',
+  '#22c55e',
+  '#14b8a6',
+  '#06b6d4',
+  '#3b82f6',
+  '#6b7280'
 ]
 
 const typeOptions = [
   { value: 'app', label: '应用', icon: 'app' },
   { value: 'url', label: '网址', icon: 'earth' },
-  { value: 'folder', label: '文件夹', icon: 'folder' },
+  { value: 'folder', label: '文件夹', icon: 'folder' }
 ]
 
 const targetLabel = computed(() => {
@@ -176,13 +185,16 @@ function getDefaultIcon(type) {
   return map[type] || 'app'
 }
 
-watch(() => props.modelValue, (val) => {
-  if (val && props.editingItem) {
-    form.value = { ...props.editingItem }
-  } else if (val) {
-    resetForm()
+watch(
+  () => props.modelValue,
+  (val) => {
+    if (val && props.editingItem) {
+      form.value = { ...props.editingItem }
+    } else if (val) {
+      resetForm()
+    }
   }
-})
+)
 
 function resetForm() {
   form.value = {
@@ -191,7 +203,7 @@ function resetForm() {
     target: '',
     icon: '',
     color: '#6366f1',
-    quickOpen: false,
+    quickOpen: false
   }
 }
 
@@ -208,7 +220,7 @@ async function save() {
       ...form.value,
       name: form.value.name.trim(),
       target: form.value.target.trim(),
-      quickOpen: form.value.type === 'url' && form.value.quickOpen === true,
+      quickOpen: form.value.type === 'url' && form.value.quickOpen === true
     }
     const ok = props.editingItem
       ? await store.updateItem(props.editingItem.id, payload)
@@ -224,7 +236,7 @@ async function save() {
   } catch (error) {
     MessagePlugin.error({
       content: error instanceof Error ? error.message : '快捷方式保存失败',
-      placement: 'bottom-right',
+      placement: 'bottom-right'
     })
   } finally {
     saving.value = false
@@ -256,8 +268,12 @@ async function browseFile() {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .dialog {
@@ -271,8 +287,14 @@ async function browseFile() {
 }
 
 @keyframes slideUp {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .dialog-header {
@@ -461,8 +483,12 @@ async function browseFile() {
   gap: 16px;
 }
 
-.flex-1 { flex: 1; }
-.flex-2 { flex: 2; }
+.flex-1 {
+  flex: 1;
+}
+.flex-2 {
+  flex: 2;
+}
 
 .icon-input-wrap {
   display: flex;

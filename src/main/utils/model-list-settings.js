@@ -7,7 +7,9 @@ function normalizeModelRules(value) {
   const rules = []
 
   for (const raw of source) {
-    const rule = String(raw || '').trim().slice(0, MAX_MODEL_RULE_LENGTH)
+    const rule = String(raw || '')
+      .trim()
+      .slice(0, MAX_MODEL_RULE_LENGTH)
     if (!rule) continue
     const key = rule.toLowerCase()
     if (seen.has(key)) continue
@@ -23,7 +25,7 @@ function normalizeModelListSettings(value = {}) {
   return {
     mode: value?.mode === 'include' ? 'include' : 'all',
     includeRules: normalizeModelRules(value?.includeRules),
-    excludeRules: normalizeModelRules(value?.excludeRules),
+    excludeRules: normalizeModelRules(value?.excludeRules)
   }
 }
 
@@ -48,7 +50,7 @@ function matchesModelRule(model, rule) {
 }
 
 function matchesAnyModelRule(model, rules) {
-  return normalizeModelRules(rules).some(rule => matchesModelRule(model, rule))
+  return normalizeModelRules(rules).some((rule) => matchesModelRule(model, rule))
 }
 
 function isModelIncludedBySettings(model, value = {}) {
@@ -63,7 +65,9 @@ function isModelIncludedBySettings(model, value = {}) {
  * 其它型号均交由用户保存的包含/排除规则与实际探测请求决定。
  */
 function modelProtocolAffinity(model) {
-  const raw = bareModelId(model).toLowerCase().replace(/[^a-z0-9]/g, '')
+  const raw = bareModelId(model)
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
   if (raw.startsWith('claude')) return 'anthropic'
   if (raw.startsWith('gemini')) return 'gemini'
   if (raw.startsWith('gpt') || raw.startsWith('grok') || raw.includes('image')) return 'openai'
@@ -83,5 +87,5 @@ module.exports = {
   matchesModelRule,
   isModelIncludedBySettings,
   modelProtocolAffinity,
-  isModelAllowedForProtocol,
+  isModelAllowedForProtocol
 }

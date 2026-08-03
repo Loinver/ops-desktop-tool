@@ -6,8 +6,8 @@
       {
         'has-available-model': provider.stat.ok > 0,
         'nav-target': isNavTarget,
-        collapsed: !expanded,
-      },
+        collapsed: !expanded
+      }
     ]"
   >
     <header class="provider-head provider-group-head">
@@ -28,7 +28,8 @@
           :key="entry.key"
           class="app-tag"
           :data-app="entry.appType"
-        >{{ entry.appLabel }}</span>
+          >{{ entry.appLabel }}</span
+        >
         <span v-if="provider.isCurrent" class="current-tag">当前使用</span>
       </div>
       <div class="provider-actions">
@@ -101,7 +102,7 @@
               title="复制 baseUrl"
               @click="$emit('copy-provider-value', entry, 'baseUrl')"
             >
-              <code>{{ entry.baseUrl || "未配置 baseUrl" }}</code>
+              <code>{{ entry.baseUrl || '未配置 baseUrl' }}</code>
               <t-icon name="file-copy" />
             </button>
             <button
@@ -115,10 +116,7 @@
               <t-icon name="file-copy" />
             </button>
           </div>
-          <div
-            v-if="provider.entries.length > 1"
-            class="provider-actions provider-profile-actions"
-          >
+          <div v-if="provider.entries.length > 1" class="provider-actions provider-profile-actions">
             <button
               class="btn-ghost small"
               type="button"
@@ -145,7 +143,7 @@
 
         <div v-if="entry.issues.length" class="provider-issues">
           <t-icon name="info-circle" />
-          <span>{{ entry.issues.join("、") }}，无法测试</span>
+          <span>{{ entry.issues.join('、') }}，无法测试</span>
         </div>
 
         <div v-else class="model-section">
@@ -205,9 +203,11 @@
                   <td
                     class="col-duration"
                     :class="durationClass(row.result)"
-                    :title="row.result.durationMs ? `耗时 ${formatDuration(row.result.durationMs)}` : ''"
+                    :title="
+                      row.result.durationMs ? `耗时 ${formatDuration(row.result.durationMs)}` : ''
+                    "
                   >
-                    {{ row.result.durationMs ? formatDuration(row.result.durationMs) : "—" }}
+                    {{ row.result.durationMs ? formatDuration(row.result.durationMs) : '—' }}
                   </td>
                   <td class="col-detail">
                     <button
@@ -220,14 +220,15 @@
                     >
                       <span class="detail-text">{{ detailText(row.result) }}</span>
                       <span class="detail-toggle">
-                        {{ isDetailExpanded(row.key) ? "收起" : "展开" }}
+                        {{ isDetailExpanded(row.key) ? '收起' : '展开' }}
                       </span>
                     </button>
                     <span
                       v-else-if="detailText(row.result)"
                       class="detail-text"
                       :title="detailTitle(row.result)"
-                    >{{ detailText(row.result) }}</span>
+                      >{{ detailText(row.result) }}</span
+                    >
                     <span v-else class="detail-empty">—</span>
                   </td>
                   <td class="col-action">
@@ -237,14 +238,14 @@
                         'btn-link',
                         {
                           danger: isFailed(row.result.status),
-                          primary: row.result.status === 'idle',
-                        },
+                          primary: row.result.status === 'idle'
+                        }
                       ]"
                       :disabled="running || row.result.status === 'testing'"
                       :title="retestTitle(row.result.status)"
                       @click="$emit('test-one', entry, row)"
                     >
-                      {{ row.result.status === "idle" ? "测试" : "重测" }}
+                      {{ row.result.status === 'idle' ? '测试' : '重测' }}
                     </button>
                   </td>
                 </tr>
@@ -261,91 +262,91 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref } from "vue";
-import { FAILED_STATUSES } from "../constants.js";
+import { computed, reactive, ref } from 'vue'
+import { FAILED_STATUSES } from '../constants.js'
 import {
   detailText,
   durationTone,
   formatDuration,
   protocolDisplay,
   protocolLabel,
-  statusText,
-} from "../modelUtils.js";
+  statusText
+} from '../modelUtils.js'
 
 const props = defineProps({
   provider: { type: Object, required: true },
   expanded: { type: Boolean, default: false },
   isNavTarget: { type: Boolean, default: false },
   running: { type: Boolean, default: false },
-  preparing: { type: Boolean, default: false },
-});
+  preparing: { type: Boolean, default: false }
+})
 
 const bestDurationLabel = computed(() => {
   const ms = (props.provider.rows || [])
-    .filter((row) => row.result?.status === "ok" && Number(row.result.durationMs) > 0)
-    .map((row) => Number(row.result.durationMs));
-  if (!ms.length) return "";
-  return formatDuration(Math.min(...ms));
-});
+    .filter((row) => row.result?.status === 'ok' && Number(row.result.durationMs) > 0)
+    .map((row) => Number(row.result.durationMs))
+  if (!ms.length) return ''
+  return formatDuration(Math.min(...ms))
+})
 
 function durationClass(result) {
-  if (!result?.durationMs) return "";
-  if (result.status !== "ok") return "is-muted";
-  const tone = durationTone(result.durationMs);
-  return tone ? `is-${tone}` : "";
+  if (!result?.durationMs) return ''
+  if (result.status !== 'ok') return 'is-muted'
+  const tone = durationTone(result.durationMs)
+  return tone ? `is-${tone}` : ''
 }
 
 const emit = defineEmits([
-  "toggle",
-  "fetch-models",
-  "test",
-  "fetch-entry-models",
-  "test-entry",
-  "copy-provider-value",
-  "copy-model",
-  "test-one",
-]);
+  'toggle',
+  'fetch-models',
+  'test',
+  'fetch-entry-models',
+  'test-entry',
+  'copy-provider-value',
+  'copy-model',
+  'test-one'
+])
 
-const expandedDetails = reactive({});
-const copiedModel = ref("");
-let copiedTimer = 0;
+const expandedDetails = reactive({})
+const copiedModel = ref('')
+let copiedTimer = 0
 
 function isFailed(status) {
-  return FAILED_STATUSES.includes(status);
+  return FAILED_STATUSES.includes(status)
 }
 
 function retestTitle(status) {
-  if (status === "testing") return "测试进行中";
-  if (status === "idle") return "对该模型发起连通测试";
-  if (isFailed(status)) return "重新测试失败模型";
-  return "重新测试";
+  if (status === 'testing') return '测试进行中'
+  if (status === 'idle') return '对该模型发起连通测试'
+  if (isFailed(status)) return '重新测试失败模型'
+  return '重新测试'
 }
 
 function detailTitle(result) {
-  if (!result) return "";
-  const parts = [result.message, result.endpoint].filter(Boolean);
-  return parts.join(" · ");
+  if (!result) return ''
+  const parts = [result.message, result.endpoint].filter(Boolean)
+  return parts.join(' · ')
 }
 
 function canExpandDetail(result) {
-  const text = detailText(result);
-  return Boolean(text && (text.length > 36 || text.includes(" · ")));
+  const text = detailText(result)
+  return Boolean(text && (text.length > 36 || text.includes(' · ')))
 }
 
 function isDetailExpanded(key) {
-  return Boolean(expandedDetails[key]);
+  return Boolean(expandedDetails[key])
 }
 
 function toggleDetail(key) {
-  expandedDetails[key] = !expandedDetails[key];
+  expandedDetails[key] = !expandedDetails[key]
 }
 
 function onCopyModel(model) {
-  emit("copy-model", model);
-  copiedModel.value = model;
-  if (copiedTimer) window.clearTimeout(copiedTimer);
+  emit('copy-model', model)
+  copiedModel.value = model
+  if (copiedTimer) window.clearTimeout(copiedTimer)
   copiedTimer = window.setTimeout(() => {
-    if (copiedModel.value === model) copiedModel.value = "";
-  }, 1200);
+    if (copiedModel.value === model) copiedModel.value = ''
+  }, 1200)
 }
 </script>

@@ -7,10 +7,20 @@ const { formatSize, formatTime, formatPermissions, getFileTypeIcon } = require('
 const { readJsonFile, writeJsonFile } = require('../utils/json-store')
 const { encryptSecret, maskSecret, readSecretField } = require('../utils/secure-secret')
 const { assertLocalPath, normalizeRemotePath } = require('../utils/path-security')
-const { createReleaseIgnoreMatcher, normalizeRuleLines, scanLocalEntries } = require('../utils/release-ignore')
 const {
-  listReleaseProfiles, getActiveReleaseProfile, saveReleaseProfile, activateReleaseProfile,
-  deleteReleaseProfile, loadReleaseHistory, appendReleaseHistory, markReleaseRolledBack,
+  createReleaseIgnoreMatcher,
+  normalizeRuleLines,
+  scanLocalEntries
+} = require('../utils/release-ignore')
+const {
+  listReleaseProfiles,
+  getActiveReleaseProfile,
+  saveReleaseProfile,
+  activateReleaseProfile,
+  deleteReleaseProfile,
+  loadReleaseHistory,
+  appendReleaseHistory,
+  markReleaseRolledBack
 } = require('../utils/release-store')
 const { addOpsEvent, runHttpHealthCheck } = require('../utils/ops-automation')
 
@@ -39,7 +49,7 @@ function recordReleaseEvent(input = {}) {
   try {
     addOpsEvent(app.getPath('userData'), {
       category: 'release',
-      ...input,
+      ...input
     })
   } catch (error) {
     // 事件中心不可用不能影响真实发布、回滚结果。
@@ -69,7 +79,7 @@ function getCrcTable() {
   for (let i = 0; i < 256; i++) {
     let c = i
     for (let j = 0; j < 8; j++) {
-      c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1)
+      c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
     }
     crcTable[i] = c >>> 0
   }
@@ -87,7 +97,8 @@ function updateCrc32(crc, buffer) {
 
 function toDosDateTime(date) {
   const year = Math.max(1980, date.getFullYear())
-  const dosTime = (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2)
+  const dosTime =
+    (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2)
   const dosDate = ((year - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate()
   return { dosTime, dosDate }
 }
@@ -117,7 +128,7 @@ function isIgnoredLocalFile(name) {
 
 function assertSafeArchiveName(name) {
   const normalized = normalizeZipPath(name)
-  if (!normalized || normalized === '.' || normalized.split('/').some(part => part === '..')) {
+  if (!normalized || normalized === '.' || normalized.split('/').some((part) => part === '..')) {
     throw new Error(`无效的压缩包路径: ${name}`)
   }
   return normalized
@@ -129,7 +140,9 @@ function collectZipEntries(localPath, archivePath, entries, ignored = () => fals
   if (ignored(normalizedArchivePath, stat.isDirectory())) return
 
   if (stat.isDirectory()) {
-    const dirPath = normalizedArchivePath.endsWith('/') ? normalizedArchivePath : `${normalizedArchivePath}/`
+    const dirPath = normalizedArchivePath.endsWith('/')
+      ? normalizedArchivePath
+      : `${normalizedArchivePath}/`
     entries.push({ type: 'directory', localPath, archivePath: dirPath, stat })
 
     const children = fs.readdirSync(localPath, { withFileTypes: true })
@@ -172,7 +185,7 @@ function buildLocalFileHeader(entry, crc, size, { usesDataDescriptor = false } =
     writeUInt32(usesDataDescriptor ? 0 : size),
     writeUInt16(nameBuffer.length),
     writeUInt16(0),
-    nameBuffer,
+    nameBuffer
   ])
 }
 
@@ -181,11 +194,17 @@ function buildDataDescriptor(crc, size) {
     writeUInt32(0x08074b50),
     writeUInt32(crc),
     writeUInt32(size),
-    writeUInt32(size),
+    writeUInt32(size)
   ])
 }
 
-function buildCentralDirectoryHeader(entry, crc, size, offset, { usesDataDescriptor = false } = {}) {
+function buildCentralDirectoryHeader(
+  entry,
+  crc,
+  size,
+  offset,
+  { usesDataDescriptor = false } = {}
+) {
   const nameBuffer = Buffer.from(entry.archivePath)
   const { dosTime, dosDate } = toDosDateTime(entry.stat.mtime)
   const externalAttrs = entry.type === 'directory' ? 0x10 : 0
@@ -208,7 +227,7 @@ function buildCentralDirectoryHeader(entry, crc, size, offset, { usesDataDescrip
     writeUInt16(0),
     writeUInt32(externalAttrs),
     writeUInt32(offset),
-    nameBuffer,
+    nameBuffer
   ])
 }
 
@@ -221,7 +240,7 @@ function buildEndOfCentralDirectory(entryCount, centralSize, centralOffset) {
     writeUInt16(entryCount),
     writeUInt32(centralSize),
     writeUInt32(centralOffset),
-    writeUInt16(0),
+    writeUInt16(0)
   ])
 }
 
@@ -249,7 +268,7 @@ async function appendFileToZip(output, entry) {
 
   return {
     size,
-    checksum: (checksum ^ 0xffffffff) >>> 0,
+    checksum: (checksum ^ 0xffffffff) >>> 0
   }
 }
 
@@ -305,7 +324,9 @@ async function createZipArchive(sourceEntries, zipPath, ignoreRules = []) {
       }
 
       assertZip32Value(offset, '压缩包过大，暂不支持超过 4GB 的 ZIP 文件')
-      centralHeaders.push(buildCentralDirectoryHeader(entry, checksum, size, entryOffset, { usesDataDescriptor }))
+      centralHeaders.push(
+        buildCentralDirectoryHeader(entry, checksum, size, entryOffset, { usesDataDescriptor })
+      )
     }
 
     const centralOffset = offset
@@ -315,14 +336,17 @@ async function createZipArchive(sourceEntries, zipPath, ignoreRules = []) {
     await writeBuffer(output, centralBuffer)
     offset += centralBuffer.length
     assertZip32Value(offset, '压缩包过大，暂不支持超过 4GB 的 ZIP 文件')
-    await writeBuffer(output, buildEndOfCentralDirectory(zipEntries.length, centralBuffer.length, centralOffset))
+    await writeBuffer(
+      output,
+      buildEndOfCentralDirectory(zipEntries.length, centralBuffer.length, centralOffset)
+    )
   } finally {
     await output.close()
   }
 
   return {
     entryCount: zipEntries.length,
-    size: (await fs.promises.stat(zipPath)).size,
+    size: (await fs.promises.stat(zipPath)).size
   }
 }
 
@@ -385,7 +409,12 @@ function formatTimestamp() {
   return (
     [now.getFullYear(), pad(now.getMonth() + 1), pad(now.getDate())].join('-') +
     '_' +
-    [pad(now.getHours()), pad(now.getMinutes()), pad(now.getSeconds()), pad(now.getMilliseconds(), 3)].join('-')
+    [
+      pad(now.getHours()),
+      pad(now.getMinutes()),
+      pad(now.getSeconds()),
+      pad(now.getMilliseconds(), 3)
+    ].join('-')
   )
 }
 
@@ -411,7 +440,7 @@ function buildRemoteDeployCommand({
   remoteStage,
   remoteBackup,
   remoteZipPath,
-  archiveRoots,
+  archiveRoots
 }) {
   const rootTargetPath = (root) => path.posix.join(normalizedRemoteDir, root)
   const rootStagePath = (root) => path.posix.join(remoteStage, root)
@@ -421,15 +450,15 @@ function buildRemoteDeployCommand({
     const backup = rootBackupPath(root)
     return `if [ -e ${shellQuote(target)} ] || [ -L ${shellQuote(target)} ]; then mkdir -p -- ${shellQuote(remoteBackup)}; mv -- ${shellQuote(target)} ${shellQuote(backup)}; fi`
   })
-  const replaceCommands = archiveRoots.map((root) =>
-    `mv -- ${shellQuote(rootStagePath(root))} ${shellQuote(rootTargetPath(root))}`,
+  const replaceCommands = archiveRoots.map(
+    (root) => `mv -- ${shellQuote(rootStagePath(root))} ${shellQuote(rootTargetPath(root))}`
   )
   const restoreCommands = archiveRoots.flatMap((root) => {
     const target = rootTargetPath(root)
     const backup = rootBackupPath(root)
     return [
       `rm -rf -- ${shellQuote(target)}`,
-      `if [ -e ${shellQuote(backup)} ] || [ -L ${shellQuote(backup)} ]; then mv -- ${shellQuote(backup)} ${shellQuote(target)}; fi`,
+      `if [ -e ${shellQuote(backup)} ] || [ -L ${shellQuote(backup)} ]; then mv -- ${shellQuote(backup)} ${shellQuote(target)}; fi`
     ]
   })
 
@@ -439,7 +468,7 @@ function buildRemoteDeployCommand({
     'deployment_complete=0',
     'restore_deployment() {',
     '  if [ "$swap_started" -eq 1 ]; then',
-    ...restoreCommands.map(command => `    ${command}`),
+    ...restoreCommands.map((command) => `    ${command}`),
     '  else',
     // 备份尚未完成时，不删除目标；只把已经移走的条目放回去。
     ...archiveRoots.map((root) => {
@@ -467,7 +496,7 @@ function buildRemoteDeployCommand({
     ...replaceCommands,
     'deployment_complete=1',
     `rm -rf -- ${shellQuote(remoteStage)} ${shellQuote(remoteZipPath)}`,
-    'trap - 0',
+    'trap - 0'
   ].join('\n')
 }
 
@@ -477,13 +506,20 @@ function buildRemoteRollbackCommand({ remoteDir, backupPath, rollbackBackup, arc
     const current = path.posix.join(remoteDir, root)
     const previous = path.posix.join(backupPath, root)
     const savedCurrent = path.posix.join(rollbackBackup, root)
-    commands.push(`if [ -e ${shellQuote(current)} ] || [ -L ${shellQuote(current)} ]; then mv -- ${shellQuote(current)} ${shellQuote(savedCurrent)}; fi`)
-    commands.push(`if [ -e ${shellQuote(previous)} ] || [ -L ${shellQuote(previous)} ]; then mv -- ${shellQuote(previous)} ${shellQuote(current)}; fi`)
+    commands.push(
+      `if [ -e ${shellQuote(current)} ] || [ -L ${shellQuote(current)} ]; then mv -- ${shellQuote(current)} ${shellQuote(savedCurrent)}; fi`
+    )
+    commands.push(
+      `if [ -e ${shellQuote(previous)} ] || [ -L ${shellQuote(previous)} ]; then mv -- ${shellQuote(previous)} ${shellQuote(current)}; fi`
+    )
   }
   return commands.join('\n')
 }
 
-async function deployZipToRemote(sftp, { entries, remoteDir, clearRemotePaths = [], ignoreRules = [], releaseId = crypto.randomUUID() }) {
+async function deployZipToRemote(
+  sftp,
+  { entries, remoteDir, clearRemotePaths = [], ignoreRules = [], releaseId = crypto.randomUUID() }
+) {
   if (!Array.isArray(entries) || entries.length === 0) {
     throw new Error('没有需要同步的文件')
   }
@@ -491,11 +527,16 @@ async function deployZipToRemote(sftp, { entries, remoteDir, clearRemotePaths = 
     throw new Error('远程目标目录不能为空')
   }
 
-  const normalizedRemoteDir = remoteDir.replace(/\\/g, '/').replace(/\/+/g, '/').replace(/\/$/, '') || '/'
+  const normalizedRemoteDir =
+    remoteDir.replace(/\\/g, '/').replace(/\/+/g, '/').replace(/\/$/, '') || '/'
   const archiveRoots = getArchiveRootNames(entries)
-  const appName = entries.length === 1
-    ? path.basename(entries[0].archivePath || entries[0].localPath, path.extname(entries[0].archivePath || entries[0].localPath))
-    : 'ops-sync'
+  const appName =
+    entries.length === 1
+      ? path.basename(
+          entries[0].archivePath || entries[0].localPath,
+          path.extname(entries[0].archivePath || entries[0].localPath)
+        )
+      : 'ops-sync'
   const stamp = formatTimestamp()
   const zipName = `${appName}-deploy-${stamp}.zip`
   const localZipPath = path.join(app.getPath('temp'), zipName)
@@ -503,7 +544,8 @@ async function deployZipToRemote(sftp, { entries, remoteDir, clearRemotePaths = 
   const remoteZipPath = path.posix.join(remoteTmpRoot, zipName)
   const remoteStage = path.posix.join(remoteTmpRoot, `${appName}-stage-${stamp}`)
   // 备份存放在目标目录的父级，以便大多数部署可在同一文件系统内原子移动。
-  const backupParent = normalizedRemoteDir === '/' ? remoteTmpRoot : path.posix.dirname(normalizedRemoteDir)
+  const backupParent =
+    normalizedRemoteDir === '/' ? remoteTmpRoot : path.posix.dirname(normalizedRemoteDir)
   const remoteBackup = path.posix.join(backupParent, '.ops-release-backups', releaseId)
   let remoteZipUploaded = false
 
@@ -529,7 +571,7 @@ async function deployZipToRemote(sftp, { entries, remoteDir, clearRemotePaths = 
       remoteStage,
       remoteBackup,
       remoteZipPath,
-      archiveRoots,
+      archiveRoots
     })
 
     await execRemoteCommand(remoteCommand)
@@ -541,7 +583,7 @@ async function deployZipToRemote(sftp, { entries, remoteDir, clearRemotePaths = 
       zipSize: zipResult.size,
       releaseId,
       backupPath: remoteBackup,
-      archiveRoots,
+      archiveRoots
     }
   } catch (err) {
     // 不删除 backup：SSH 连接在远程命令执行中断时，保留它比盲目清理更安全；
@@ -579,7 +621,7 @@ function buildRollbackFailureHistoryRecord({
   archiveRoots = [],
   rollbackBackup = '',
   startedAt,
-  finishedAt = Date.now(),
+  finishedAt = Date.now()
 }) {
   return {
     profileId: String(activeProfile?.id || ''),
@@ -588,15 +630,18 @@ function buildRollbackFailureHistoryRecord({
     status: 'failed',
     label: `回滚：${String(target?.label || '发布任务')}`,
     remoteDir: String(remoteDir || target?.remoteDir || ''),
-    archiveRoots: Array.isArray(archiveRoots) && archiveRoots.length
-      ? archiveRoots.map(String)
-      : Array.isArray(target?.archiveRoots) ? target.archiveRoots.map(String) : [],
+    archiveRoots:
+      Array.isArray(archiveRoots) && archiveRoots.length
+        ? archiveRoots.map(String)
+        : Array.isArray(target?.archiveRoots)
+          ? target.archiveRoots.map(String)
+          : [],
     // 回滚命令可能已经创建了暂存当前版本的备份；优先保留其路径以便人工排查。
     backupPath: String(rollbackBackup || target?.backupPath || ''),
     sourceReleaseId: String(target?.id || releaseId || ''),
     message: String(error?.message || error || '回滚失败'),
     startedAt,
-    finishedAt,
+    finishedAt
   }
 }
 
@@ -617,13 +662,13 @@ async function uploadFileWithResume(sftp, localPath, remotePath) {
   if (remoteSize > 0 && remoteSize < localSize) {
     const stream = fs.createReadStream(localPath, { start: remoteSize })
     await sftp.put(stream, remotePath, {
-      writeStreamOptions: { flags: 'a' },
+      writeStreamOptions: { flags: 'a' }
     })
     return {
       skipped: false,
       resumed: true,
       transferred: localSize - remoteSize,
-      remoteSize,
+      remoteSize
     }
   }
 
@@ -632,7 +677,7 @@ async function uploadFileWithResume(sftp, localPath, remotePath) {
     skipped: false,
     resumed: false,
     transferred: localSize,
-    remoteSize,
+    remoteSize
   }
 }
 
@@ -640,12 +685,12 @@ const DEFAULT_SFTP_CONFIG = {
   host: '',
   port: 22,
   username: '',
-  password: '',
+  password: ''
 }
 
 const DEFAULT_SFTP_PATHS = {
   localDir: '',
-  remoteDir: '',
+  remoteDir: ''
 }
 
 function getSftpConfigPath() {
@@ -669,7 +714,7 @@ function sanitizeSftpPaths(paths = {}) {
   const remoteDir = String(paths.remoteDir || '').trim()
   return {
     localDir: String(paths.localDir || '').trim(),
-    remoteDir: remoteDir ? normalizeRemoteDir(remoteDir) : '',
+    remoteDir: remoteDir ? normalizeRemoteDir(remoteDir) : ''
   }
 }
 
@@ -699,7 +744,7 @@ function sanitizeSftpConfig(config = {}) {
     host: String(config.host || '').trim(),
     port: Number.isInteger(port) && port >= 1 && port <= 65535 ? port : DEFAULT_SFTP_CONFIG.port,
     username: String(config.username || '').trim(),
-    password: String(config.password || ''),
+    password: String(config.password || '')
   }
 }
 
@@ -721,7 +766,7 @@ function serializeSftpConfigForStorage(config) {
     host: normalized.host,
     port: normalized.port,
     username: normalized.username,
-    passwordEncrypted: encryptSecret(safeStorage, normalized.password),
+    passwordEncrypted: encryptSecret(safeStorage, normalized.password)
   }
 }
 
@@ -735,7 +780,7 @@ function getStoredSftpConfig() {
     safeStorage,
     record: stored,
     encryptedKey: 'passwordEncrypted',
-    legacyKey: 'password',
+    legacyKey: 'password'
   })
   const config = sanitizeSftpConfig({ ...stored, password: secret.value })
 
@@ -757,12 +802,15 @@ function getStoredSftpConfig() {
 function loadSftpConfig() {
   // 1. 从环境变量读取（显式运行时覆盖始终优先）
   if (process.env.SFTP_HOST) {
-    return setSftpConfig({
-      host: process.env.SFTP_HOST,
-      port: process.env.SFTP_PORT || DEFAULT_SFTP_CONFIG.port,
-      username: process.env.SFTP_USERNAME,
-      password: process.env.SFTP_PASSWORD,
-    }, 'environment')
+    return setSftpConfig(
+      {
+        host: process.env.SFTP_HOST,
+        port: process.env.SFTP_PORT || DEFAULT_SFTP_CONFIG.port,
+        username: process.env.SFTP_USERNAME,
+        password: process.env.SFTP_PASSWORD
+      },
+      'environment'
+    )
   }
 
   // 2. 从当前发布 Profile 读取
@@ -791,16 +839,17 @@ function getSftpConfigDetails() {
   const effectiveConfig = loadSftpConfig()
   const savedConfig = getStoredSftpConfig()
   const activeProfile = getActiveReleaseProfile({ includePassword: true })
-  const visibleConfig = sftpConfigSource === 'profile'
-    ? activeProfile
-    : sftpConfigSource === 'saved'
-      ? savedConfig
-      : {
-        ...DEFAULT_SFTP_CONFIG,
-        host: effectiveConfig?.host || '',
-        port: effectiveConfig?.port || 22,
-        username: effectiveConfig?.username || '',
-      }
+  const visibleConfig =
+    sftpConfigSource === 'profile'
+      ? activeProfile
+      : sftpConfigSource === 'saved'
+        ? savedConfig
+        : {
+            ...DEFAULT_SFTP_CONFIG,
+            host: effectiveConfig?.host || '',
+            port: effectiveConfig?.port || 22,
+            username: effectiveConfig?.username || ''
+          }
   return {
     configured: Boolean(effectiveConfig),
     source: sftpConfigSource,
@@ -808,8 +857,8 @@ function getSftpConfigDetails() {
       ...visibleConfig,
       password: '',
       hasPassword: Boolean(visibleConfig.password),
-      passwordMasked: maskSecret(visibleConfig.password),
-    },
+      passwordMasked: maskSecret(visibleConfig.password)
+    }
   }
 }
 
@@ -874,9 +923,10 @@ function registerSftpHandlers() {
       }
       return { success: true, data: nextPaths }
     } catch (err) {
-      const error = err?.code === 'ENOENT'
-        ? `本地目录不存在: ${String(paths?.localDir || '').trim()}`
-        : err.message
+      const error =
+        err?.code === 'ENOENT'
+          ? `本地目录不存在: ${String(paths?.localDir || '').trim()}`
+          : err.message
       return { success: false, error }
     }
   })
@@ -894,7 +944,7 @@ function registerSftpHandlers() {
       nextConfig = sanitizeSftpConfig({
         ...currentConfig,
         ...config,
-        password: config.clearPassword ? '' : suppliedPassword || currentConfig.password,
+        password: config.clearPassword ? '' : suppliedPassword || currentConfig.password
       })
     } catch (err) {
       return { success: false, error: err?.message || '读取 SFTP 配置失败' }
@@ -916,8 +966,8 @@ function registerSftpHandlers() {
           ...nextConfig,
           password: '',
           hasPassword: Boolean(nextConfig.password),
-          passwordMasked: maskSecret(nextConfig.password),
-        },
+          passwordMasked: maskSecret(nextConfig.password)
+        }
       }
     } catch (err) {
       console.error('保存 SFTP 配置失败:', err)
@@ -931,7 +981,7 @@ function registerSftpHandlers() {
       return {
         success: true,
         message: `已连接到 ${sftpConfig.host}:${sftpConfig.port}`,
-        config: { host: sftpConfig.host, port: sftpConfig.port, username: sftpConfig.username },
+        config: { host: sftpConfig.host, port: sftpConfig.port, username: sftpConfig.username }
       }
     } catch (err) {
       console.error('SFTP 连接测试失败:', err)
@@ -964,7 +1014,7 @@ function registerSftpHandlers() {
         owner: item.owner || '-',
         group: item.group || '-',
         icon: getFileTypeIcon(item),
-        path: path.posix.join(safeDirPath, item.name).replace(/\/+/g, '/'),
+        path: path.posix.join(safeDirPath, item.name).replace(/\/+/g, '/')
       }))
 
       return {
@@ -972,8 +1022,8 @@ function registerSftpHandlers() {
         data: {
           currentPath: safeDirPath,
           parentPath: path.posix.dirname(safeDirPath) || '/',
-          items,
-        },
+          items
+        }
       }
     } catch (err) {
       console.error('SFTP 目录列表失败:', err)
@@ -1003,7 +1053,7 @@ function registerSftpHandlers() {
           : uploadResult.resumed
             ? `已续传: ${path.basename(safeLocalPath)}`
             : `已上传: ${path.basename(safeLocalPath)}`,
-        data: uploadResult,
+        data: uploadResult
       }
     } catch (err) {
       console.error('SFTP 上传失败:', err)
@@ -1034,7 +1084,7 @@ function registerSftpHandlers() {
         if (!fs.existsSync(localPath)) throw new Error(`本地文件不存在: ${localPath}`)
         return {
           localPath,
-          archivePath: assertSafeArchiveName(entry?.archivePath || path.basename(localPath)),
+          archivePath: assertSafeArchiveName(entry?.archivePath || path.basename(localPath))
         }
       })
 
@@ -1049,7 +1099,7 @@ function registerSftpHandlers() {
           remoteDir: safeRemoteDir,
           clearRemotePaths,
           ignoreRules: normalizeRuleLines(ignoreRules),
-          releaseId,
+          releaseId
         })
       })
 
@@ -1061,20 +1111,30 @@ function registerSftpHandlers() {
           type: 'http-health',
           target: healthConfig.url,
           expectedStatus: healthConfig.expectedStatus,
-          timeoutMs: healthConfig.timeoutMs,
+          timeoutMs: healthConfig.timeoutMs
         })
-        if (!healthCheck.ok && healthConfig.autoRollback && result.backupPath && result.archiveRoots?.length) {
+        if (
+          !healthCheck.ok &&
+          healthConfig.autoRollback &&
+          result.backupPath &&
+          result.archiveRoots?.length
+        ) {
           const rollbackBackup = `${result.backupPath}-auto-${formatTimestamp()}`
           try {
-            await execRemoteCommand(buildRemoteRollbackCommand({
-              remoteDir: result.remoteDir,
-              backupPath: result.backupPath,
-              rollbackBackup,
-              archiveRoots: result.archiveRoots.map(assertSafeArchiveName),
-            }))
+            await execRemoteCommand(
+              buildRemoteRollbackCommand({
+                remoteDir: result.remoteDir,
+                backupPath: result.backupPath,
+                rollbackBackup,
+                archiveRoots: result.archiveRoots.map(assertSafeArchiveName)
+              })
+            )
             autoRollback = { ok: true, backupPath: rollbackBackup }
           } catch (error) {
-            autoRollback = { ok: false, message: String(error?.message || '自动回滚失败').slice(0, 500) }
+            autoRollback = {
+              ok: false,
+              message: String(error?.message || '自动回滚失败').slice(0, 500)
+            }
           }
         }
       }
@@ -1084,17 +1144,20 @@ function registerSftpHandlers() {
         profileId: deploymentProfileId,
         profileName: deploymentProfile?.name || '',
         status: 'success',
-        label: label || normalizedEntries.map(item => item.archivePath).join('、'),
+        label: label || normalizedEntries.map((item) => item.archivePath).join('、'),
         remoteDir: result.remoteDir,
         archiveRoots: result.archiveRoots,
         backupPath: result.backupPath,
         entryCount: result.entryCount,
         zipSize: result.zipSize,
-        message: healthCheck?.ok === false
-          ? `发布完成，但健康检查失败：${healthCheck.message}${autoRollback?.ok ? '；已自动回滚' : ''}`
-          : (healthCheck ? `发布成功；健康检查通过：${healthCheck.message}` : '发布成功'),
+        message:
+          healthCheck?.ok === false
+            ? `发布完成，但健康检查失败：${healthCheck.message}${autoRollback?.ok ? '；已自动回滚' : ''}`
+            : healthCheck
+              ? `发布成功；健康检查通过：${healthCheck.message}`
+              : '发布成功',
         startedAt,
-        finishedAt: Date.now(),
+        finishedAt: Date.now()
       })
       if (autoRollback?.ok) {
         markReleaseRolledBack(historyEntry.id)
@@ -1110,7 +1173,7 @@ function registerSftpHandlers() {
           sourceReleaseId: historyEntry.id,
           message: `健康检查失败后自动回滚：${healthCheck.message}`,
           startedAt,
-          finishedAt: Date.now(),
+          finishedAt: Date.now()
         })
       }
       if (healthCheck?.ok === false) {
@@ -1118,16 +1181,18 @@ function registerSftpHandlers() {
           sourceKey: `release:${releaseId}`,
           level: autoRollback?.ok ? 'warning' : 'critical',
           status: autoRollback?.ok ? 'resolved' : 'open',
-          title: autoRollback?.ok ? `发布健康检查失败，已自动回滚：${historyEntry.label}` : `发布健康检查失败：${historyEntry.label}`,
+          title: autoRollback?.ok
+            ? `发布健康检查失败，已自动回滚：${historyEntry.label}`
+            : `发布健康检查失败：${historyEntry.label}`,
           description: `${healthCheck.message}${autoRollback?.message ? `；自动回滚失败：${autoRollback.message}` : ''}`,
-          relatedId: releaseId,
+          relatedId: releaseId
         })
         return {
           success: false,
           error: autoRollback?.ok
             ? `发布后的健康检查失败，已自动回滚：${healthCheck.message}`
             : `发布后的健康检查失败：${healthCheck.message}`,
-          data: { ...result, healthCheck, autoRollback },
+          data: { ...result, healthCheck, autoRollback }
         }
       }
       recordReleaseEvent({
@@ -1135,13 +1200,15 @@ function registerSftpHandlers() {
         level: 'info',
         status: 'resolved',
         title: `发布成功：${historyEntry.label}`,
-        description: healthCheck ? `健康检查通过：${healthCheck.message}` : `已同步 ${normalizedEntries.length} 项到 ${result.remoteDir}`,
-        relatedId: releaseId,
+        description: healthCheck
+          ? `健康检查通过：${healthCheck.message}`
+          : `已同步 ${normalizedEntries.length} 项到 ${result.remoteDir}`,
+        relatedId: releaseId
       })
       return {
         success: true,
         message: `已通过 zip 同步 ${normalizedEntries.length} 项到 ${result.remoteDir}${healthCheck ? `；健康检查：${healthCheck.message}` : ''}`,
-        data: { ...result, healthCheck, autoRollback },
+        data: { ...result, healthCheck, autoRollback }
       }
     } catch (err) {
       console.error('SFTP zip 部署失败:', err)
@@ -1155,7 +1222,7 @@ function registerSftpHandlers() {
           remoteDir: payload?.remoteDir,
           message: err.message,
           startedAt,
-          finishedAt: Date.now(),
+          finishedAt: Date.now()
         })
       } catch {}
       recordReleaseEvent({
@@ -1164,7 +1231,7 @@ function registerSftpHandlers() {
         status: 'open',
         title: `发布失败：${payload?.label || '发布任务'}`,
         description: String(err?.message || '未知发布错误').slice(0, 1000),
-        relatedId: releaseId,
+        relatedId: releaseId
       })
       return { success: false, error: err.message }
     } finally {
@@ -1225,7 +1292,7 @@ function registerSftpHandlers() {
               path: relativePath,
               size: stat.size,
               modifyTime: stat.mtimeMs,
-              type: 'file',
+              type: 'file'
             })
           }
         }
@@ -1239,14 +1306,14 @@ function registerSftpHandlers() {
         for (const item of list) {
           const relativePath = path.posix.join(base, item.name)
           if (item.type === 'd') {
-            files.push(...await getRemoteFiles(path.posix.join(dir, item.name), relativePath))
+            files.push(...(await getRemoteFiles(path.posix.join(dir, item.name), relativePath)))
           } else {
             files.push({
               name: item.name,
               path: relativePath,
               size: item.size,
               modifyTime: item.modifyTime,
-              type: 'file',
+              type: 'file'
             })
           }
         }
@@ -1257,8 +1324,8 @@ function registerSftpHandlers() {
       const remoteFiles = await getRemoteFiles(safeRemoteDir)
 
       // 建立映射
-      const localMap = new Map(localFiles.map(f => [f.path, f]))
-      const remoteMap = new Map(remoteFiles.map(f => [f.path, f]))
+      const localMap = new Map(localFiles.map((f) => [f.path, f]))
+      const remoteMap = new Map(remoteFiles.map((f) => [f.path, f]))
 
       const onlyLocal = [] // 仅本地有
       const onlyRemote = [] // 仅远程有
@@ -1269,7 +1336,10 @@ function registerSftpHandlers() {
         const remoteFile = remoteMap.get(filePath)
         if (!remoteFile) {
           onlyLocal.push(localFile)
-        } else if (localFile.size !== remoteFile.size || localFile.modifyTime > remoteFile.modifyTime) {
+        } else if (
+          localFile.size !== remoteFile.size ||
+          localFile.modifyTime > remoteFile.modifyTime
+        ) {
           modified.push({ local: localFile, remote: remoteFile })
         }
       }
@@ -1293,9 +1363,9 @@ function registerSftpHandlers() {
             total: localFiles.length + remoteFiles.length,
             onlyLocal: onlyLocal.length,
             onlyRemote: onlyRemote.length,
-            modified: modified.length,
-          },
-        },
+            modified: modified.length
+          }
+        }
       }
     } catch (err) {
       console.error('SFTP 目录比较失败:', err)
@@ -1325,7 +1395,7 @@ function registerSftpHandlers() {
           sizeFormatted: formatSize(stat.size),
           modifyTime: stat.mtimeMs,
           modifyTimeFormatted: formatTime(stat.mtimeMs / 1000),
-          path: path.posix.join(safeLocalDir, entry.name).replace(/\\/g, '/'),
+          path: path.posix.join(safeLocalDir, entry.name).replace(/\\/g, '/')
         }
       })
 
@@ -1340,8 +1410,8 @@ function registerSftpHandlers() {
         success: true,
         data: {
           currentPath: safeLocalDir,
-          items,
-        },
+          items
+        }
       }
     } catch (err) {
       console.error('获取本地目录列表失败:', err)
@@ -1351,37 +1421,69 @@ function registerSftpHandlers() {
 
   ipcMain.handle(IPC_CHANNELS.SFTP_PREFLIGHT, async (_event, payload = {}) => {
     try {
-      const entries = Array.isArray(payload.entries) ? payload.entries.map((entry) => ({
-        localPath: assertLocalPath(entry?.localPath),
-        archivePath: assertSafeArchiveName(entry?.archivePath || path.basename(entry?.localPath || '')),
-      })) : []
+      const entries = Array.isArray(payload.entries)
+        ? payload.entries.map((entry) => ({
+            localPath: assertLocalPath(entry?.localPath),
+            archivePath: assertSafeArchiveName(
+              entry?.archivePath || path.basename(entry?.localPath || '')
+            )
+          }))
+        : []
       if (!entries.length) throw new Error('没有需要检查的发布内容')
       const remoteDir = normalizeRemotePath(payload.remoteDir, { allowRoot: false })
-      for (const entry of entries) if (!fs.existsSync(entry.localPath)) throw new Error(`本地路径不存在: ${entry.localPath}`)
+      for (const entry of entries)
+        if (!fs.existsSync(entry.localPath)) throw new Error(`本地路径不存在: ${entry.localPath}`)
       const summary = scanLocalEntries(entries, normalizeRuleLines(payload.ignoreRules))
       if (!summary.files) throw new Error('忽略规则生效后没有可发布文件')
       const sftp = await getSftpClient()
       let remoteExists = true
-      try { await sftp.stat(remoteDir) } catch { remoteExists = false }
+      try {
+        await sftp.stat(remoteDir)
+      } catch {
+        remoteExists = false
+      }
       return {
         success: true,
         data: {
           checks: [
-            { key: 'connection', label: 'SFTP 连接', status: 'passed', message: `${sftpConfig.host}:${sftpConfig.port}` },
-            { key: 'local', label: '本地内容', status: 'passed', message: `${summary.files} 个文件，${formatSize(summary.bytes)}` },
-            { key: 'ignore', label: '忽略规则', status: 'passed', message: `已忽略 ${summary.ignored} 项` },
-            { key: 'remote', label: '远程目录', status: remoteExists ? 'passed' : 'warning', message: remoteExists ? remoteDir : `${remoteDir} 将自动创建` },
+            {
+              key: 'connection',
+              label: 'SFTP 连接',
+              status: 'passed',
+              message: `${sftpConfig.host}:${sftpConfig.port}`
+            },
+            {
+              key: 'local',
+              label: '本地内容',
+              status: 'passed',
+              message: `${summary.files} 个文件，${formatSize(summary.bytes)}`
+            },
+            {
+              key: 'ignore',
+              label: '忽略规则',
+              status: 'passed',
+              message: `已忽略 ${summary.ignored} 项`
+            },
+            {
+              key: 'remote',
+              label: '远程目录',
+              status: remoteExists ? 'passed' : 'warning',
+              message: remoteExists ? remoteDir : `${remoteDir} 将自动创建`
+            }
           ],
           summary,
-          remoteDir,
-        },
+          remoteDir
+        }
       }
     } catch (err) {
       return { success: false, error: err.message }
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.SFTP_PROFILES_GET, async () => ({ success: true, data: listReleaseProfiles() }))
+  ipcMain.handle(IPC_CHANNELS.SFTP_PROFILES_GET, async () => ({
+    success: true,
+    data: listReleaseProfiles()
+  }))
   ipcMain.handle(IPC_CHANNELS.SFTP_PROFILE_SAVE, async (_event, profile = {}) => {
     try {
       assertNoZipDeploymentInProgress()
@@ -1397,9 +1499,10 @@ function registerSftpHandlers() {
       sftpConfigSource = null
       return { success: true, data: saved }
     } catch (err) {
-      const error = err?.code === 'ENOENT'
-        ? `本地目录不存在: ${String(profile?.localDir || '').trim()}`
-        : err.message
+      const error =
+        err?.code === 'ENOENT'
+          ? `本地目录不存在: ${String(profile?.localDir || '').trim()}`
+          : err.message
       return { success: false, error }
     }
   })
@@ -1411,7 +1514,9 @@ function registerSftpHandlers() {
       sftpConfig = null
       sftpConfigSource = null
       return { success: true, data: profile }
-    } catch (err) { return { success: false, error: err.message } }
+    } catch (err) {
+      return { success: false, error: err.message }
+    }
   })
   ipcMain.handle(IPC_CHANNELS.SFTP_PROFILE_DELETE, async (_event, profileId) => {
     try {
@@ -1421,13 +1526,15 @@ function registerSftpHandlers() {
       sftpConfig = null
       sftpConfigSource = null
       return { success: true, data }
-    } catch (err) { return { success: false, error: err.message } }
+    } catch (err) {
+      return { success: false, error: err.message }
+    }
   })
   ipcMain.handle(IPC_CHANNELS.SFTP_HISTORY_GET, async () => {
     const activeProfile = getActiveReleaseProfile()
     return {
       success: true,
-      data: activeProfile ? loadReleaseHistory({ profileId: activeProfile.id }) : [],
+      data: activeProfile ? loadReleaseHistory({ profileId: activeProfile.id }) : []
     }
   })
   ipcMain.handle(IPC_CHANNELS.SFTP_ROLLBACK, async (_event, releaseId) => {
@@ -1442,8 +1549,9 @@ function registerSftpHandlers() {
       activeProfile = getActiveReleaseProfile()
       if (!activeProfile) throw new Error('请先选择发布环境')
       const history = loadReleaseHistory({ profileId: activeProfile.id })
-      target = history.find(item => item.id === releaseId)
-      if (!target || target.status !== 'success' || !target.backupPath) throw new Error('当前发布环境中没有可回滚的记录')
+      target = history.find((item) => item.id === releaseId)
+      if (!target || target.status !== 'success' || !target.backupPath)
+        throw new Error('当前发布环境中没有可回滚的记录')
       remoteDir = normalizeRemotePath(target.remoteDir, { allowRoot: false })
       roots = target.archiveRoots.map(assertSafeArchiveName)
       rollbackBackup = `${target.backupPath}-rollback-${formatTimestamp()}`
@@ -1451,7 +1559,7 @@ function registerSftpHandlers() {
         remoteDir,
         backupPath: target.backupPath,
         rollbackBackup,
-        archiveRoots: roots,
+        archiveRoots: roots
       })
       await execRemoteCommand(command)
     } catch (err) {
@@ -1459,16 +1567,18 @@ function registerSftpHandlers() {
       // 历史记录本身写入失败不能覆盖原始回滚错误。
       if (activeProfile && target) {
         try {
-          appendReleaseHistory(buildRollbackFailureHistoryRecord({
-            activeProfile,
-            target,
-            releaseId,
-            error: err,
-            remoteDir,
-            archiveRoots: roots,
-            rollbackBackup,
-            startedAt,
-          }))
+          appendReleaseHistory(
+            buildRollbackFailureHistoryRecord({
+              activeProfile,
+              target,
+              releaseId,
+              error: err,
+              remoteDir,
+              archiveRoots: roots,
+              rollbackBackup,
+              startedAt
+            })
+          )
         } catch (historyError) {
           console.error('记录回滚失败历史失败:', historyError)
         }
@@ -1479,7 +1589,7 @@ function registerSftpHandlers() {
         status: 'open',
         title: `回滚失败：${target?.label || releaseId}`,
         description: String(err?.message || '未知回滚错误').slice(0, 1000),
-        relatedId: releaseId,
+        relatedId: releaseId
       })
       return { success: false, error: err.message }
     }
@@ -1487,10 +1597,18 @@ function registerSftpHandlers() {
     try {
       markReleaseRolledBack(target.id)
       appendReleaseHistory({
-        profileId: activeProfile.id, profileName: activeProfile.name,
-        action: 'rollback', status: 'success', label: `回滚：${target.label}`,
-        remoteDir, archiveRoots: roots, backupPath: rollbackBackup,
-        sourceReleaseId: target.id, message: '回滚成功', startedAt, finishedAt: Date.now(),
+        profileId: activeProfile.id,
+        profileName: activeProfile.name,
+        action: 'rollback',
+        status: 'success',
+        label: `回滚：${target.label}`,
+        remoteDir,
+        archiveRoots: roots,
+        backupPath: rollbackBackup,
+        sourceReleaseId: target.id,
+        message: '回滚成功',
+        startedAt,
+        finishedAt: Date.now()
       })
     } catch (historyError) {
       // 远端已经成功回滚，不能因为本地审计失败而把实际成功结果误报为失败。
@@ -1501,12 +1619,12 @@ function registerSftpHandlers() {
         status: 'resolved',
         title: `回滚成功但本地审计失败：${target.label}`,
         description: '远端已回滚到发布前版本；本地发布历史更新失败，请核查历史记录。',
-        relatedId: releaseId,
+        relatedId: releaseId
       })
       return {
         success: true,
         message: '已回滚到发布前版本，但本地发布历史更新失败，请核查历史记录',
-        warning: historyError.message,
+        warning: historyError.message
       }
     }
 
@@ -1516,7 +1634,7 @@ function registerSftpHandlers() {
       status: 'resolved',
       title: `回滚成功：${target.label}`,
       description: '已回滚到发布前版本',
-      relatedId: releaseId,
+      relatedId: releaseId
     })
     return { success: true, message: '已回滚到发布前版本' }
   })
@@ -1564,6 +1682,6 @@ module.exports = {
     sanitizeSftpPaths,
     validateSftpPaths,
     createZipArchive,
-    buildRollbackFailureHistoryRecord,
-  },
+    buildRollbackFailureHistoryRecord
+  }
 }

@@ -12,8 +12,8 @@ function sanitizeDialogFilters(filters) {
   return filters.slice(0, 10).map((filter) => ({
     name: clampText(filter?.name, 'Files', 80),
     extensions: Array.isArray(filter?.extensions)
-      ? filter.extensions.slice(0, 20).map(item => String(item).replace(/^\./, '').slice(0, 20))
-      : ['*'],
+      ? filter.extensions.slice(0, 20).map((item) => String(item).replace(/^\./, '').slice(0, 20))
+      : ['*']
   }))
 }
 
@@ -25,7 +25,7 @@ function registerAppHandlers() {
     name: app.getName(),
     version: app.getVersion(),
     platform: process.platform,
-    isPackaged: app.isPackaged,
+    isPackaged: app.isPackaged
   }))
 
   // 确认对话框
@@ -47,15 +47,14 @@ function registerAppHandlers() {
   // 文件/目录浏览对话框
   ipcMain.handle(IPC_CHANNELS.APP_BROWSE_FILE, async (_event, options) => {
     const focused = BrowserWindow.getFocusedWindow()
-    const properties = options?.directory
-      ? ['openDirectory']
-      : ['openFile']
+    const properties = options?.directory ? ['openDirectory'] : ['openFile']
 
     const result = await dialog.showOpenDialog(focused, {
       properties,
-      defaultPath: typeof options?.defaultPath === 'string'
-        ? path.resolve(options.defaultPath.slice(0, 4096))
-        : undefined,
+      defaultPath:
+        typeof options?.defaultPath === 'string'
+          ? path.resolve(options.defaultPath.slice(0, 4096))
+          : undefined,
       filters: sanitizeDialogFilters(options?.filters)
     })
 
