@@ -203,7 +203,7 @@ async function readRemoteImage(imageUrl) {
     }
   } catch (err) {
     if (err?.name === 'AbortError') {
-      throw new Error('下载图片超时，请稍后重试')
+      throw new Error('下载图片超时，请稍后重试', { cause: err })
     }
     throw err
   } finally {

@@ -1141,7 +1141,7 @@ async function runScheduledInspection() {
         const latestSettings = loadMonitorSettings()
         failureDesktopNotification = latestSettings.notifyOnFailure
         const nextSettings = completeMonitorRun(latestSettings)
-        if (!writeJsonFile(monitorSettingsPath(), nextSettings)) throw new Error('更新巡检运行时间失败')
+        if (!writeJsonFile(monitorSettingsPath(), nextSettings)) console.error('更新巡检运行时间失败')
       } catch (recordError) {
         console.error('记录模型巡检失败状态失败:', recordError)
       }

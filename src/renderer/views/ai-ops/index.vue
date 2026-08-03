@@ -1025,59 +1025,14 @@ input[type='checkbox'] {
 .btn-text,
 .icon-btn,
 .filter-btn {
-  border: 0;
   cursor: pointer;
   font: inherit;
   transition: transform 0.18s ease, color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
 }
 
-.btn-primary,
-.btn-secondary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  min-height: 36px;
-  padding: 0 13px;
-  border-radius: 9px;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.btn-primary {
-  background: var(--primary);
-  box-shadow: 0 5px 12px color-mix(in srgb, var(--primary) 18%, transparent);
-  color: #fff;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: var(--primary-hover);
-  transform: translateY(-1px);
-}
-
-.btn-secondary {
-  border: 1px solid var(--border);
-  background: #fff;
-  color: var(--text-secondary);
-}
-
-.btn-secondary:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--primary) 35%, var(--border));
-  color: var(--primary);
-  background: var(--primary-soft);
-}
-
-.btn-text {
-  padding: 5px 7px;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--primary);
-  font-size: 12px;
-  font-weight: 650;
-}
-
-.btn-text:hover:not(:disabled) {
-  background: var(--primary-soft);
+.icon-btn,
+.filter-btn {
+  border: 0;
 }
 
 .icon-btn {

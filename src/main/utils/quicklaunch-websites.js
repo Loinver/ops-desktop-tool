@@ -5,9 +5,11 @@ const MAX_BATCH_ITEMS = 200
 const QUICK_LAUNCH_SCHEMA = 'ops-desktop.quick-launch.websites'
 const DEFAULT_COLOR = '#6366f1'
 const SAFE_COLOR = /^#[0-9a-fA-F]{6}$/
+const CONTROL_CHARACTER_RANGE = `${String.fromCharCode(0)}-${String.fromCharCode(31)}${String.fromCharCode(127)}`
+const CONTROL_CHARACTERS = new RegExp(`[${CONTROL_CHARACTER_RANGE}]`, 'g')
 
 function normalizeText(value, fallback = '', maxLength = 120) {
-  const text = typeof value === 'string' ? value.trim().replace(/[\u0000-\u001F\u007F]/g, '') : ''
+  const text = typeof value === 'string' ? value.trim().replace(CONTROL_CHARACTERS, '') : ''
   return (text || fallback).slice(0, maxLength)
 }
 

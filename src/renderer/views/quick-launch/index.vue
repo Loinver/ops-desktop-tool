@@ -8,7 +8,7 @@
       </div>
       <div class="page-actions header-actions">
         <button type="button"
-          class="btn-open"
+          class="btn-primary"
           :disabled="batchOpening"
           :title="store.quickOpenItems.length ? `打开已配置的 ${store.quickOpenItems.length} 个网站` : '请先配置一键打开的网站'"
           @click="openConfiguredWebsites"
@@ -16,23 +16,23 @@
           <t-icon name="rocket" />
           <span>{{ batchOpening ? '正在打开…' : `一键打开${store.quickOpenItems.length ? `（${store.quickOpenItems.length}）` : ''}` }}</span>
         </button>
-        <button type="button" class="btn-batch" title="选择一键打开的网站" @click="showQuickOpenDialog = true">
+        <button type="button" class="btn-secondary" title="选择一键打开的网站" @click="showQuickOpenDialog = true">
           <t-icon name="setting" />
           <span>配置网站</span>
         </button>
-        <button type="button" class="btn-batch" title="粘贴 JSON 文本，批量添加网址快捷方式" @click="showBatchTextDialog = true">
+        <button type="button" class="btn-secondary" title="粘贴 JSON 文本，批量添加网址快捷方式" @click="showBatchTextDialog = true">
           <t-icon name="edit" />
           <span>粘贴 JSON</span>
         </button>
-        <button type="button" class="btn-batch" title="从 JSON 文件批量导入网址快捷方式" @click="importWebsites">
+        <button type="button" class="btn-secondary" title="从 JSON 文件批量导入网址快捷方式" @click="importWebsites">
           <t-icon name="upload" />
           <span>导入</span>
         </button>
-        <button type="button" class="btn-batch" title="导出当前网址快捷方式" @click="exportWebsites">
+        <button type="button" class="btn-secondary" title="导出当前网址快捷方式" @click="exportWebsites">
           <t-icon name="download" />
           <span>导出</span>
         </button>
-        <button type="button" class="btn-add" @click="openAdd">
+        <button type="button" class="btn-primary" @click="openAdd">
           <t-icon name="add" />
           <span>添加</span>
         </button>
@@ -83,10 +83,10 @@
         </div>
         <h3>{{ store.searchQuery ? '没有匹配的快捷方式' : '暂无快捷方式' }}</h3>
         <p>{{ store.searchQuery ? '请更换关键词，或清除搜索条件' : '点击右上角“添加”创建快捷启动，或从 JSON 文件导入网址' }}</p>
-        <button type="button" v-if="store.searchQuery" class="btn-guide" @click="store.searchQuery = ''">
+        <button type="button" v-if="store.searchQuery" class="btn-text" @click="store.searchQuery = ''">
           清除搜索
         </button>
-        <button type="button" v-else class="btn-guide" @click="openAdd">
+        <button type="button" v-else class="btn-text" @click="openAdd">
           <t-icon name="add" />
           立即添加
         </button>
@@ -324,66 +324,6 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-@media (max-width: 1180px) {
-  .page-header {
-    flex-direction: column;
-  }
-
-  .header-actions {
-    flex-wrap: wrap;
-  }
-}
-
-.btn-add,
-.btn-batch,
-.btn-open {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  height: var(--header-control-height);
-  padding: 0 18px;
-  border: none;
-  border-radius: var(--radius);
-  background: var(--primary);
-  color: #fff;
-  font-size: var(--header-control-font-size);
-  font-weight: 500;
-  cursor: pointer;
-  transition: all var(--transition);
-  box-shadow: 0 2px 8px rgba(91, 106, 191, 0.3);
-}
-
-.btn-add:hover,
-.btn-open:hover:not(:disabled) {
-  background: var(--primary-hover);
-  box-shadow: 0 4px 12px rgba(91, 106, 191, 0.4);
-  transform: translateY(-1px);
-}
-
-.btn-open {
-  background: linear-gradient(135deg, var(--primary), #7c3aed);
-}
-
-.btn-open:disabled {
-  cursor: wait;
-  opacity: 0.7;
-}
-
-.btn-batch {
-  border: 1px solid var(--border);
-  background: var(--card-bg);
-  color: var(--text-secondary);
-  box-shadow: none;
-}
-
-.btn-batch:hover {
-  border-color: var(--primary);
-  background: var(--primary-light);
-  color: var(--primary);
-  box-shadow: none;
-  transform: translateY(-1px);
-}
-
 /* 筛选与搜索 */
 .list-toolbar {
   display: flex;
@@ -600,30 +540,9 @@ onMounted(async () => {
   margin-bottom: 24px;
 }
 
-.btn-guide {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 24px;
-  border: 2px solid var(--primary);
-  border-radius: var(--radius);
-  background: transparent;
-  color: var(--primary);
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all var(--transition);
-}
-
-.btn-guide:hover {
-  background: var(--primary);
-  color: #fff;
-}
-
 @media (max-width: 760px) {
-  .btn-add,
-  .btn-batch,
-  .btn-open {
+  .header-actions .btn-primary,
+  .header-actions .btn-secondary {
     flex: 1 1 auto;
     justify-content: center;
     padding: 0 12px;

@@ -36,7 +36,7 @@ function redactSensitiveText(value) {
   let text = String(value || '')
   text = text.replace(/-----BEGIN(?: [A-Z]+)? PRIVATE KEY-----[\s\S]*?-----END(?: [A-Z]+)? PRIVATE KEY-----/g, '[已脱敏：私钥]')
   text = text.replace(/\b(sk-[A-Za-z0-9_-]{12,}|sk-proj-[A-Za-z0-9_-]{12,}|AIza[A-Za-z0-9_-]{20,})\b/g, '[已脱敏：API Key]')
-  text = text.replace(/\b(Bearer\s+)[A-Za-z0-9._~+\/-]{12,}/gi, '$1[已脱敏]')
+  text = text.replace(/\b(Bearer\s+)[A-Za-z0-9._~+/-]{12,}/gi, '$1[已脱敏]')
   text = text.replace(/((?:api[_-]?key|token|password|secret|authorization)\s*[:=]\s*["']?)[^\s"',;]+/gi, '$1[已脱敏]')
   return text
 }
@@ -530,7 +530,7 @@ async function requestCompletion(provider, { messages = [], temperature = 0.2, r
     }
     throw new Error(providerRequestError(lastResult?.data, lastResult?.raw, lastResult?.response?.status || 0))
   } catch (error) {
-    if (error?.name === 'AbortError') throw new Error('AI 请求超时（60 秒）')
+    if (error?.name === 'AbortError') throw new Error('AI 请求超时（60 秒）', { cause: error })
     throw error
   } finally { clearTimeout(timer) }
 }

@@ -312,18 +312,9 @@ onActivated(() => {
 </script>
 
 <style scoped>
-.btn-primary,
-.btn-secondary,
-.btn-text { border: 0; border-radius: 9px; padding: 9px 13px; font: inherit; font-weight: 600; cursor: pointer; }
-.btn-primary { background: var(--primary); color: #fff; }
-.btn-secondary { border: 1px solid var(--border); background: #fff; color: var(--text); }
-.btn-text { padding: 6px 8px; background: transparent; color: var(--primary); }
-.btn-primary:disabled,
-.btn-secondary:disabled,
-.btn-text:disabled { cursor: not-allowed; opacity: .55; }
 .danger-text,
 .danger-value { color: var(--danger); }
-.success-value { color: #059669; }
+.success-value { color: var(--success); }
 .spinning { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
