@@ -6,6 +6,7 @@ import App from './App.vue'
 import router from './router'
 import pinia from './stores'
 import './assets/styles/base.css'
+import { initTheme } from './composables/useTheme'
 
 const LocalIcon = defineComponent({
   name: 'LocalIcon',
@@ -32,6 +33,8 @@ async function bootstrap() {
   } catch (error) {
     console.error(error)
   }
+
+  initTheme()
 
   const app = createApp(App)
   app.component('TIcon', LocalIcon)

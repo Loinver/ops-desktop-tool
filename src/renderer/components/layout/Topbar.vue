@@ -18,6 +18,10 @@
 
       <OpsNotificationCenter />
 
+      <button class="theme-toggle" type="button" :title="theme === 'dark' ? '切换到浅色' : '切换到深色'" @click="toggleTheme">
+        <t-icon :name="theme === 'dark' ? 'sun' : 'moon'" />
+      </button>
+
       <div class="status-wrap">
         <button
           class="status-trigger"
@@ -81,12 +85,14 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getFunctionMenuItem } from '../../config/function-menu'
+import { useTheme } from '../../composables/useTheme'
 import OpsNotificationCenter from './OpsNotificationCenter.vue'
 
 const emit = defineEmits(['open-command'])
 const route = useRoute()
 const router = useRouter()
 
+const { theme, toggleTheme } = useTheme()
 const statusOpen = ref(false)
 const loading = ref(false)
 const dashboard = ref(null)
@@ -210,6 +216,10 @@ onUnmounted(() => document.removeEventListener('click', handleDocumentClick))
 .status-trigger.is-open { border-color: color-mix(in srgb, var(--primary) 30%, var(--shell-border)); color: var(--primary); box-shadow: var(--shadow-xs); }
 .command-trigger > .t-icon { font-size: 15px; }
 kbd { margin-left: auto; padding: 2px 5px; border-radius: 5px; background: var(--bg-subtle); color: var(--text-muted); font-family: var(--font-mono); font-size: 10px; }
+
+.theme-toggle { width: 36px; height: 36px; display: inline-grid; place-items: center; border: 1px solid var(--shell-border); border-radius: 10px; background: var(--shell-surface-raised); color: var(--text-secondary); cursor: pointer; transition: border-color var(--transition-fast), color var(--transition-fast); -webkit-app-region: no-drag; }
+.theme-toggle:hover { border-color: color-mix(in srgb, var(--primary) 30%, var(--shell-border)); color: var(--primary); }
+.theme-toggle .t-icon { font-size: 16px; }
 
 .status-wrap { position: relative; }
 .status-trigger { padding: 0 10px; }
