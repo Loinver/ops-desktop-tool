@@ -19,18 +19,18 @@
           v-model="rawJson"
           class="json-input"
           spellcheck="false"
-          placeholder='[
+          placeholder="[
   {
-    "name": "运维平台",
-    "target": "https://ops.example.com",
-    "icon": "🚀",
-    "color": "#6366f1"
+    &quot;name&quot;: &quot;运维平台&quot;,
+    &quot;target&quot;: &quot;https://ops.example.com&quot;,
+    &quot;icon&quot;: &quot;🚀&quot;,
+    &quot;color&quot;: &quot;#6366f1&quot;
   },
   {
-    "name": "本地服务",
-    "target": "localhost:3000"
+    &quot;name&quot;: &quot;本地服务&quot;,
+    &quot;target&quot;: &quot;localhost:3000&quot;
   }
-]'
+]"
         />
         <p class="json-hint">网址可省略协议；本机地址或带端口地址会自动使用 HTTP。单次最多 200 条。</p>
       </div>

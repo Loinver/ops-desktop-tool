@@ -308,7 +308,6 @@ function restoreBackupArchive({ userDataPath, archive, password, now = Date.now(
 
 const AUTO_BACKUP_SETTINGS_FILE = 'ops-auto-backup-settings.json'
 const AUTO_BACKUP_HISTORY_FILE = 'ops-auto-backup-history.json'
-const AUTO_BACKUP_DIRECTORY_NAME = 'ops-auto-backups'
 const AUTO_BACKUP_HISTORY_LIMIT = 50
 const AUTO_BACKUP_MIN_FREE_BYTES = 512 * 1024 * 1024
 const AUTO_BACKUP_INTERVALS = Object.freeze({ daily: 24 * 60 * 60 * 1000, weekly: 7 * 24 * 60 * 60 * 1000 })

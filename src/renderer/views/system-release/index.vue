@@ -161,9 +161,11 @@
             <div class="sftp-settings-section-title">忽略规则</div>
             <label class="sftp-form-field sftp-field-ignore">
               <span>每行一条，支持 *、**、? 和 ! 反向规则</span>
-              <textarea v-model="profileSettings.ignoreText" rows="3" placeholder="node_modules/
+              <textarea
+v-model="profileSettings.ignoreText" rows="3" placeholder="node_modules/
 *.log
-*.map"></textarea>
+*.map"
+></textarea>
             </label>
           </div>
         </div>
@@ -213,7 +215,8 @@
             class="path-input"
             @keyup.enter="applyLocalDir"
           />
-          <button type="button"
+          <button
+type="button"
             class="browse-btn"
             title="选择并保存本地目录"
             @click="browseLocalDir()"
@@ -289,7 +292,8 @@
             <!-- 状态 + 操作 -->
             <div class="col-status">
               <template v-if="row.status === 'only-local'">
-                <button type="button"
+                <button
+type="button"
                   class="status-btn publish"
                   @click="deploySingleFile(row.local)"
                   title="发布到服务器"
@@ -298,7 +302,8 @@
                 </button>
               </template>
               <template v-else-if="row.status === 'modified'">
-                <button type="button"
+                <button
+type="button"
                   class="status-btn update"
                   @click="deploySingleFile(row.local)"
                   title="更新到服务器"
@@ -307,7 +312,8 @@
                 </button>
               </template>
               <template v-else-if="row.status === 'only-remote'">
-                <button type="button"
+                <button
+type="button"
                   class="status-btn delete"
                   @click="confirmDelete(row.remote)"
                   :disabled="syncing"
@@ -339,7 +345,8 @@
 
             <!-- 操作 -->
             <div class="col-action">
-              <button type="button"
+              <button
+type="button"
                 v-if="
                   row.status === 'only-local' && row.local?.type === 'directory'
                 "
@@ -399,7 +406,8 @@
           </span>
         </div>
         <div class="actions">
-          <button type="button"
+          <button
+type="button"
             v-if="summary.onlyLocal > 0"
             class="action-btn publish"
             @click="publishAll"
@@ -408,7 +416,8 @@
             <t-icon name="upload" />
             发布全部新增 ({{ summary.onlyLocal }})
           </button>
-          <button type="button"
+          <button
+type="button"
             v-if="summary.modified > 0"
             class="action-btn update"
             @click="updateAll"
@@ -523,7 +532,8 @@
               <p class="log-timeline-message">{{ entry.message }}</p>
             </div>
             <time class="log-timeline-meta">{{ formatLogTime(entry.timestamp) }}</time>
-            <button type="button"
+            <button
+type="button"
               v-if="canRetryHistoryEntry(entry)"
               class="log-item-retry"
               @click="retryHistoryEntry(entry)"
@@ -1211,20 +1221,6 @@ async function browseLocalDir({ save = true } = {}) {
   }
 }
 
-// 清空远程目录
-async function clearRemoteDir(remotePath) {
-  try {
-    const result = await window.opsApi.sftpList(remotePath);
-    if (result.success) {
-      for (const item of result.data.items) {
-        await window.opsApi.sftpDelete(item.path);
-      }
-    }
-  } catch (err) {
-    // 忽略
-  }
-}
-
 // 清理路径中的双斜杠
 function cleanPath(p) {
   return p.replace(/\/+/g, "/").replace(/\/$/, "") || "/";
@@ -1248,43 +1244,6 @@ async function ensureRemoteDir(remotePath) {
   if (r && r.success === false) {
     addError(cleaned, `创建目录失败: ${r.error || "未知错误"}`);
   }
-}
-
-function isIgnoredLocalFile(name) {
-  return name === ".DS_Store" || name === "Thumbs.db";
-}
-
-// 递归统计实际需要上传的文件数
-async function countUploadFiles(localPath) {
-  const result = await window.opsApi.sftpLocalList(localPath);
-  if (!result.success) {
-    throw new Error(result.error || `读取本地目录失败: ${localPath}`);
-  }
-
-  let total = 0;
-  for (const item of result.data.items) {
-    if (isIgnoredLocalFile(item.name)) continue;
-    if (item.type === "directory") {
-      total += await countUploadFiles(cleanPath(localPath + "/" + item.name));
-    } else {
-      total++;
-    }
-  }
-  return total;
-}
-
-async function countRowsUploadFiles(rows) {
-  let total = 0;
-  for (const row of rows) {
-    if (row.local.type === "directory") {
-      total += await countUploadFiles(
-        cleanPath(localDir.value + "/" + row.local.name),
-      );
-    } else {
-      total++;
-    }
-  }
-  return total;
 }
 
 async function uploadFile(localPath, remotePath, fileName) {
@@ -1350,35 +1309,6 @@ async function deployZip(entries, remoteDir, clearRemotePaths, fileName, ignoreR
       clearRemotePaths: clearRemotePaths.map(cleanPath),
     });
     return false;
-  }
-}
-
-// 递归上传文件夹
-async function uploadFolder(localPath, remotePath, progress) {
-  // 确保远程目录存在
-  await ensureRemoteDir(remotePath);
-
-  const result = await window.opsApi.sftpLocalList(localPath);
-  if (!result.success) {
-    addError(localPath, `读取本地目录失败: ${result.error || "未知错误"}`);
-    return;
-  }
-
-  for (const item of result.data.items) {
-    // 跳过不需要上传的文件
-    if (isIgnoredLocalFile(item.name)) continue;
-
-    const itemLocalPath = cleanPath(localPath + "/" + item.name);
-    const itemRemotePath = cleanPath(remotePath + "/" + item.name);
-
-    if (item.type === "directory") {
-      await uploadFolder(itemLocalPath, itemRemotePath, progress);
-    } else {
-      syncMessage.value = `上传: ${item.name}`;
-      await uploadFile(itemLocalPath, itemRemotePath, item.name);
-      progress.current++;
-      updateProgress(progress.current, progress.total);
-    }
   }
 }
 

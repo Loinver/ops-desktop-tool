@@ -38,9 +38,6 @@ const PROBE_TEXT = '把「早上好」翻译成英文，只回译文。'
 const ANTHROPIC_CLAUDE_CODE_BETA = 'claude-code-20250219'
 /** 开启 1M 上下文所需的 beta 标识。 */
 const ANTHROPIC_1M_BETA = 'context-1m-2025-08-07'
-const CODEX_CLIENT_VERSION = "2.1.217.836"
-const CODEX_USER_AGENT = `codex-cli/2.1 (external, cli)`
-const CODEX_IDENTITY_SYSTEM = "You are Codex, OpenAI's official AI assistant for code and chat."
 const ONE_M_MODEL_MARKER_RE = /\s*\[1m\]\s*$/i
 
 /**
@@ -68,9 +65,6 @@ const CLAUDE_CODE_CLIENT_IDS = (() => {
   const { randomUUID, randomBytes } = require('node:crypto')
   return { deviceId: randomBytes(32).toString('hex'), sessionId: randomUUID() }
 })()
-
-// 两类拟真请求共用进程内随机标识，避免生成可回溯的固定设备信息。
-const CODEX_CLIENT_IDS = CLAUDE_CODE_CLIENT_IDS
 
 /**
  * cc-switch 的 [1M] 只用于本地选择 100 万上下文能力。
@@ -251,7 +245,7 @@ function shouldRetryAsClientLike(result) {
 
 /** gatewayRejected 只用于串联两级探测，不下发到渲染进程。 */
 function stripInternalFields(result) {
-  const { gatewayRejected, ...rest } = result
+  const { gatewayRejected: _gatewayRejected, ...rest } = result
   return rest
 }
 
@@ -1196,7 +1190,7 @@ function registerModelTestHandlers() {
   ipcMain.handle(IPC_CHANNELS.MODEL_TEST_LIST_PROVIDERS, async () => {
     const result = await refreshProviderCache()
     if (!result.ok) return result
-    const safeProviders = result.providers.map(({ apiKey, oneMModels, ...rest }) => rest)
+    const safeProviders = result.providers.map(({ apiKey: _apiKey, oneMModels: _oneMModels, ...rest }) => rest)
     return { ok: true, dbPath: result.dbPath, providers: safeProviders }
   })
 

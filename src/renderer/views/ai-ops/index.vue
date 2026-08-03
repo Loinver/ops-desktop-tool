@@ -232,7 +232,14 @@
             <p v-if="!activeProviderReady" class="inline-hint"><t-icon name="info-circle" /> 配置已启用且包含密钥的默认 Provider 后可生成 AI 回答。</p>
             <button class="btn-primary answer-btn" type="button" :disabled="busy || !knowledgeQuery.trim()" @click="answerKnowledge"><t-icon name="chat" /> 生成带引用的回答</button>
             <div v-if="knowledgeAnswer" class="answer-box"><strong>回答</strong><pre>{{ knowledgeAnswer }}</pre></div>
-            <div v-if="knowledgeResults.length" class="search-results"><div v-for="(item, index) in knowledgeResults" :key="`${item.documentId}-${item.startLine}`" class="search-result"><strong>[{{ index + 1 }}] {{ item.title }}</strong><span>第 {{ item.startLine }}–{{ item.endLine }} 行 · 匹配 {{ item.score }}</span><pre v-html="highlightKnowledge(item.content, item.matchedTerms)"></pre></div></div>
+            <div v-if="knowledgeResults.length" class="search-results">
+              <div v-for="(item, index) in knowledgeResults" :key="`${item.documentId}-${item.startLine}`" class="search-result">
+                <strong>[{{ index + 1 }}] {{ item.title }}</strong>
+                <span>第 {{ item.startLine }}–{{ item.endLine }} 行 · 匹配 {{ item.score }}</span>
+                <!-- eslint-disable-next-line vue/no-v-html -- highlightKnowledge escapes document content before adding <mark> tags. -->
+                <pre v-html="highlightKnowledge(item.content, item.matchedTerms)"></pre>
+              </div>
+            </div>
             <div v-else-if="searched" class="empty-mini">没有检索到匹配知识。</div>
           </template>
         </article>

@@ -504,7 +504,6 @@ async function deployZipToRemote(sftp, { entries, remoteDir, clearRemotePaths = 
   const remoteStage = path.posix.join(remoteTmpRoot, `${appName}-stage-${stamp}`)
   // 备份存放在目标目录的父级，以便大多数部署可在同一文件系统内原子移动。
   const backupParent = normalizedRemoteDir === '/' ? remoteTmpRoot : path.posix.dirname(normalizedRemoteDir)
-  const targetName = path.posix.basename(normalizedRemoteDir) || appName || 'root'
   const remoteBackup = path.posix.join(backupParent, '.ops-release-backups', releaseId)
   let remoteZipUploaded = false
 
@@ -928,7 +927,7 @@ function registerSftpHandlers() {
 
   ipcMain.handle(IPC_CHANNELS.SFTP_TEST, async () => {
     try {
-      const sftp = await getSftpClient()
+      await getSftpClient()
       return {
         success: true,
         message: `已连接到 ${sftpConfig.host}:${sftpConfig.port}`,

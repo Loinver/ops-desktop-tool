@@ -126,8 +126,7 @@
         @select="scrollToProvider"
       />
     </div>
-
-    </main>
+</main>
 
     <ModelListSettingsDialog
       :open="showModelListSettings"

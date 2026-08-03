@@ -82,7 +82,7 @@ function makeWebsiteExport(items) {
       const normalized = normalizeWebsiteItem(item)
       if (targets.has(normalized.target)) continue
       targets.add(normalized.target)
-      const { id, ...website } = normalized
+      const { id: _id, ...website } = normalized
       websites.push(website)
     } catch {
       // 导出时跳过历史中的无效网址；不影响其它可用项。

@@ -25,7 +25,8 @@
         <div class="form-group">
           <label class="form-label">类型</label>
           <div class="type-selector">
-            <button type="button"
+            <button
+type="button"
               v-for="t in typeOptions"
               :key="t.value"
               :class="['type-btn', { active: form.type === t.value }]"
@@ -47,7 +48,8 @@
               class="form-input"
               :placeholder="targetPlaceholder"
             />
-            <button type="button"
+            <button
+type="button"
               v-if="form.type !== 'url'"
               class="browse-btn"
               @click="browseFile"
@@ -88,7 +90,8 @@
           <div class="form-group flex-2">
             <label class="form-label">颜色</label>
             <div class="color-grid">
-              <button type="button"
+              <button
+type="button"
                 v-for="color in colors"
                 :key="color"
                 :class="['color-dot', { active: form.color === color }]"
@@ -104,7 +107,8 @@
 
       <div class="dialog-footer">
         <button type="button" class="btn-cancel" @click="close">取消</button>
-        <button type="button"
+        <button
+type="button"
           class="btn-confirm"
           :disabled="saving || !form.name.trim() || !form.target.trim()"
           @click="save"

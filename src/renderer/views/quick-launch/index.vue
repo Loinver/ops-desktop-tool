@@ -7,7 +7,8 @@
         <p class="page-desc">管理常用应用和网站，并按配置一键打开多个网站</p>
       </div>
       <div class="page-actions header-actions">
-        <button type="button"
+        <button
+type="button"
           class="btn-primary"
           :disabled="batchOpening"
           :title="store.quickOpenItems.length ? `打开已配置的 ${store.quickOpenItems.length} 个网站` : '请先配置一键打开的网站'"
@@ -42,7 +43,8 @@
     <main class="page-content">
       <div class="list-toolbar">
           <div class="filter-bar" role="tablist" aria-label="快捷方式类型筛选">
-        <button type="button"
+        <button
+type="button"
           v-for="tab in tabs"
           :key="tab.id"
           :class="['filter-chip', { active: store.currentTab === tab.id }]"

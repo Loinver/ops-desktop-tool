@@ -10,7 +10,7 @@
     </div>
 
     <div class="topbar-actions">
-      <button class="command-trigger" type="button" title="打开命令面板（⌘K）" @click="$emit('open-command')">
+      <button class="command-trigger" type="button" title="打开命令面板（⌘K）" @click="emit('open-command')">
         <t-icon name="search" />
         <span>搜索或跳转</span>
         <kbd>{{ shortcutLabel }}</kbd>

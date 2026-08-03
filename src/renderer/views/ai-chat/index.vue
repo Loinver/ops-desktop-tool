@@ -328,7 +328,7 @@ async function searchKnowledge() {
     addMessage('assistant', knowledgeResults.value.length
       ? `已检索到 ${knowledgeResults.value.length} 条本地知识。开启“基于检索结果回答”后，下一次提问会引用这些片段。`
       : '没有检索到匹配的知识。')
-  } catch (error) {
+  } catch {
     chatError.value = '知识检索失败'
   }
 }

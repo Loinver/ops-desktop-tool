@@ -37,7 +37,8 @@
             <h3>暂无图片</h3>
             <p>输入描述后开始生成，也可以从下面的示例开始</p>
             <div class="prompt-suggestions">
-              <button type="button"
+              <button
+type="button"
                 v-for="suggestion in promptSuggestions"
                 :key="suggestion"
                 @click="useSuggestion(suggestion)"
@@ -83,7 +84,8 @@
                   <t-icon name="edit" />
                   <span>继续调整</span>
                 </button>
-                <button type="button"
+                <button
+type="button"
                   class="btn-download"
                   :disabled="isDownloading(message.id)"
                   @click="downloadImage(message)"
@@ -237,7 +239,8 @@
         </div>
 
         <div v-else class="history-grid">
-          <button type="button"
+          <button
+type="button"
             v-for="item in historyItems"
             :key="item.id"
             class="history-card"
@@ -623,7 +626,7 @@ async function downloadImage(message) {
   }
 }
 
-function continueFromMessage(message) {
+function continueFromMessage() {
   draft.value = '基于上一张图继续调整：'
   scrollToBottom()
 }
