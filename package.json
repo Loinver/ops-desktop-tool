@@ -51,28 +51,28 @@
       "build/**/*",
       "package.json"
     ],
-    "icon": "build/icons/icon.png",
+    "icon": "build/icons/ops-desktop-rounded.png",
     "mac": {
       "category": "public.app-category.developer-tools",
       "target": [
         "dmg",
         "zip"
       ],
-      "icon": "build/icons/icon.png"
+      "icon": "build/icons/ops-desktop-rounded.png"
     },
     "win": {
       "target": [
         "nsis",
         "zip"
       ],
-      "icon": "build/icons/icon.png"
+      "icon": "build/icons/ops-desktop-rounded.png"
     },
     "linux": {
       "target": [
         "AppImage",
         "deb"
       ],
-      "icon": "build/icons/icon.png"
+      "icon": "build/icons/ops-desktop-rounded.png"
     },
     "npmRebuild": false
   },
