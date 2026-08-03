@@ -2,9 +2,9 @@
   <div class="page ai-ops-page">
     <header class="page-header">
       <div class="page-heading">
-        <div class="page-eyebrow"><t-icon name="gesture-pray" /> AI CAPABILITY CENTER</div>
-        <h2 class="page-title">AI 能力中心</h2>
-        <p class="page-desc">统一管理 Provider、模型评测、脱敏日志、知识库与需要确认的安全工作流。</p>
+        <div class="page-eyebrow"><t-icon :name="currentSection.icon" /> {{ currentSection.eyebrow }}</div>
+        <h2 class="page-title">{{ currentSection.title }}</h2>
+        <p class="page-desc">{{ currentSection.description }}</p>
       </div>
       <div class="page-actions header-actions">
         <span class="safety-chip"><t-icon name="secured" /> 凭证不出主进程 · 执行需确认</span>
@@ -16,7 +16,7 @@
     </header>
 
     <main class="page-content">
-      <div class="tab-bar" role="tablist" aria-label="AI 能力功能">
+      <div v-if="tabs.length > 1" class="tab-bar" role="tablist" :aria-label="`${currentSection.title}功能`">
       <button
         v-for="tab in tabs"
         :id="`ai-ops-tab-${tab.id}`"
@@ -38,8 +38,9 @@
       <section
         :id="`ai-ops-panel-${activeTab}`"
       class="tab-panel"
-      role="tabpanel"
-      :aria-labelledby="`ai-ops-tab-${activeTab}`"
+      :role="tabs.length > 1 ? 'tabpanel' : 'region'"
+      :aria-labelledby="tabs.length > 1 ? `ai-ops-tab-${activeTab}` : undefined"
+      :aria-label="tabs.length === 1 ? currentSection.title : undefined"
       tabindex="-1"
     >
       <section v-if="activeTab === 'providers'" class="panel-grid providers-layout">
@@ -280,19 +281,30 @@ import { useConfirm } from '../../composables/useConfirm'
 
 defineOptions({ name: 'AiOps' })
 
+const props = defineProps({ section: { type: String, default: 'models' } })
+
 const { confirm } = useConfirm()
 const route = useRoute()
 const router = useRouter()
-const tabs = [
+const allTabs = [
   { id: 'providers', name: 'Provider', icon: 'server' },
-  { id: 'evaluation', name: '模型评测', icon: 'chart-bar' },
+  { id: 'evaluation', name: '质量评测', icon: 'chart-bar' },
   { id: 'logs', name: '日志分析', icon: 'search' },
   { id: 'knowledge', name: '知识库', icon: 'folder-open' },
-  { id: 'workflow', name: '智能工作流', icon: 'rocket' },
+  { id: 'workflow', name: '安全操作编排', icon: 'rocket' },
   { id: 'mcp', name: 'MCP', icon: 'api' },
 ]
 
-const activeTab = ref(tabs.some(tab => tab.id === route.query.tab) ? route.query.tab : 'providers')
+const sectionDefinitions = {
+  models: { title: '模型中心', eyebrow: 'MODEL CENTER', description: '管理通过连接测试的 AI Provider，并使用评测用例验证模型输出质量。', icon: 'server', tabs: ['providers', 'evaluation'] },
+  knowledge: { title: '知识库', eyebrow: 'KNOWLEDGE BASE', description: '集中管理本地知识文档、检索内容并为 AI 对话提供可引用的上下文。', icon: 'folder-open', tabs: ['knowledge'] },
+  operations: { title: 'AI 运维工具', eyebrow: 'AI OPERATIONS', description: '对脱敏日志进行辅助分析，并通过需要确认的安全操作编排处理运维任务。', icon: 'search', tabs: ['logs', 'workflow'] },
+  integrations: { title: 'AI 集成', eyebrow: 'AI INTEGRATIONS', description: '查看 MCP 本地只读服务配置，并安全接入支持 MCP 的外部客户端。', icon: 'api', tabs: ['mcp'] },
+}
+
+const currentSection = computed(() => sectionDefinitions[props.section] || sectionDefinitions.models)
+const tabs = computed(() => currentSection.value.tabs.map(id => allTabs.find(tab => tab.id === id)).filter(Boolean))
+const activeTab = ref('providers')
 const loading = ref(true)
 const refreshing = ref(false)
 const hasLoaded = ref(false)
@@ -396,16 +408,16 @@ function selectTab(tabId) {
 }
 
 function handleTabKeydown(event, tabId) {
-  const currentIndex = tabs.findIndex(tab => tab.id === tabId)
+  const currentIndex = tabs.value.findIndex(tab => tab.id === tabId)
   let nextIndex = currentIndex
-  if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % tabs.length
-  else if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + tabs.length) % tabs.length
+  if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % tabs.value.length
+  else if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + tabs.value.length) % tabs.value.length
   else if (event.key === 'Home') nextIndex = 0
-  else if (event.key === 'End') nextIndex = tabs.length - 1
+  else if (event.key === 'End') nextIndex = tabs.value.length - 1
   else return
 
   event.preventDefault()
-  const nextTab = tabs[nextIndex]
+  const nextTab = tabs.value[nextIndex]
   selectTab(nextTab.id)
   requestAnimationFrame(() => document.getElementById(`ai-ops-tab-${nextTab.id}`)?.focus())
 }
@@ -737,7 +749,7 @@ function restoreWorkflow(plan) {
 function navigateWorkflowStep(step) {
   if (step?.type !== 'navigate' || !step.target) return
   const target = String(step.target)
-  if (!['/system-release', '/ai-ops'].includes(target.split('?')[0])) {
+  if (!['/system-release', '/ai-models', '/ai-operations', '/knowledge-base', '/ai-integrations'].includes(target.split('?')[0])) {
     MessagePlugin.error({ content: '该页面步骤无效，请重新生成工作流', placement: 'bottom-right' })
     return
   }
@@ -767,8 +779,8 @@ watch(() => sourceSelection.value.sourceKey, () => {
   sourceSelection.value.model = ''
 })
 
-watch(() => route.query.tab, tab => {
-  if (tabs.some(item => item.id === tab)) activeTab.value = tab
+watch([tabs, () => route.query.tab], ([availableTabs, routeTab]) => {
+  activeTab.value = availableTabs.some(item => item.id === routeTab) ? routeTab : availableTabs[0]?.id || 'providers'
 }, { immediate: true })
 
 watch(activeTab, tab => {

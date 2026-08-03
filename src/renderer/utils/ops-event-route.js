@@ -3,8 +3,8 @@ const SOURCE_ROUTES = {
   'model-monitor': '/model-test',
   model: '/model-test',
   automation: '/ops-control-center',
-  log: '/ai-ops',
-  copilot: '/ai-ops',
+  log: '/ai-operations',
+  copilot: '/ai-operations',
   'node-service': '/node-services',
   'data-backup': '/data-management',
 }

@@ -111,7 +111,7 @@
         <footer class="composer-area">
           <div v-if="!activeProviderReady" class="composer-unavailable">
             <t-icon name="info-circle" />
-            <span>请先在模型可靠性配置 Provider，并在 AI 能力中心一键添加为默认模型。</span>
+            <span>请先在模型可靠性配置 Provider，并在模型中心一键添加为默认模型。</span>
             <button type="button" @click="configureProvider">前往配置</button>
           </div>
           <div class="composer" :class="{ 'composer--disabled': !activeProviderReady }">
@@ -151,7 +151,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onActivated, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import PageHeader from '../../components/common/PageHeader.vue'
 import MessagePlugin from 'tdesign-vue-next/es/message/plugin.mjs'
@@ -159,7 +159,7 @@ import MessagePlugin from 'tdesign-vue-next/es/message/plugin.mjs'
 defineOptions({ name: 'AiChat' })
 
 const router = useRouter()
-const title = 'AI 问答'
+const title = 'AI 对话'
 const description = '使用模型可靠性来源的一键配置 Provider 进行多轮对话，并按需关联本地知识库。'
 
 const chatMessages = ref([])
@@ -187,8 +187,7 @@ const examplePrompts = [
 const chatHistory = ref(null)
 const composerInput = ref(null)
 
-onMounted(async () => {
-  loadHistory()
+async function loadProviderState() {
   try {
     const result = await window.opsApi.getAiOpsState()
     if (result?.ok && Array.isArray(result.providers?.providers)) {
@@ -199,8 +198,15 @@ onMounted(async () => {
   } catch (error) {
     console.error('加载 AI 状态失败', error)
   }
+}
+
+onMounted(async () => {
+  loadHistory()
+  await loadProviderState()
   nextTick(scrollToBottom)
 })
+
+onActivated(loadProviderState)
 
 function formatTime(timestamp) {
   if (!timestamp) return ''
@@ -256,7 +262,7 @@ async function requestAssistantReply() {
     })
 
     if (!result?.ok) {
-      chatError.value = result?.error || 'AI 问答失败'
+      chatError.value = result?.error || 'AI 对话失败'
       retryableChatError.value = true
       return
     }
@@ -265,7 +271,7 @@ async function requestAssistantReply() {
     retryableChatError.value = false
     completed = true
   } catch (error) {
-    chatError.value = error?.message || 'AI 问答失败，请重试'
+    chatError.value = error?.message || 'AI 对话失败，请重试'
     retryableChatError.value = true
     MessagePlugin.error({ content: chatError.value, placement: 'bottom-right' })
   } finally {
@@ -279,7 +285,7 @@ async function sendAiChat() {
   const prompt = chatInput.value.trim()
   if (!prompt || chatBusy.value) return
   if (!activeProviderReady.value) {
-    chatError.value = '请先在模型可靠性完成配置，并在 AI 能力中心一键添加默认 Provider'
+    chatError.value = '请先在模型可靠性完成配置，并在模型中心一键添加默认 Provider'
     retryableChatError.value = false
     return
   }
@@ -294,7 +300,7 @@ async function sendAiChat() {
 async function retryLastQuestion() {
   if (chatBusy.value || !latestUserMessage.value) return
   if (!activeProviderReady.value) {
-    chatError.value = '请先在模型可靠性完成配置，并在 AI 能力中心一键添加默认 Provider'
+    chatError.value = '请先在模型可靠性完成配置，并在模型中心一键添加默认 Provider'
     retryableChatError.value = false
     return
   }
@@ -359,7 +365,7 @@ function switchProvider() {
 }
 
 function configureProvider() {
-  router.push('/ai-ops')
+  router.push('/ai-models')
 }
 </script>
 
@@ -369,7 +375,7 @@ function configureProvider() {
   gap: 0;
 }
 
-/* PageHeader 仅提供布局；AI 问答在这里定义成组操作按钮的视觉层级。 */
+/* PageHeader 仅提供布局；AI 对话在这里定义成组操作按钮的视觉层级。 */
 .ai-chat-page :deep(.btn-primary),
 .ai-chat-page :deep(.btn-secondary),
 .ai-chat-page :deep(.btn-text) {

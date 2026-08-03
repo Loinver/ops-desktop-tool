@@ -62,7 +62,7 @@ const menuGroups = computed(() => FUNCTION_MENU_GROUPS.map(group => ({
   ...group,
   items: group.items.map(item => ({
     ...item,
-    badge: item.badge === 'services' ? nodeServicesStore.services.length || null : null,
+    badge: item.badge === 'services' ? nodeServicesStore.services.length || null : item.badge || null,
   })),
 })))
 

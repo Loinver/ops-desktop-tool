@@ -4,7 +4,7 @@
       <section class="command-palette" role="dialog" aria-modal="true" aria-label="命令面板">
         <div class="palette-search">
           <t-icon name="search" />
-          <input ref="searchInput" v-model="query" type="search" autocomplete="off" placeholder="搜索页面、快捷启动或 AI 工作流…" @keydown.down.prevent="moveActive(1)" @keydown.up.prevent="moveActive(-1)" @keydown.enter.prevent="runActive" @keydown.esc.prevent="close" />
+          <input ref="searchInput" v-model="query" type="search" autocomplete="off" placeholder="搜索页面或功能…" @keydown.down.prevent="moveActive(1)" @keydown.up.prevent="moveActive(-1)" @keydown.enter.prevent="runActive" @keydown.esc.prevent="close" />
           <kbd>ESC</kbd>
         </div>
 

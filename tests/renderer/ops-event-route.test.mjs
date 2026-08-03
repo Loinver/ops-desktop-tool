@@ -61,14 +61,14 @@ describe('routeForOpsEvent', () => {
     expect(Object.keys(result.query)).not.toContain('event')
   })
 
-  it('routes log events to /ai-ops', () => {
+  it('routes log events to /ai-operations', () => {
     const result = routeForOpsEvent({ sourceType: 'log', id: 'evt-8' })
-    expect(result.path).toBe('/ai-ops')
+    expect(result.path).toBe('/ai-operations')
   })
 
-  it('routes copilot events to /ai-ops', () => {
+  it('routes copilot events to /ai-operations', () => {
     const result = routeForOpsEvent({ sourceType: 'copilot', id: 'evt-9' })
-    expect(result.path).toBe('/ai-ops')
+    expect(result.path).toBe('/ai-operations')
   })
 
   it('routes data-backup events to /data-management', () => {

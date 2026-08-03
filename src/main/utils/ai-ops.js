@@ -766,8 +766,8 @@ function planWorkflow({ prompt, quickLaunchItems = [] }) {
     for (const item of matched) steps.push({ type: 'open-url', label: `打开网站：${string(item.name, 80)}`, target: string(item.target, 2000), risk: 'low', requiresConfirmation: true })
   }
   if (/发布|部署|deploy/.test(normalized)) steps.push({ type: 'navigate', label: '打开系统发布并生成发布前检查清单', target: '/system-release', risk: 'medium', requiresConfirmation: false })
-  if (/模型|评测|测试/.test(normalized)) steps.push({ type: 'navigate', label: '打开模型评测与测试中心', target: '/ai-ops?tab=evaluation', risk: 'low', requiresConfirmation: false })
-  if (/日志|故障|排查/.test(normalized)) steps.push({ type: 'navigate', label: '打开日志分析中心', target: '/ai-ops?tab=logs', risk: 'low', requiresConfirmation: false })
+  if (/模型|评测|测试/.test(normalized)) steps.push({ type: 'navigate', label: '打开模型评测与测试中心', target: '/ai-models?tab=evaluation', risk: 'low', requiresConfirmation: false })
+  if (/日志|故障|排查/.test(normalized)) steps.push({ type: 'navigate', label: '打开日志分析中心', target: '/ai-operations?tab=logs', risk: 'low', requiresConfirmation: false })
   if (!steps.length) steps.push({ type: 'guide', label: '生成操作建议（不会执行系统命令或发布）', target: '', risk: 'low', requiresConfirmation: false })
   const normalizedSteps = steps.map((step, index) => ({
     ...step,

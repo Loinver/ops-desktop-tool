@@ -286,13 +286,16 @@ async function executePlan() {
 function openPlanStep(step) {
   if (step?.type !== 'navigate' || !step.target) return
   const target = String(step.target)
-  if (!['/system-release', '/ai-ops'].includes(target.split('?')[0])) {
+  if (!['/system-release', '/ai-models', '/ai-operations', '/knowledge-base', '/ai-integrations'].includes(target.split('?')[0])) {
     MessagePlugin.error({ content: '该页面步骤无效，请重新生成计划', placement: 'bottom-right' })
     return
   }
   router.push(target)
 }
-function openKnowledge(source) { window.location.hash = '#/ai-ops'; MessagePlugin.info({ content: `请在 AI 能力中心知识库查看「${source.title}」第 ${source.startLine}-${source.endLine} 行。`, placement: 'bottom-right' }) }
+function openKnowledge(source) {
+  router.push({ path: '/knowledge-base', query: { document: source.title } })
+  MessagePlugin.info({ content: `请在知识库查看「${source.title}」第 ${source.startLine}-${source.endLine} 行。`, placement: 'bottom-right' })
+}
 async function updateEvent(item, status) { const result = await window.opsApi.updateOpsEvent(item.id, status); if (notify(result, '更新事件失败')) await load() }
 function editTask(task) { taskForm.value = { ...newTask(), ...task } }
 function resetTaskForm() { taskForm.value = newTask() }

@@ -1,6 +1,8 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import AppLayout from '../components/layout/AppLayout.vue'
 
+const loadAiOpsView = () => import('../views/ai-ops/index.vue')
+
 const routes = [
   {
     path: '/',
@@ -39,15 +41,52 @@ const routes = [
       },
       {
         path: 'ai-ops',
-        name: 'AiOps',
-        component: () => import('../views/ai-ops/index.vue'),
-        meta: { title: 'AI 能力中心', keepAlive: true }
+        redirect: to => {
+          const tab = String(to.query.tab || '')
+          const target = {
+            providers: '/ai-models',
+            evaluation: '/ai-models',
+            logs: '/ai-operations',
+            workflow: '/ai-operations',
+            knowledge: '/knowledge-base',
+            mcp: '/ai-integrations',
+          }[tab] || '/ai-models'
+          return { path: target, query: to.query }
+        }
+      },
+      {
+        path: 'ai-models',
+        name: 'AiModels',
+        component: loadAiOpsView,
+        props: { section: 'models' },
+        meta: { title: '模型中心' }
+      },
+      {
+        path: 'knowledge-base',
+        name: 'KnowledgeBase',
+        component: loadAiOpsView,
+        props: { section: 'knowledge' },
+        meta: { title: '知识库' }
+      },
+      {
+        path: 'ai-operations',
+        name: 'AiOperations',
+        component: loadAiOpsView,
+        props: { section: 'operations' },
+        meta: { title: 'AI 运维工具' }
+      },
+      {
+        path: 'ai-integrations',
+        name: 'AiIntegrations',
+        component: loadAiOpsView,
+        props: { section: 'integrations' },
+        meta: { title: 'AI 集成' }
       },
       {
         path: 'ai-chat',
         name: 'AiChat',
         component: () => import('../views/ai-chat/index.vue'),
-        meta: { title: 'AI 问答', keepAlive: true }
+        meta: { title: 'AI 对话', keepAlive: true }
       },
       {
         path: 'quick-launch',
@@ -77,7 +116,7 @@ const routes = [
         path: 'gpt-image',
         name: 'GptImage',
         component: () => import('../views/gpt-image/index.vue'),
-        meta: { title: 'AI 图像实验' }
+        meta: { title: '图像生成' }
       },
       {
         path: ':pathMatch(.*)*',

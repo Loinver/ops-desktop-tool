@@ -3,7 +3,7 @@
     <div class="page-header">
       <div class="page-heading header-left">
         <div class="page-eyebrow"><t-icon name="image" /> AI IMAGE LAB</div>
-        <h2 class="page-title">AI 图像实验</h2>
+        <h2 class="page-title">图像生成</h2>
         <p class="page-desc">调用 OpenAI 兼容图像模型生成、管理和保存图片</p>
       </div>
       <div class="page-actions header-actions">
