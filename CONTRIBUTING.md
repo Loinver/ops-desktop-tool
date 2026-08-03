@@ -11,13 +11,13 @@
 1. 拉取最新 `main` 分支
 2. 创建功能分支 `feature/xxx` 或 `bugfix/xxx`
 3. 编写对应单元测试
-4. 运行 `pnpm test` 和 `pnpm check`
+4. 运行 `pnpm check`（包含 lint、测试和生产构建）
 5. 提交时附带描述性 commit message
 
 ### 3. 构建与测试
 ```bash
 pnpm install
-pnpm test
+pnpm verify
 pnpm check
 pnpm electron:build:mac
 ```

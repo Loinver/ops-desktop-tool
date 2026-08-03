@@ -59,7 +59,10 @@ OPEN_DEVTOOLS=false pnpm start
 # Node 测试 + 端口解析检查
 pnpm test
 
-# 完整检查：测试后执行生产构建
+# 质量检查：lint + 测试
+pnpm verify
+
+# 完整检查：质量检查后执行生产构建
 pnpm check
 
 # 仅运行 SFTP 部署安全测试
@@ -189,7 +192,7 @@ MCP 服务通过 stdio 提供严格只读的 `get_release_history`、`get_model_
 
 ### 发布前检查清单
 
-- [ ] `pnpm test` 全部通过
+- [ ] `pnpm verify`（lint + 测试）全部通过
 - [ ] `pnpm check` 运行成功
 - [ ] 构建输出在 `release/` 目录中完整（含 .dmg / .exe / .AppImage）
 - [ ] `CHANGELOG.md` 已更新

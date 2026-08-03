@@ -270,16 +270,15 @@ Vite 只构建 Renderer 到 `dist/renderer`，Electron Main 和 Shared 源文件
 - SFTP ZIP 发布和根目录保护
 - 跨平台端口命令输出解析
 
-`pnpm check` 在测试通过后继续执行生产构建，作为提交前的统一检查入口。
+`pnpm verify` 依次执行 ESLint 和测试；`pnpm check` 在质量检查通过后继续执行生产构建，作为提交前的统一检查入口。
 
 ## 11. 后续改进
 
 ### P2
 
-- 引入 ESLint、Prettier 和统一代码风格检查
+- 保持 ESLint 零告警，并在 CI 中持续执行统一质量门禁
 - 为 Main IPC 增加更多错误分支与契约测试
 - 为 Renderer 关键流程补充 Playwright Electron 冒烟测试
-- 在 CI 中执行 `pnpm check`
 
 ### P3
 

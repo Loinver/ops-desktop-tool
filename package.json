@@ -13,7 +13,7 @@
     "test": "node --test scripts/*.test.cjs && node scripts/check-port-parser.js && vitest run",
     "test:renderer": "vitest run",
     "test:renderer:watch": "vitest",
-    "check": "pnpm test && pnpm build",
+    "check": "pnpm verify && pnpm build",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
     "format": "prettier --write \"src/**/*.{js,vue}\" \"*.{js,mjs,json}\"",
@@ -22,7 +22,8 @@
     "electron:build": "vite build && electron-builder",
     "electron:build:mac": "vite build && electron-builder --mac",
     "electron:build:win": "vite build && electron-builder --win",
-    "electron:build:linux": "vite build && electron-builder --linux"
+    "electron:build:linux": "vite build && electron-builder --linux",
+    "verify": "pnpm lint && pnpm test"
   },
   "keywords": [
     "electron",
