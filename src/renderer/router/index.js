@@ -94,4 +94,11 @@ const router = createRouter({
   routes
 })
 
+const BASE_TITLE = 'Ops Desktop'
+
+router.afterEach((to) => {
+  const pageTitle = to.meta?.title
+  document.title = pageTitle ? `${pageTitle} - ${BASE_TITLE}` : BASE_TITLE
+})
+
 export default router

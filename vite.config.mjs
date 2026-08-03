@@ -6,10 +6,11 @@ export default defineConfig({
   root: 'src/renderer',
   base: './',
   publicDir: 'public',
-  build: {
-    outDir: '../../dist/renderer',
-    emptyOutDir: true,
-    rollupOptions: {
+ build: {
+   outDir: '../../dist/renderer',
+   emptyOutDir: true,
+   sourcemap: 'hidden',
+   rollupOptions: {
       output: {
         manualChunks(id) {
           if (!id.includes('node_modules')) return
