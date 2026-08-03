@@ -26,7 +26,6 @@ export default [
       'vue/html-self-closing': 'off',
       'vue/attributes-order': 'off',
       'vue/html-indent': 'off',
-      'vue/max-attributes-per-line': 'off',
     },
   },
   {
@@ -49,7 +48,7 @@ export default [
     },
   },
   {
-    files: ['**/*.cjs', '**/*.mjs'],
+   files: ['**/*.cjs', '**/*.mjs'],
     languageOptions: {
       sourceType: 'commonjs',
       globals: {
@@ -58,6 +57,17 @@ export default [
         exports: 'readonly',
         process: 'readonly',
         __dirname: 'readonly',
+        Buffer: 'readonly',
+        console: 'readonly',
+      },
+    },
+  },
+  {
+    files: ['**/*.mjs'],
+    languageOptions: {
+      sourceType: 'module',
+      globals: {
+        process: 'readonly',
         Buffer: 'readonly',
         console: 'readonly',
       },

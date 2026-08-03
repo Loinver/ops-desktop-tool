@@ -16,6 +16,22 @@ const logger = require('./utils/logger')
 
 const isMcpMode = process.argv.includes('--mcp')
 
+// 单实例锁：防止多实例导致 IPC 重复注册和数据文件竞争写入。
+if (!isMcpMode) {
+  const hasLock = app.requestSingleInstanceLock()
+  if (!hasLock) {
+    app.quit()
+  } else {
+    app.on('second-instance', () => {
+      const win = getMainWindow()
+      if (win) {
+        if (win.isMinimized()) win.restore()
+        win.focus()
+      }
+    })
+  }
+}
+
 process.on('uncaughtException', (err) => {
   logger.error('Uncaught exception', { message: err?.message, stack: err?.stack })
 })

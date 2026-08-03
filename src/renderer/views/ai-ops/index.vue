@@ -645,6 +645,8 @@ async function exportKnowledge(doc) {
 }
 
 function highlightKnowledge(content, matchedTerms) {
+  // XSS-safe: content is HTML-escaped before any <mark> markup is inserted,
+  // and match text always originates from the escaped string.
   let html = String(content || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   const terms = Array.from(new Set((Array.isArray(matchedTerms) ? matchedTerms : []).filter(term => term && term.length >= 2)))
     .sort((a, b) => b.length - a.length)
