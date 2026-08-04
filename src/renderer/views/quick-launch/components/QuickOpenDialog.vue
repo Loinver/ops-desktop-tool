@@ -315,9 +315,10 @@ async function save() {
 }
 
 .site-option input {
-  width: 16px;
-  height: 16px;
+  width: var(--checkbox-size);
+  height: var(--checkbox-size);
   flex-shrink: 0;
+  margin: 0;
   accent-color: var(--primary);
 }
 

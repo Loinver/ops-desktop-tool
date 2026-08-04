@@ -11,7 +11,7 @@
   align-items: center;
   gap: 6px;
   height: var(--header-control-height);
-  padding: 0 18px;
+  padding: 0 var(--button-padding-x);
   border-radius: var(--radius);
   font-size: var(--header-control-font-size);
   font-weight: 500;
@@ -36,7 +36,7 @@
   align-items: center;
   gap: 6px;
   height: var(--header-control-height);
-  padding: 0 18px;
+  padding: 0 var(--button-padding-x);
   border: none;
   border-radius: var(--radius);
   background: var(--primary);
@@ -230,7 +230,7 @@
   font-style: normal;
 }
 
-.sftp-form-field input {
+.sftp-form-field input:not([type='checkbox']) {
   height: 36px;
   padding: 0 10px;
   border: 1px solid var(--border);
@@ -240,7 +240,7 @@
   outline: none;
 }
 
-.sftp-form-field input:focus {
+.sftp-form-field input:not([type='checkbox']):focus {
   border-color: var(--primary);
 }
 
@@ -259,9 +259,8 @@
 }
 
 .sftp-clear-secret input {
-  width: 14px;
-  height: 14px;
-  padding: 0;
+  width: var(--checkbox-size);
+  height: var(--checkbox-size);
 }
 
 .sftp-dialog-footer {

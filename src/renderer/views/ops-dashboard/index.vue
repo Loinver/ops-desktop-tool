@@ -364,7 +364,7 @@ onMounted(loadDashboard)
 .refresh-button {
   flex-shrink: 0;
   height: var(--header-control-height);
-  padding: 0 18px;
+  padding: 0 var(--button-padding-x);
   font-size: var(--header-control-font-size);
 }
 

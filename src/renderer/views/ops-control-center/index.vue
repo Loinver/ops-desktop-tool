@@ -49,7 +49,7 @@
                 先收集本地事件、日志分析和知识库证据；任何外部打开操作仍需二次确认。
               </p>
             </div>
-            <label class="check"
+            <label class="check checkbox-row"
               ><input v-model="copilotUseAi" type="checkbox" :disabled="!activeProvider" /> 使用默认
               Provider</label
             >
@@ -290,7 +290,7 @@
             ><span>超时（毫秒）</span
             ><input v-model.number="taskForm.timeoutMs" type="number" min="1000" max="60000"
           /></label>
-          <label class="check task-enabled"
+          <label class="check checkbox-row task-enabled"
             ><input v-model="taskForm.enabled" type="checkbox" /> 启用任务</label
           >
           <div class="task-form-actions">
@@ -785,7 +785,7 @@ onActivated(() => {
   gap: 8px;
 }
 .event-filters select,
-.task-form input,
+.task-form input:not([type='checkbox']),
 .task-form select {
   height: 36px;
   border: 1px solid var(--border);

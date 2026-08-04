@@ -144,7 +144,7 @@
                 <small v-if="sftpSettings.hasPassword" class="sftp-secret-hint">
                   密码已由系统安全存储加密保存。
                 </small>
-                <div v-if="sftpSettings.hasPassword" class="sftp-clear-secret">
+                <div v-if="sftpSettings.hasPassword" class="sftp-clear-secret checkbox-row">
                   <input v-model="sftpSettings.clearPassword" type="checkbox" />
                   <span>清除已保存密码</span>
                 </div>
@@ -180,9 +180,10 @@
               </label>
               <div class="sftp-settings-section-title">发布后健康检查</div>
               <label class="sftp-form-field sftp-field-ignore sftp-check-row">
-                <span
-                  ><input v-model="profileSettings.healthCheckEnabled" type="checkbox" /> 发布后执行
-                  HTTP 健康检查</span
+                <span class="checkbox-row"
+                  ><input v-model="profileSettings.healthCheckEnabled" type="checkbox" /><span
+                    >发布后执行 HTTP 健康检查</span
+                  ></span
                 >
                 <small>失败时可保留备份供手动回滚，或自动回滚到发布前版本。</small>
               </label>
@@ -218,7 +219,7 @@
                     placeholder="8000 ms"
                   />
                 </div>
-                <div class="sftp-clear-secret">
+                <div class="sftp-clear-secret checkbox-row">
                   <input v-model="profileSettings.healthCheckAutoRollback" type="checkbox" /><span
                     >失败后自动回滚</span
                   >

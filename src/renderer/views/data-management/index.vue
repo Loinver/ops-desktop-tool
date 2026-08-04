@@ -1030,8 +1030,8 @@ onMounted(loadDataManagementState)
   cursor: not-allowed;
 }
 .backup-group input {
-  width: 16px;
-  height: 16px;
+  width: var(--checkbox-size);
+  height: var(--checkbox-size);
   flex: 0 0 auto;
   margin: 2px 0 0;
   accent-color: var(--primary);
@@ -1262,8 +1262,8 @@ onMounted(loadDataManagementState)
   cursor: pointer;
 }
 .toggle-field input {
-  width: 16px;
-  height: 16px;
+  width: var(--checkbox-size);
+  height: var(--checkbox-size);
   margin: 2px 0 0;
   accent-color: var(--primary);
 }

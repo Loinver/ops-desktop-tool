@@ -209,7 +209,7 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
   height: var(--header-control-height);
-  padding: 0 18px;
+  padding: 0 var(--button-padding-x);
   border: none;
   border-radius: var(--radius);
   background: var(--primary);

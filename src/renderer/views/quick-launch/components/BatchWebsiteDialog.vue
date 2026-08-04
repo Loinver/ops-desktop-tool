@@ -221,9 +221,10 @@ async function parseAndAdd() {
 
 .btn-cancel,
 .btn-confirm {
-  min-width: 84px;
-  height: 36px;
-  padding: 0 14px;
+  min-width: 80px;
+  height: var(--header-control-height);
+  padding: 0 var(--button-padding-x);
+  font-size: var(--header-control-font-size);
 }
 
 .btn-cancel {

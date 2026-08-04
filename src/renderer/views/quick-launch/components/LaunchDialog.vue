@@ -353,7 +353,7 @@ async function browseFile() {
 }
 
 .form-input {
-  height: 42px;
+  height: var(--control-height-lg);
   padding: 0 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -386,13 +386,13 @@ async function browseFile() {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  height: 44px;
+  height: var(--control-height-lg);
   border: 2px solid var(--border);
   border-radius: var(--radius);
   background: var(--card-bg);
   color: var(--text-secondary);
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--header-control-font-size);
+  font-weight: 600;
   cursor: pointer;
   transition: all var(--transition);
 }
@@ -422,8 +422,8 @@ async function browseFile() {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 0 16px;
-  height: 42px;
+  padding: 0 var(--button-padding-x);
+  height: var(--control-height-lg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--card-bg);
@@ -454,8 +454,8 @@ async function browseFile() {
 }
 
 .quick-open-option input {
-  width: 16px;
-  height: 16px;
+  width: var(--checkbox-size);
+  height: var(--checkbox-size);
   margin-top: 2px;
   accent-color: var(--primary);
 }
@@ -497,8 +497,8 @@ async function browseFile() {
 }
 
 .icon-preview {
-  width: 42px;
-  height: 42px;
+  width: var(--control-height-lg);
+  height: var(--control-height-lg);
   border-radius: var(--radius);
   display: flex;
   align-items: center;
@@ -552,14 +552,14 @@ async function browseFile() {
 }
 
 .btn-cancel {
-  height: 40px;
-  padding: 0 20px;
+  height: var(--header-control-height);
+  padding: 0 var(--button-padding-x);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--card-bg);
   color: var(--text-secondary);
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--header-control-font-size);
+  font-weight: 600;
   cursor: pointer;
   transition: all var(--transition);
 }
@@ -570,14 +570,14 @@ async function browseFile() {
 }
 
 .btn-confirm {
-  height: 40px;
-  padding: 0 24px;
+  height: var(--header-control-height);
+  padding: 0 16px;
   border: none;
   border-radius: var(--radius);
   background: var(--primary);
   color: #fff;
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--header-control-font-size);
+  font-weight: 600;
   cursor: pointer;
   transition: all var(--transition);
   box-shadow: 0 2px 8px rgba(91, 106, 191, 0.3);

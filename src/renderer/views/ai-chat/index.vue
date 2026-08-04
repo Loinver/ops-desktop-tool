@@ -42,7 +42,7 @@
             placeholder="搜索知识库，例如：正式环境如何回滚"
             @keyup.enter="searchKnowledge"
           />
-          <label class="knowledge-toggle">
+          <label class="knowledge-toggle checkbox-row">
             <input v-model="knowledgeUseAi" type="checkbox" />
             <span>基于检索结果回答</span>
           </label>
@@ -581,7 +581,7 @@ function configureProvider() {
   font-weight: 600;
 }
 
-.knowledge-toolbar input {
+.knowledge-toolbar input:not([type='checkbox']) {
   width: 100%;
   min-width: 120px;
   height: var(--control-height-sm);
@@ -601,8 +601,8 @@ function configureProvider() {
 }
 
 .knowledge-toggle input {
-  width: auto;
-  height: auto;
+  width: var(--checkbox-size);
+  height: var(--checkbox-size);
 }
 
 .knowledge-search-button {
@@ -1131,7 +1131,7 @@ function configureProvider() {
     font-size: 16px;
   }
 
-  .knowledge-toolbar input {
+  .knowledge-toolbar input:not([type='checkbox']) {
     flex-basis: 100%;
   }
 

@@ -45,7 +45,7 @@ function recover() {
 }
 .app-error-fallback button {
   height: var(--header-control-height);
-  padding: 0 20px;
+  padding: 0 var(--button-padding-x);
   font-size: var(--header-control-font-size);
   color: #fff;
   background: var(--primary);

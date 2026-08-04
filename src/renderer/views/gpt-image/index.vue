@@ -164,7 +164,7 @@
               >
             </label>
 
-            <label v-if="config.hasApiKey" class="toggle-row wide">
+            <label v-if="config.hasApiKey" class="toggle-row checkbox-row wide">
               <input v-model="clearApiKey" type="checkbox" />
               <span>清除已保存的 API Key</span>
             </label>
@@ -210,7 +210,7 @@
               </select>
             </label>
 
-            <label class="toggle-row wide">
+            <label class="toggle-row checkbox-row wide">
               <input v-model="useContext" type="checkbox" />
               <span>携带最近对话上下文</span>
             </label>

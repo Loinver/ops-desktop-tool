@@ -39,7 +39,7 @@
 
 .btn-ghost {
   height: var(--header-control-height);
-  padding: 0 18px;
+  padding: 0 var(--button-padding-x);
   color: var(--text-secondary);
   background: #fff;
   border: 1px solid var(--border);
@@ -401,8 +401,8 @@
 }
 
 .composer input {
-  height: 40px;
-  padding: 0 14px;
+  height: var(--control-height-md);
+  padding: 0 12px;
   border-color: #dbe3ef;
   border-radius: 999px;
   background: #fff;
@@ -416,9 +416,9 @@
 }
 
 .btn-send {
-  height: 40px;
-  min-width: 88px;
-  padding: 0 16px;
+  height: var(--control-height-md);
+  min-width: 82px;
+  padding: 0 var(--button-padding-x);
   border-radius: 999px;
   color: #fff;
   background: var(--primary);

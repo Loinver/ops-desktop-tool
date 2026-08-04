@@ -187,7 +187,7 @@ textarea:focus-visible {
   font-weight: 400;
 }
 
-input,
+input:not([type='checkbox']),
 select,
 textarea {
   width: 100%;
@@ -202,7 +202,7 @@ textarea {
     box-shadow 0.18s ease;
 }
 
-input,
+input:not([type='checkbox']),
 select {
   height: 36px;
   padding: 0 10px;
@@ -215,13 +215,13 @@ textarea {
   resize: vertical;
 }
 
-input:hover,
+input:not([type='checkbox']):hover,
 select:hover,
 textarea:hover {
   border-color: color-mix(in srgb, var(--primary) 30%, var(--border));
 }
 
-input:focus,
+input:not([type='checkbox']):focus,
 select:focus,
 textarea:focus {
   border-color: var(--primary);
@@ -230,8 +230,12 @@ textarea:focus {
 }
 
 input[type='checkbox'] {
-  width: 15px;
-  height: 15px;
+  width: var(--checkbox-size);
+  height: var(--checkbox-size);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
   accent-color: var(--primary);
 }
 

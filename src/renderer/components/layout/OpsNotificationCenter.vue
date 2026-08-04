@@ -832,9 +832,10 @@ onUnmounted(() => {
   line-height: 15px;
 }
 .notification-setting-row > input[type='checkbox'] {
-  width: 16px;
-  height: 16px;
+  width: var(--checkbox-size);
+  height: var(--checkbox-size);
   flex: none;
+  margin: 0;
   accent-color: var(--primary);
 }
 .notification-setting-group {

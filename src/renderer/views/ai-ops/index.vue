@@ -311,7 +311,7 @@
                 ><span>系统提示词 <em>可选</em></span
                 ><input v-model="caseForm.systemPrompt" placeholder="例如：仅返回 JSON 对象"
               /></label>
-              <label class="check"
+              <label class="check checkbox-row"
                 ><input v-model="caseForm.expectJson" type="checkbox" /> 要求合法 JSON 对象</label
               >
               <div class="actions">
@@ -424,7 +424,7 @@
                 ><span>日志标题</span
                 ><input v-model="logForm.title" placeholder="例如：正式环境发布失败 2026-07-31"
               /></label>
-              <label class="check align-end"
+              <label class="check checkbox-row align-end"
                 ><input v-model="logForm.useAi" type="checkbox" :disabled="!activeProviderReady" />
                 使用当前 AI Provider 生成总结</label
               >
@@ -650,7 +650,7 @@
                   <t-icon name="search" /> 检索
                 </button>
               </div>
-              <label class="check"
+              <label class="check checkbox-row"
                 ><input v-model="knowledgeUseAi" type="checkbox" :disabled="!activeProviderReady" />
                 使用当前 AI Provider 基于检索结果回答</label
               >
