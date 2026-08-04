@@ -227,25 +227,45 @@ async function findPortUsage(port) {
   }
 }
 
-async function killByPid(pid, signal = 'SIGTERM') {
+async function terminateProcess(
+  pid,
+  signal,
+  { platform = os.platform(), runCommand = run, killProcess = process.kill } = {}
+) {
+  if (platform === 'win32') {
+    const args = ['/PID', String(pid), '/T']
+    if (signal === 'SIGKILL') args.push('/F')
+    await runCommand('taskkill', args)
+    return { method: 'taskkill', processTree: true, forced: signal === 'SIGKILL' }
+  }
+
+  killProcess(pid, signal)
+  return { method: 'signal', processTree: false, forced: signal === 'SIGKILL' }
+}
+
+async function killByPid(pid, signal = 'SIGTERM', options = {}) {
   const value = Number.parseInt(String(pid), 10)
   if (!Number.isInteger(value) || value < 1) {
     return { ok: false, error: 'PID 必须是正整数。' }
   }
 
+  const normalizedSignal = normalizeSignal(signal)
   try {
-    process.kill(value, normalizeSignal(signal))
+    const termination = await terminateProcess(value, normalizedSignal, options)
     return {
       ok: true,
-      killed: [{ pid: value, signal: normalizeSignal(signal) }],
-      message: `已向 PID ${value} 发送 ${normalizeSignal(signal)}。`
+      killed: [{ pid: value, signal: normalizedSignal, ...termination }],
+      message:
+        termination.method === 'taskkill'
+          ? `已结束 PID ${value} 的进程树。`
+          : `已向 PID ${value} 发送 ${normalizedSignal}。`
     }
   } catch (error) {
     return { ok: false, error: formatError(error) }
   }
 }
 
-async function killByPort(port, signal = 'SIGTERM') {
+async function killByPort(port, signal = 'SIGTERM', options = {}) {
   let normalizedPort
   try {
     normalizedPort = normalizePort(port)
@@ -253,7 +273,7 @@ async function killByPort(port, signal = 'SIGTERM') {
     return { ok: false, error: error.message }
   }
 
-  const result = await findPortUsage(normalizedPort)
+  const result = options.portUsageResult || (await findPortUsage(normalizedPort))
   if (!result.ok) {
     return result
   }
@@ -269,8 +289,8 @@ async function killByPort(port, signal = 'SIGTERM') {
 
   for (const pid of pids) {
     try {
-      process.kill(pid, normalizedSignal)
-      killed.push({ pid, signal: normalizedSignal })
+      const termination = await terminateProcess(pid, normalizedSignal, options)
+      killed.push({ pid, signal: normalizedSignal, ...termination })
     } catch (error) {
       failed.push({ pid, error: formatError(error) })
     }
@@ -299,7 +319,7 @@ function formatError(error) {
     return '进程不存在，可能已经退出。'
   }
   if (error.code === 'ENOENT') {
-    return '缺少系统命令：当前系统未找到 lsof、netstat 或 tasklist。'
+    return '缺少系统命令：当前系统未找到 lsof、netstat、tasklist 或 taskkill。'
   }
 
   return error.stderr?.trim() || error.message || String(error)
@@ -311,5 +331,9 @@ module.exports = {
   killByPort,
   killByPid,
   parseLsof,
-  parseNetstatWindows
+  parseNetstatWindows,
+  __testables: {
+    normalizeSignal,
+    terminateProcess
+  }
 }

@@ -9,6 +9,16 @@ const MAX_BACKUP_BYTES = 100 * 1024 * 1024
 const MAX_ENTRY_BYTES = 20 * 1024 * 1024
 const RESTORE_POINT_LIMIT = 3
 
+function comparablePath(value, { platform = process.platform } = {}) {
+  const pathApi = platform === 'win32' ? path.win32 : path
+  const resolved = pathApi.resolve(String(value || ''))
+  return platform === 'win32' ? resolved.toLocaleLowerCase('en-US') : resolved
+}
+
+function pathsEqual(left, right, options) {
+  return comparablePath(left, options) === comparablePath(right, options)
+}
+
 const BACKUP_GROUPS = Object.freeze([
   {
     id: 'operations',
@@ -49,7 +59,7 @@ const BACKUP_GROUPS = Object.freeze([
     id: 'desktop',
     label: '本机工具',
     description: '快捷启动和剪贴板历史',
-    files: ['quick-launch.json', 'clipboard-history.json']
+    files: ['quick-launch.json', 'clipboard-history.json', 'desktop-behavior-settings.json']
   },
   {
     id: 'experiments',
@@ -785,13 +795,13 @@ function pruneAutoBackups({ userDataPath, outputDirectory, retentionCount }) {
   const active = []
   const removable = []
   for (const entry of history) {
-    if (path.resolve(entry.outputDirectory) !== directory || entry.status !== 'success') {
+    if (!pathsEqual(entry.outputDirectory, directory) || entry.status !== 'success') {
       active.push(entry)
       continue
     }
     if (
       active.filter(
-        (item) => path.resolve(item.outputDirectory) === directory && item.status === 'success'
+        (item) => pathsEqual(item.outputDirectory, directory) && item.status === 'success'
       ).length < retentionCount
     )
       active.push(entry)
@@ -1032,5 +1042,9 @@ module.exports = {
   runAutoBackup,
   safeAutoBackupHistory,
   safeAutoBackupSettings,
-  saveAutoBackupSettings
+  saveAutoBackupSettings,
+  __testables: {
+    comparablePath,
+    pathsEqual
+  }
 }

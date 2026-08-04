@@ -1,5 +1,14 @@
 # Ops Desktop Changelog
 
+## [Unreleased]
+### Added
+- Windows 系统托盘后台运行，可从托盘恢复窗口、退出应用或配置开机隐藏启动
+- Windows 通知 AppUserModelID，提升通知中心识别稳定性
+
+### Fixed
+- Windows 端口进程结束改用 `taskkill /T`，强制结束时使用 `/F`，避免遗留子进程
+- Windows 自动备份目录比较忽略路径大小写，确保保留策略正确清理旧备份
+
 ## [1.0.2] - 2026-08-03
 ### Added
 - 应用图标（icns / ico / png）

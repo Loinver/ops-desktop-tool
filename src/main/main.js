@@ -1,4 +1,5 @@
-const { app, BrowserWindow } = require('electron')
+const path = require('node:path')
+const { app, nativeImage, Tray, Menu } = require('electron')
 const { createWindow, getMainWindow } = require('./window')
 const { registerPortsHandlers, stopNodeServiceMonitor } = require('./ipc/ports')
 const { registerSystemHandlers } = require('./ipc/system')
@@ -18,9 +19,65 @@ const {
   initializeAutoBackupScheduler,
   stopAutoBackupScheduler
 } = require('./ops-auto-backup-scheduler')
+const { createWindowsTrayController } = require('./windows-tray-controller')
 const logger = require('./utils/logger')
 
+const WINDOWS_APP_ID = 'com.ops-desktop-tool'
 const isMcpMode = process.argv.includes('--mcp')
+const startHidden = process.platform === 'win32' && process.argv.includes('--hidden')
+let trayController = null
+
+if (process.platform === 'win32') {
+  // 保持与 electron-builder 的 appId 一致，确保通知中心能稳定识别应用身份。
+  app.setAppUserModelId(WINDOWS_APP_ID)
+}
+
+function createManagedWindow({ showOnReady = true } = {}) {
+  const win = createWindow({ showOnReady })
+  if (process.platform === 'win32') {
+    win.on('close', (event) => {
+      if (!trayController?.shouldHideOnClose()) return
+      event.preventDefault()
+      win.hide()
+    })
+  }
+  return win
+}
+
+function showMainWindow() {
+  let win = getMainWindow()
+  if (!win || win.isDestroyed()) win = createManagedWindow()
+  if (win.isMinimized()) win.restore()
+  win.show()
+  win.focus()
+}
+
+function createWindowsTray() {
+  if (process.platform !== 'win32') return false
+  try {
+    const iconPath = path.join(__dirname, '../../build/icons/icon.png')
+    const sourceIcon = nativeImage.createFromPath(iconPath)
+    if (sourceIcon.isEmpty()) throw new Error(`托盘图标无效：${iconPath}`)
+    const trayIcon = sourceIcon.resize({ width: 16, height: 16 })
+    trayController = createWindowsTrayController({
+      app,
+      Tray,
+      Menu,
+      icon: trayIcon,
+      userDataPath: app.getPath('userData'),
+      showWindow: showMainWindow,
+      logger
+    })
+    return true
+  } catch (error) {
+    logger.error('创建 Windows 系统托盘失败', {
+      message: error?.message,
+      stack: error?.stack
+    })
+    trayController = null
+    return false
+  }
+}
 
 // 单实例锁：防止多实例导致 IPC 重复注册和数据文件竞争写入。
 if (!isMcpMode) {
@@ -29,11 +86,7 @@ if (!isMcpMode) {
     app.quit()
   } else {
     app.on('second-instance', () => {
-      const win = getMainWindow()
-      if (win) {
-        if (win.isMinimized()) win.restore()
-        win.focus()
-      }
+      showMainWindow()
     })
   }
 }
@@ -71,7 +124,8 @@ if (isMcpMode) {
     // safeStorage 在 app ready 后才保证可用，因此 IPC 处理器也在此时注册。
     logger.initLogger({ userDataPath: app.getPath('userData') })
     logger.info('应用启动', { version: app.getVersion(), platform: process.platform })
-    createWindow()
+    const hasWindowsTray = createWindowsTray()
+    createManagedWindow({ showOnReady: !startHidden || !hasWindowsTray })
     initializeOpsNotificationService({
       userDataPath: app.getPath('userData'),
       getWindow: getMainWindow
@@ -80,23 +134,27 @@ if (isMcpMode) {
     registerAllHandlers()
 
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) {
-        createWindow()
-      }
+      showMainWindow()
     })
   })
 
-  app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') {
-      app.quit()
-    }
+  app.on('before-quit', () => {
+    trayController?.markQuitting()
   })
 
-  // 应用退出时关闭 SFTP 连接
+  app.on('window-all-closed', () => {
+    if (process.platform === 'darwin') return
+    if (process.platform === 'win32' && trayController?.shouldKeepAlive()) return
+    app.quit()
+  })
+
+  // 应用退出时关闭后台任务、托盘和 SFTP 连接。
   app.on('will-quit', async () => {
     stopNodeServiceMonitor()
     stopOpsNotificationService()
     stopAutoBackupScheduler()
+    trayController?.destroy()
+    trayController = null
     await closeSftpConnection()
   })
 }

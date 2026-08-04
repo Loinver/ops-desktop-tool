@@ -36,7 +36,7 @@ function applyWindowSecurity(window) {
  * 创建主窗口
  * @returns {BrowserWindow}
  */
-function createWindow() {
+function createWindow({ showOnReady = true } = {}) {
   const preloadPath = path.join(__dirname, 'preload.js')
 
   mainWindow = new BrowserWindow({
@@ -60,7 +60,9 @@ function createWindow() {
   })
 
   applyWindowSecurity(mainWindow)
-  mainWindow.once('ready-to-show', () => mainWindow?.show())
+  mainWindow.once('ready-to-show', () => {
+    if (showOnReady) mainWindow?.show()
+  })
   mainWindow.on('closed', () => {
     mainWindow = null
   })
