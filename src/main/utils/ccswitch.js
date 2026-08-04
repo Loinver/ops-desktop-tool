@@ -1,21 +1,145 @@
 /**
  * cc-switch 配置读取
  *
- * cc-switch 把中转站（供应商）配置存在 SQLite 库的 providers 表里，
- * 这里通过系统自带的 sqlite3 命令行以只读方式读取，避免引入 native 依赖。
+ * cc-switch 把中转站（供应商）配置存在 SQLite 库的 providers 表里。
+ * 使用随应用打包的 sql.js 只读数据库，避免依赖 Windows 默认不存在的 sqlite3 命令。
  */
 
 const os = require('node:os')
 const path = require('node:path')
 const fs = require('node:fs')
-const { execFile } = require('node:child_process')
+const initSqlJs = require('sql.js')
 
-// 可能的数据库位置，按优先级排列
-const DB_CANDIDATES = [
-  path.join(os.homedir(), '.cc-switch', 'cc-switch.db'),
-  path.join(os.homedir(), 'Library', 'Application Support', 'com.ccswitch.desktop', 'cc-switch.db'),
-  path.join(os.homedir(), 'AppData', 'Roaming', 'com.ccswitch.desktop', 'cc-switch.db')
-]
+const CC_SWITCH_APP_ID = 'com.ccswitch.desktop'
+let sqlJsPromise = null
+
+function uniquePaths(values, pathApi = path) {
+  const seen = new Set()
+  return values.filter((value) => {
+    const normalized = pathApi.normalize(String(value || '').trim())
+    if (!normalized || seen.has(normalized)) return false
+    seen.add(normalized)
+    return true
+  })
+}
+
+function ccSwitchStoreDirectories({
+  platform = process.platform,
+  homeDir = os.homedir(),
+  env = process.env,
+  pathApi = platform === 'win32' ? path.win32 : path
+} = {}) {
+  if (platform === 'darwin') {
+    return [pathApi.join(homeDir, 'Library', 'Application Support', CC_SWITCH_APP_ID)]
+  }
+  if (platform === 'win32') {
+    return uniquePaths(
+      [
+        env.APPDATA && pathApi.join(env.APPDATA, CC_SWITCH_APP_ID),
+        pathApi.join(homeDir, 'AppData', 'Roaming', CC_SWITCH_APP_ID),
+        env.LOCALAPPDATA && pathApi.join(env.LOCALAPPDATA, CC_SWITCH_APP_ID)
+      ],
+      pathApi
+    )
+  }
+  return [
+    pathApi.join(env.XDG_DATA_HOME || pathApi.join(homeDir, '.local', 'share'), CC_SWITCH_APP_ID)
+  ]
+}
+
+/**
+ * CC Switch 允许通过 app_paths.json 把数据库目录迁移到同步盘等自定义位置。
+ * 默认目录始终是 ~/.cc-switch；Tauri 应用数据目录同时作为旧版兼容候选。
+ */
+function databaseCandidatesFor(options = {}) {
+  const homeDir = options.homeDir || os.homedir()
+  const platform = options.platform || process.platform
+  const pathApi = options.pathApi || (platform === 'win32' ? path.win32 : path)
+  const storeDirectories = ccSwitchStoreDirectories({ ...options, platform, homeDir, pathApi })
+  const customDirectories = []
+
+  for (const storeDirectory of storeDirectories) {
+    try {
+      const store = JSON.parse(
+        fs.readFileSync(pathApi.join(storeDirectory, 'app_paths.json'), 'utf8')
+      )
+      if (typeof store?.appConfigDir === 'string' && pathApi.isAbsolute(store.appConfigDir)) {
+        customDirectories.push(store.appConfigDir)
+      }
+    } catch {
+      // 未启用自定义目录或 store 尚未创建。
+    }
+  }
+
+  return uniquePaths(
+    [
+      ...customDirectories.map((directory) => pathApi.join(directory, 'cc-switch.db')),
+      pathApi.join(homeDir, '.cc-switch', 'cc-switch.db'),
+      ...storeDirectories.map((directory) => pathApi.join(directory, 'cc-switch.db'))
+    ],
+    pathApi
+  )
+}
+
+function findDatabasePath(options = {}) {
+  const platform = options.platform || process.platform
+  const pathApi = options.pathApi || (platform === 'win32' ? path.win32 : path)
+  const candidates = Array.isArray(options.dbCandidates)
+    ? uniquePaths(options.dbCandidates, pathApi)
+    : databaseCandidatesFor({ ...options, platform, pathApi })
+  for (const candidate of candidates) {
+    try {
+      const stat = fs.statSync(candidate)
+      if (stat.isFile() && stat.size > 0) return candidate
+    } catch {
+      // 不存在则继续找下一个
+    }
+  }
+  return null
+}
+
+async function loadSqlJs() {
+  if (!sqlJsPromise) {
+    sqlJsPromise = initSqlJs({
+      // 直接提供二进制，避免打包进 app.asar 后依赖 fetch/file URL 定位 wasm。
+      wasmBinary: fs.readFileSync(require.resolve('sql.js/dist/sql-wasm.wasm'))
+    }).catch((error) => {
+      sqlJsPromise = null
+      throw error
+    })
+  }
+  return sqlJsPromise
+}
+
+async function readStableDatabaseFile(dbPath) {
+  let lastBytes = null
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const before = await fs.promises.stat(dbPath)
+    const bytes = await fs.promises.readFile(dbPath)
+    const after = await fs.promises.stat(dbPath)
+    lastBytes = bytes
+    if (before.size === after.size && before.mtimeMs === after.mtimeMs) return bytes
+    await new Promise((resolve) => setTimeout(resolve, 30 * (attempt + 1)))
+  }
+  return lastBytes
+}
+
+function queryRows(database, sql) {
+  const results = database.exec(sql)
+  const rows = []
+  for (const result of results) {
+    for (const values of result.values) {
+      rows.push(Object.fromEntries(result.columns.map((column, index) => [column, values[index]])))
+    }
+  }
+  return rows
+}
+
+async function openDatabase(dbPath) {
+  const SQL = await loadSqlJs()
+  const bytes = await readStableDatabaseFile(dbPath)
+  return new SQL.Database(bytes)
+}
 
 /** 支持测试的 app 类型 */
 const SUPPORTED_APP_TYPES = ['claude', 'claude-desktop', 'codex', 'gemini']
@@ -42,48 +166,6 @@ function splitOneMModelMarker(value) {
     model: (beta1m ? raw.replace(ONE_M_MODEL_MARKER_RE, '') : raw).trim(),
     beta1m
   }
-}
-
-function findDatabasePath() {
-  for (const candidate of DB_CANDIDATES) {
-    try {
-      const stat = fs.statSync(candidate)
-      if (stat.isFile() && stat.size > 0) return candidate
-    } catch {
-      // 不存在则继续找下一个
-    }
-  }
-  return null
-}
-
-function runSqlite(dbPath, sql) {
-  return new Promise((resolve, reject) => {
-    execFile(
-      'sqlite3',
-      ['-readonly', '-json', dbPath, sql],
-      { maxBuffer: 32 * 1024 * 1024 },
-      (error, stdout, stderr) => {
-        if (error) {
-          if (error.code === 'ENOENT') {
-            reject(new Error('未找到 sqlite3 命令，无法读取 cc-switch 配置'))
-            return
-          }
-          reject(new Error(stderr?.trim() || error.message))
-          return
-        }
-        const text = String(stdout || '').trim()
-        if (!text) {
-          resolve([])
-          return
-        }
-        try {
-          resolve(JSON.parse(text))
-        } catch {
-          reject(new Error('sqlite3 返回内容解析失败'))
-        }
-      }
-    )
-  })
 }
 
 function parseJson(value, fallback) {
@@ -301,48 +383,82 @@ function maskKey(key) {
  * 读取所有中转站配置
  * @returns {Promise<{ok: boolean, dbPath?: string, providers?: Array, message?: string}>}
  */
-async function loadProviders() {
-  const dbPath = findDatabasePath()
+async function loadProviders(options = {}) {
+  const platform = options.platform || process.platform
+  const pathApi = options.pathApi || (platform === 'win32' ? path.win32 : path)
+  const candidates = Array.isArray(options.dbCandidates)
+    ? uniquePaths(options.dbCandidates, pathApi)
+    : databaseCandidatesFor({ ...options, platform, pathApi })
+  const dbPath = findDatabasePath({ ...options, platform, pathApi, dbCandidates: candidates })
   if (!dbPath) {
     return {
       ok: false,
-      message: `未找到 cc-switch 数据库，已尝试：\n${DB_CANDIDATES.join('\n')}`
+      message: `未找到 cc-switch 数据库，已尝试：\n${candidates.join('\n')}`
     }
   }
 
   const appFilter = SUPPORTED_APP_TYPES.map((type) => `'${type}'`).join(', ')
-
-  let rows
-  let endpointRows
+  let database
   try {
-    rows = await runSqlite(
-      dbPath,
-      `SELECT id, app_type, name, settings_config, meta, website_url, is_current, sort_index
+    database = await openDatabase(dbPath)
+    const providerColumns = new Set(
+      queryRows(database, 'PRAGMA table_info(providers);').map((column) => String(column.name))
+    )
+    const requiredColumns = ['id', 'app_type', 'name', 'settings_config']
+    const missingColumns = requiredColumns.filter((column) => !providerColumns.has(column))
+    if (missingColumns.length) {
+      throw new Error(`cc-switch providers 表缺少字段：${missingColumns.join(', ')}`)
+    }
+
+    const optionalColumn = (name, fallback) =>
+      providerColumns.has(name) ? name : `${fallback} AS ${name}`
+    const rows = queryRows(
+      database,
+      `SELECT id, app_type, name,
+              settings_config,
+              ${optionalColumn('meta', "'{}'")},
+              ${optionalColumn('website_url', "''")},
+              ${optionalColumn('is_current', '0')},
+              ${optionalColumn('sort_index', '0')}
          FROM providers
         WHERE app_type IN (${appFilter})
         ORDER BY app_type, sort_index, name;`
     )
-    endpointRows = await runSqlite(
-      dbPath,
-      `SELECT provider_id, app_type, url FROM provider_endpoints;`
+
+    const endpointColumns = new Set(
+      queryRows(database, 'PRAGMA table_info(provider_endpoints);').map((column) =>
+        String(column.name)
+      )
     )
+    const endpointRows = ['provider_id', 'app_type', 'url'].every((column) =>
+      endpointColumns.has(column)
+    )
+      ? queryRows(database, 'SELECT provider_id, app_type, url FROM provider_endpoints;')
+      : []
+
+    const endpointMap = new Map()
+    for (const item of endpointRows) {
+      const key = `${item.provider_id}::${item.app_type}`
+      if (!endpointMap.has(key)) endpointMap.set(key, [])
+      endpointMap.get(key).push(stripTrailingSlash(item.url))
+    }
+
+    const providers = rows.map((row) => parseProviderRow(row, endpointMap))
+    return { ok: true, dbPath, providers }
   } catch (error) {
-    return { ok: false, message: error.message }
+    return { ok: false, message: `读取 cc-switch 数据库失败：${error.message}` }
+  } finally {
+    database?.close()
   }
-
-  const endpointMap = new Map()
-  for (const item of endpointRows) {
-    const key = `${item.provider_id}::${item.app_type}`
-    if (!endpointMap.has(key)) endpointMap.set(key, [])
-    endpointMap.get(key).push(stripTrailingSlash(item.url))
-  }
-
-  const providers = rows.map((row) => parseProviderRow(row, endpointMap))
-  return { ok: true, dbPath, providers }
 }
 
 module.exports = {
   loadProviders,
   findDatabasePath,
-  SUPPORTED_APP_TYPES
+  SUPPORTED_APP_TYPES,
+  __testables: {
+    ccSwitchStoreDirectories,
+    databaseCandidatesFor,
+    queryRows
+  }
 }

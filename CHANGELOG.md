@@ -1,6 +1,6 @@
 # Ops Desktop Changelog
 
-## [1.0.2] - 2026-08-02
+## [1.0.2] - 2026-08-03
 ### Added
 - 应用图标（icns / ico / png）
 - CI/CD 流水线修复（pnpm/action-setup）
@@ -11,7 +11,15 @@
 - ESLint + Prettier 代码规范配置
 - 暗色模式
 
+### Changed
+- 统一质量门禁：Prettier、ESLint、Node / Renderer 测试与 Playwright Electron E2E
+- Renderer IPC 统一经由 `opsApi` 适配层访问，并增加静态边界检查
+- 拆分系统发布、AI 运维、AI 图像页面样式，以及模型测试的持久化与快捷键逻辑
+- TDesign 消息组件改为按需导入，生产 CSS 从约 448 KB 降至约 4 KB
+
 ### Fixed
+- 修复 Windows 默认缺少 `sqlite3` 时无法读取 cc-switch 配置的问题，并兼容 APPDATA 与自定义数据目录
+- 修复 Electron E2E 在首次进入系统发布页时被 SFTP 配置引导遮挡导航的问题
 - keepAlive 组件名不匹配导致 OpsControlCenter / AiOps / AiChat 缓存失效
 - README.md 混入 AI 对话残留
 - CI workflow 缺少 pnpm 安装步骤

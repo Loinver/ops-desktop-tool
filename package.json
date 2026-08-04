@@ -1,6 +1,6 @@
 {
   "name": "ops-desktop-tool",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "本机优先的 AI 运维桌面工作台",
   "main": "src/main/main.js",
   "scripts": {
@@ -51,7 +51,20 @@
       "src/main/**/*",
       "src/shared/**/*",
       "build/**/*",
-      "package.json"
+      "package.json",
+      "!node_modules/sql.js/.devcontainer/**/*",
+      "!node_modules/sql.js/.eslintrc.js",
+      "!node_modules/sql.js/.jsdoc.config.json",
+      "!node_modules/sql.js/.nojekyll",
+      "!node_modules/sql.js/AUTHORS",
+      "!node_modules/sql.js/CONTRIBUTING.md",
+      "!node_modules/sql.js/documentation_index.md",
+      "!node_modules/sql.js/eslint.config.cjs",
+      "!node_modules/sql.js/logo.svg",
+      "!node_modules/sql.js/dist/sql-asm*.js",
+      "!node_modules/sql.js/dist/sql-wasm-browser*",
+      "!node_modules/sql.js/dist/sql-wasm-debug*",
+      "!node_modules/sql.js/dist/worker.*"
     ],
     "icon": "build/icons/ops-desktop-rounded.png",
     "mac": {
@@ -98,6 +111,7 @@
     "vue-router": "^4.6.4"
   },
   "dependencies": {
+    "sql.js": "^1.14.1",
     "ssh2": "^1.17.0",
     "ssh2-sftp-client": "^11.0.0"
   }
