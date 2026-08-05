@@ -22,6 +22,7 @@ const IPC_CHANNELS = {
   APP_CONFIRM: 'app:confirm',
   APP_BROWSE_FILE: 'app:browseFile',
   APP_RELAUNCH: 'app:relaunch',
+  APP_NAVIGATE: 'app:navigate',
   DATA_BACKUP_OVERVIEW: 'dataBackup:getOverview',
   DATA_BACKUP_EXPORT: 'dataBackup:export',
   DATA_BACKUP_INSPECT: 'dataBackup:inspect',

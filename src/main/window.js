@@ -1,9 +1,12 @@
 const path = require('node:path')
-const { app, BrowserWindow, shell } = require('electron')
+const { app, BrowserWindow, screen, shell } = require('electron')
+const { loadWindowState, trackWindowState } = require('./window-state')
 
 const isDev = !app.isPackaged
 const isMac = process.platform === 'darwin'
 const ALLOWED_EXTERNAL_PROTOCOLS = new Set(['http:', 'https:', 'mailto:'])
+const DEFAULT_WINDOW_BOUNDS = Object.freeze({ x: 0, y: 0, width: 1400, height: 900 })
+const MINIMUM_WINDOW_SIZE = Object.freeze({ width: 960, height: 640 })
 
 let mainWindow = null
 
@@ -39,12 +42,17 @@ function applyWindowSecurity(window) {
  */
 function createWindow({ showOnReady = true } = {}) {
   const preloadPath = path.join(__dirname, 'preload.js')
+  const restoredState = loadWindowState({
+    userDataPath: app.getPath('userData'),
+    displays: screen.getAllDisplays(),
+    fallbackBounds: DEFAULT_WINDOW_BOUNDS,
+    minimumSize: MINIMUM_WINDOW_SIZE
+  })
 
   mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
-    minWidth: 1100,
-    minHeight: 700,
+    ...restoredState.bounds,
+    minWidth: MINIMUM_WINDOW_SIZE.width,
+    minHeight: MINIMUM_WINDOW_SIZE.height,
     title: 'Ops Desktop',
     ...(isMac ? { titleBarStyle: 'hiddenInset' } : {}),
     backgroundColor: '#f5f7fa',
@@ -61,7 +69,10 @@ function createWindow({ showOnReady = true } = {}) {
   })
 
   applyWindowSecurity(mainWindow)
+  trackWindowState(mainWindow, { userDataPath: app.getPath('userData') })
   mainWindow.once('ready-to-show', () => {
+    if (restoredState.isMaximized) mainWindow?.maximize()
+    if (restoredState.isFullScreen) mainWindow?.setFullScreen(true)
     if (showOnReady) mainWindow?.show()
   })
   mainWindow.on('closed', () => {

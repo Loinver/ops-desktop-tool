@@ -62,12 +62,18 @@ jobs:
           if-no-files-found: error
 
   mac-build:
-    runs-on: macos-latest
+    runs-on: ${{ matrix.os }}
     needs: build
     strategy:
       fail-fast: false
       matrix:
-        arch: [arm64, x64]
+        include:
+          - arch: arm64
+            executable_arch: arm64
+            os: macos-15
+          - arch: x64
+            executable_arch: x86_64
+            os: macos-15-intel
     steps:
       - uses: actions/checkout@v4
 
@@ -119,8 +125,7 @@ jobs:
           pnpm build
           pnpm exec electron-builder --mac --${{ matrix.arch }} --config.forceCodeSigning=true
 
-      - name: Verify signed and notarized Mac app
-        if: github.event_name == 'release'
+      - name: Verify packaged Mac architecture
         run: |
           APP_PATH="$(find release -maxdepth 3 -type d -name '*.app' -print -quit)"
           if [ -z "$APP_PATH" ]; then
@@ -128,17 +133,24 @@ jobs:
             exit 1
           fi
 
-          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
-          spctl --assess --type execute --verbose=4 "$APP_PATH"
-          xcrun stapler validate "$APP_PATH"
-
           APP_EXECUTABLE="$APP_PATH/Contents/MacOS/Ops Desktop"
           ARCHS="$(lipo -archs "$APP_EXECUTABLE")"
           echo "Built architectures: $ARCHS"
-          if [[ " $ARCHS " != *" ${{ matrix.arch }} "* ]]; then
-            echo "::error::Expected architecture ${{ matrix.arch }}, got $ARCHS"
+          if [[ " $ARCHS " != *" ${{ matrix.executable_arch }} "* ]]; then
+            echo "::error::Expected architecture ${{ matrix.executable_arch }}, got $ARCHS"
             exit 1
           fi
+
+      - name: Smoke test packaged Mac app
+        run: node scripts/mac-packaged-app-smoke.cjs
+
+      - name: Verify signed and notarized Mac app
+        if: github.event_name == 'release'
+        run: |
+          APP_PATH="$(find release -maxdepth 3 -type d -name '*.app' -print -quit)"
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          spctl --assess --type execute --verbose=4 "$APP_PATH"
+          xcrun stapler validate "$APP_PATH"
 
       - name: Upload Mac artifacts
         uses: actions/upload-artifact@v4

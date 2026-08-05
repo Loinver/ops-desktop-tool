@@ -207,6 +207,8 @@ macOS Release 会分别生成 `arm64` 和 `x64` 的 DMG/ZIP，并在上传前完
 
 发布 GitHub Release 后，CI 只会上传通过 `codesign`、`spctl` 和 `stapler` 验证的 macOS 产物；任一凭证缺失或验证失败都会阻止发布。
 
+CI 分别使用 `macos-15`（Apple Silicon）和 `macos-15-intel`（Intel）Runner 构建，并在每个架构上直接启动打包后的 `.app`，确认主进程与渲染页面能够正常加载后才上传产物。
+
 ### 发布前检查清单
 
 - [ ] `pnpm verify`（Prettier、lint、单元/Renderer 测试与 Electron E2E）全部通过

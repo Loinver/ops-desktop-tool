@@ -51,6 +51,17 @@ async function bootstrap() {
   initTheme()
   await applyRuntimePlatform()
 
+  try {
+    const stopNativeMenuNavigation = opsApi.onAppNavigate?.((path) => {
+      if (typeof path === 'string' && path.startsWith('/')) void router.push(path)
+    })
+    if (typeof stopNativeMenuNavigation === 'function') {
+      window.addEventListener('beforeunload', stopNativeMenuNavigation, { once: true })
+    }
+  } catch {
+    // 浏览器预览环境没有 preload bridge，保持路由正常启动。
+  }
+
   const app = createApp(App)
   app.component('TIcon', LocalIcon)
   app.use(router)

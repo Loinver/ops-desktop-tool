@@ -1,5 +1,5 @@
 const path = require('node:path')
-const { app, nativeImage, Tray, Menu } = require('electron')
+const { app, nativeImage, shell, Tray, Menu } = require('electron')
 const { createWindow, getMainWindow } = require('./window')
 const { registerPortsHandlers, stopNodeServiceMonitor } = require('./ipc/ports')
 const { registerSystemHandlers } = require('./ipc/system')
@@ -20,11 +20,14 @@ const {
   stopAutoBackupScheduler
 } = require('./ops-auto-backup-scheduler')
 const { createWindowsTrayController } = require('./windows-tray-controller')
+const { installMacApplicationMenu } = require('./mac-application-menu')
 const logger = require('./utils/logger')
 
 const WINDOWS_APP_ID = 'com.ops-desktop-tool'
 const isMcpMode = process.argv.includes('--mcp')
 const startHidden = process.platform === 'win32' && process.argv.includes('--hidden')
+const isSmokeTest =
+  process.argv.includes('--smoke-test') || process.env.OPS_DESKTOP_SMOKE_TEST === '1'
 let trayController = null
 
 if (process.platform === 'win32') {
@@ -125,7 +128,32 @@ if (isMcpMode) {
     logger.initLogger({ userDataPath: app.getPath('userData') })
     logger.info('应用启动', { version: app.getVersion(), platform: process.platform })
     const hasWindowsTray = createWindowsTray()
-    createManagedWindow({ showOnReady: !startHidden || !hasWindowsTray })
+    const mainWindow = createManagedWindow({ showOnReady: !startHidden || !hasWindowsTray })
+    installMacApplicationMenu({
+      app,
+      Menu,
+      shell,
+      getMainWindow,
+      showMainWindow,
+      logger
+    })
+    if (isSmokeTest) {
+      const smokeTimeout = setTimeout(() => {
+        logger.error('打包应用 smoke test 超时')
+        app.exit(1)
+      }, 30_000)
+      smokeTimeout.unref()
+      mainWindow.webContents.once('did-finish-load', () => {
+        clearTimeout(smokeTimeout)
+        logger.info('打包应用 smoke test 通过')
+        app.exit(0)
+      })
+      mainWindow.webContents.once('did-fail-load', (_event, errorCode, errorDescription) => {
+        clearTimeout(smokeTimeout)
+        logger.error('打包应用 smoke test 加载失败', { errorCode, errorDescription })
+        app.exit(1)
+      })
+    }
     initializeOpsNotificationService({
       userDataPath: app.getPath('userData'),
       getWindow: getMainWindow
