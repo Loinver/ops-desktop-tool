@@ -23,14 +23,39 @@
 
       <OpsNotificationCenter />
 
-      <button
-        class="theme-toggle"
-        type="button"
-        :title="theme === 'dark' ? '切换到浅色' : '切换到深色'"
-        @click="toggleTheme"
-      >
-        <t-icon :name="theme === 'dark' ? 'sun' : 'moon'" />
-      </button>
+      <div class="theme-wrap">
+        <button
+          class="theme-toggle"
+          :class="{ 'is-open': themeOpen }"
+          type="button"
+          :aria-expanded="themeOpen"
+          aria-haspopup="menu"
+          :title="themeButtonTitle"
+          @click="toggleThemeMenu"
+        >
+          <t-icon :name="themeIcon" />
+        </button>
+
+        <transition name="theme-popover">
+          <div v-if="themeOpen" class="theme-popover" role="menu" aria-label="外观模式">
+            <span class="theme-popover-title">外观</span>
+            <button
+              v-for="option in themeOptions"
+              :key="option.value"
+              class="theme-option"
+              :class="{ active: themeMode === option.value }"
+              type="button"
+              role="menuitemradio"
+              :aria-checked="themeMode === option.value"
+              @click="selectThemeMode(option.value)"
+            >
+              <t-icon :name="option.icon" />
+              <span>{{ option.label }}</span>
+              <t-icon v-if="themeMode === option.value" class="theme-option-check" name="check" />
+            </button>
+          </div>
+        </transition>
+      </div>
 
       <div class="status-wrap">
         <button
@@ -111,7 +136,8 @@ const emit = defineEmits(['open-command'])
 const route = useRoute()
 const router = useRouter()
 
-const { theme, toggleTheme } = useTheme()
+const { setThemeMode, theme, themeMode } = useTheme()
+const themeOpen = ref(false)
 const statusOpen = ref(false)
 const loading = ref(false)
 const dashboard = ref(null)
@@ -122,6 +148,19 @@ const currentGroup = computed(() => getFunctionMenuItem(route.path)?.groupName |
 const shortcutLabel = computed(() =>
   navigator.platform?.toLowerCase().includes('mac') ? '⌘ K' : 'Ctrl K'
 )
+const themeOptions = Object.freeze([
+  { value: 'system', label: '跟随系统', icon: 'desktop' },
+  { value: 'light', label: '浅色', icon: 'sun' },
+  { value: 'dark', label: '深色', icon: 'moon' }
+])
+const themeIcon = computed(() => {
+  if (themeMode.value === 'system') return 'desktop'
+  return theme.value === 'dark' ? 'moon' : 'sun'
+})
+const themeButtonTitle = computed(() => {
+  const label = themeOptions.find((option) => option.value === themeMode.value)?.label || '跟随系统'
+  return `外观：${label}`
+})
 const releaseFailed = computed(() => Number(dashboard.value?.release?.failed) || 0)
 const monitorEnabled = computed(() => Boolean(dashboard.value?.monitor?.enabled))
 const statusTone = computed(() => (releaseFailed.value > 0 ? 'warning' : 'healthy'))
@@ -153,8 +192,19 @@ async function loadStatus() {
   }
 }
 
+function toggleThemeMenu() {
+  themeOpen.value = !themeOpen.value
+  if (themeOpen.value) statusOpen.value = false
+}
+
+function selectThemeMode(value) {
+  setThemeMode(value)
+  themeOpen.value = false
+}
+
 function toggleStatus() {
   statusOpen.value = !statusOpen.value
+  if (statusOpen.value) themeOpen.value = false
   if (statusOpen.value && !dashboard.value) void loadStatus()
 }
 
@@ -164,17 +214,31 @@ function go(path) {
 }
 
 function handleDocumentClick(event) {
+  if (!event.target.closest('.theme-wrap')) themeOpen.value = false
   if (!event.target.closest('.status-wrap')) statusOpen.value = false
+}
+
+function handleDocumentKeydown(event) {
+  if (event.key !== 'Escape') return
+  themeOpen.value = false
+  statusOpen.value = false
 }
 
 watch(
   () => route.path,
   () => {
+    themeOpen.value = false
     statusOpen.value = false
   }
 )
-onMounted(() => document.addEventListener('click', handleDocumentClick))
-onUnmounted(() => document.removeEventListener('click', handleDocumentClick))
+onMounted(() => {
+  document.addEventListener('click', handleDocumentClick)
+  document.addEventListener('keydown', handleDocumentKeydown)
+})
+onUnmounted(() => {
+  document.removeEventListener('click', handleDocumentClick)
+  document.removeEventListener('keydown', handleDocumentKeydown)
+})
 </script>
 
 <style scoped>
@@ -196,6 +260,7 @@ onUnmounted(() => document.removeEventListener('click', handleDocumentClick))
 
 .topbar-title,
 .topbar-actions,
+.theme-wrap,
 .status-wrap,
 .status-trigger,
 .command-trigger,
@@ -288,6 +353,9 @@ kbd {
   font-size: 10px;
 }
 
+.theme-wrap {
+  position: relative;
+}
 .theme-toggle {
   width: 36px;
   height: 36px;
@@ -303,12 +371,73 @@ kbd {
     color var(--transition-fast);
   -webkit-app-region: no-drag;
 }
-.theme-toggle:hover {
+.theme-toggle:hover,
+.theme-toggle.is-open {
   border-color: color-mix(in srgb, var(--primary) 30%, var(--shell-border));
   color: var(--primary);
 }
 .theme-toggle .t-icon {
   font-size: 16px;
+}
+.theme-popover {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 10px);
+  right: 0;
+  width: 154px;
+  padding: 6px;
+  border: 1px solid var(--shell-border);
+  border-radius: 12px;
+  background: var(--shell-surface-raised);
+  box-shadow: var(--shadow-lg);
+}
+.theme-popover-title {
+  display: block;
+  padding: 4px 8px 5px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.theme-option {
+  width: 100%;
+  min-height: 32px;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.theme-option:hover,
+.theme-option.active {
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+.theme-option > .t-icon {
+  font-size: 15px;
+}
+.theme-option-check {
+  justify-self: end;
+  font-size: 13px !important;
+}
+.theme-popover-enter-active,
+.theme-popover-leave-active {
+  transition:
+    opacity 0.14s ease,
+    transform 0.14s ease;
+}
+.theme-popover-enter-from,
+.theme-popover-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
 }
 
 .status-wrap {

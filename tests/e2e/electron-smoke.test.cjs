@@ -159,3 +159,32 @@ test('通知设置保持紧凑按钮和 checkbox 垂直对齐', async () => {
     assert.ok(metrics.systemButtonHeight > 0 && metrics.systemButtonHeight <= 32)
   }
 })
+
+test('外观菜单支持跟随系统并保持顶部控件紧凑', async () => {
+  const page = await electronApp.firstWindow()
+  const trigger = page.locator('.theme-toggle')
+  await trigger.click()
+
+  const popover = page.locator('.theme-popover')
+  await popover.waitFor({ state: 'visible' })
+  const metrics = await popover.evaluate((container) => {
+    const trigger = document.querySelector('.theme-toggle')
+    const options = [...container.querySelectorAll('.theme-option')]
+    return {
+      triggerHeight: trigger?.offsetHeight || 0,
+      optionHeights: options.map((option) => option.offsetHeight),
+      labels: options.map((option) => option.textContent.trim())
+    }
+  })
+
+  assert.ok(metrics.triggerHeight > 0 && metrics.triggerHeight <= 36)
+  assert.ok(metrics.optionHeights.every((height) => height > 0 && height <= 34))
+  assert.deepEqual(metrics.labels, ['跟随系统', '浅色', '深色'])
+
+  await popover.getByText('跟随系统', { exact: true }).click()
+  const mode = await page.evaluate(() => ({
+    attribute: document.documentElement.dataset.themeMode,
+    stored: window.localStorage.getItem('ops-desktop.theme')
+  }))
+  assert.deepEqual(mode, { attribute: 'system', stored: 'system' })
+})

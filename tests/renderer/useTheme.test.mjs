@@ -1,48 +1,99 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { ref } from 'vue'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-// Directly test the theme logic without module-level side effects.
-// We re-implement the same state machine here to verify the toggle
-// behavior in isolation; the real composable is tested via the
-// router/ops-event tests below for integration coverage.
+function installMatchMedia({ dark = false } = {}) {
+  const listeners = new Set()
+  const mediaQuery = {
+    matches: dark,
+    media: '(prefers-color-scheme: dark)',
+    addEventListener: vi.fn((_type, listener) => listeners.add(listener)),
+    removeEventListener: vi.fn((_type, listener) => listeners.delete(listener)),
+    emit(matches) {
+      this.matches = matches
+      for (const listener of listeners) listener({ matches, media: this.media })
+    }
+  }
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn(() => mediaQuery)
+  )
+  return mediaQuery
+}
 
-describe('useTheme toggle logic', () => {
-  it('toggles dark to light', () => {
-    const theme = ref('dark')
-    const toggled = theme.value === 'dark' ? 'light' : 'dark'
-    theme.value = toggled
+async function loadThemeModule() {
+  vi.resetModules()
+  return import('../../src/renderer/composables/useTheme.js')
+}
+
+beforeEach(() => {
+  window.localStorage.clear()
+  document.documentElement.removeAttribute('data-theme')
+  document.documentElement.removeAttribute('data-theme-mode')
+  vi.unstubAllGlobals()
+})
+
+describe('useTheme system appearance integration', () => {
+  it('defaults to system appearance and follows live color-scheme changes', async () => {
+    const mediaQuery = installMatchMedia({ dark: true })
+    const mod = await loadThemeModule()
+
+    mod.initTheme()
+    const { theme, themeMode, followsSystem } = mod.useTheme()
+    expect(themeMode.value).toBe('system')
+    expect(followsSystem.value).toBe(true)
+    expect(theme.value).toBe('dark')
+    expect(document.documentElement.dataset.theme).toBe('dark')
+    expect(document.documentElement.dataset.themeMode).toBe('system')
+
+    mediaQuery.emit(false)
+    expect(theme.value).toBe('light')
+    expect(document.documentElement.dataset.theme).toBe('light')
+  })
+
+  it('keeps an explicit appearance when the system theme changes', async () => {
+    window.localStorage.setItem('ops-desktop.theme', 'light')
+    const mediaQuery = installMatchMedia({ dark: false })
+    const mod = await loadThemeModule()
+
+    mod.initTheme()
+    const { theme, themeMode } = mod.useTheme()
+    mediaQuery.emit(true)
+
+    expect(themeMode.value).toBe('light')
     expect(theme.value).toBe('light')
   })
 
-  it('toggles light to dark', () => {
-    const theme = ref('light')
-    const toggled = theme.value === 'dark' ? 'light' : 'dark'
-    theme.value = toggled
-    expect(theme.value).toBe('dark')
-  })
-})
-
-describe('useTheme storage key', () => {
-  it('uses a stable localStorage key', async () => {
-    const mod = await import('../../src/renderer/composables/useTheme.js')
-    // initTheme reads from localStorage with the known key; verify it
-    // does not throw in jsdom where localStorage is available.
-    expect(() => mod.initTheme()).not.toThrow()
-    const { theme, toggleTheme } = mod.useTheme()
-    const before = theme.value
-    toggleTheme()
-    expect(theme.value).not.toBe(before)
-  })
-})
-
-describe('useTheme DOM attribute', () => {
-  it('sets data-theme on documentElement', async () => {
-    const mod = await import('../../src/renderer/composables/useTheme.js')
+  it('persists system, light and dark appearance modes', async () => {
+    installMatchMedia({ dark: false })
+    const mod = await loadThemeModule()
     mod.initTheme()
-    const { theme, toggleTheme } = mod.useTheme()
+    const { setThemeMode, theme, themeMode } = mod.useTheme()
+
+    expect(setThemeMode('dark')).toBe(true)
+    expect(themeMode.value).toBe('dark')
+    expect(theme.value).toBe('dark')
+    expect(window.localStorage.getItem(mod.THEME_KEY)).toBe('dark')
+
+    expect(setThemeMode('system')).toBe(true)
+    expect(themeMode.value).toBe('system')
+    expect(theme.value).toBe('light')
+    expect(window.localStorage.getItem(mod.THEME_KEY)).toBe('system')
+
+    expect(setThemeMode('unsupported')).toBe(false)
+    expect(themeMode.value).toBe('system')
+  })
+
+  it('keeps the compact toggle behavior by switching to an explicit opposite theme', async () => {
+    installMatchMedia({ dark: true })
+    const mod = await loadThemeModule()
+    mod.initTheme()
+    const { theme, themeMode, toggleTheme } = mod.useTheme()
+
     toggleTheme()
-    const attr = document.documentElement.getAttribute('data-theme')
-    expect(['light', 'dark']).toContain(attr)
-    expect(attr).toBe(theme.value)
+    expect(themeMode.value).toBe('light')
+    expect(theme.value).toBe('light')
+
+    toggleTheme()
+    expect(themeMode.value).toBe('dark')
+    expect(theme.value).toBe('dark')
   })
 })
