@@ -20,6 +20,7 @@ const {
   stopAutoBackupScheduler
 } = require('./ops-auto-backup-scheduler')
 const { createWindowsTrayController } = require('./windows-tray-controller')
+const { createWindowsTaskbarController } = require('./windows-taskbar-controller')
 const { installMacApplicationMenu } = require('./mac-application-menu')
 const { createMacDesktopController } = require('./mac-desktop-controller')
 const { IPC_CHANNELS } = require('../shared/ipc-channels')
@@ -32,6 +33,7 @@ const startHidden = process.platform === 'win32' && process.argv.includes('--hid
 const isSmokeTest =
   process.argv.includes('--smoke-test') || process.env.OPS_DESKTOP_SMOKE_TEST === '1'
 let trayController = null
+let windowsTaskbarController = null
 let macDesktopController = null
 
 if (process.platform === 'win32') {
@@ -42,6 +44,7 @@ if (process.platform === 'win32') {
 function createManagedWindow({ showOnReady = true } = {}) {
   const win = createWindow({ showOnReady })
   if (process.platform === 'win32') {
+    windowsTaskbarController?.attachWindow(win)
     win.on('close', (event) => {
       if (!trayController?.shouldHideOnClose()) return
       event.preventDefault()
@@ -67,6 +70,27 @@ function navigateMainWindow(route) {
   if (win.webContents.isLoadingMainFrame()) win.webContents.once('did-finish-load', send)
   else send()
   return true
+}
+
+function createWindowsTaskbar() {
+  if (process.platform !== 'win32') return false
+  try {
+    windowsTaskbarController = createWindowsTaskbarController({
+      nativeImage,
+      userDataPath: app.getPath('userData'),
+      getWindow: getMainWindow,
+      logger
+    })
+    windowsTaskbarController.initialize()
+    return true
+  } catch (error) {
+    logger.error('创建 Windows 任务栏集成失败', {
+      message: error?.message,
+      stack: error?.stack
+    })
+    windowsTaskbarController = null
+    return false
+  }
 }
 
 function createWindowsTray() {
@@ -142,6 +166,7 @@ if (isMcpMode) {
     // safeStorage 在 app ready 后才保证可用，因此 IPC 处理器也在此时注册。
     logger.initLogger({ userDataPath: app.getPath('userData') })
     logger.info('应用启动', { version: app.getVersion(), platform: process.platform })
+    createWindowsTaskbar()
     const hasWindowsTray = createWindowsTray()
     const mainWindow = createManagedWindow({ showOnReady: !startHidden || !hasWindowsTray })
     installMacApplicationMenu({
@@ -223,6 +248,8 @@ if (isMcpMode) {
     macDesktopController = null
     trayController?.destroy()
     trayController = null
+    windowsTaskbarController?.destroy()
+    windowsTaskbarController = null
     await closeSftpConnection()
   })
 }
