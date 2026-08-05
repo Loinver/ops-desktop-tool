@@ -156,42 +156,31 @@ async function createCcSwitchFixture(profileRoot) {
   }
 }
 
-async function run() {
-  if (process.platform !== 'win32') {
-    throw new Error('Windows packaged app smoke test must run on Windows')
-  }
-
-  const architecture = requestedArchitecture()
-  const executablePath = packagedExecutablePath(architecture)
+async function runPackagedExecutableSmoke({ executablePath, smokeRoot, fixture = null }) {
   if (!fs.existsSync(executablePath)) {
     throw new Error(`Packaged Windows executable was not found: ${executablePath}`)
   }
+  fs.mkdirSync(smokeRoot, { recursive: true })
 
-  const smokeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ops-desktop-smoke-'))
   const smokeUserDataPath = path.join(smokeRoot, 'ops-user-data')
   const smokeResultPath = path.join(smokeRoot, smokeResultFileName)
+  const childEnvironment = {
+    ...process.env,
+    OPS_DESKTOP_SMOKE_TEST: '1',
+    OPS_DESKTOP_SMOKE_RESULT_PATH: smokeResultPath
+  }
+  if (fixture) {
+    Object.assign(childEnvironment, {
+      USERPROFILE: fixture.profileRoot,
+      APPDATA: fixture.appDataPath,
+      LOCALAPPDATA: fixture.localAppDataPath,
+      OPS_DESKTOP_SMOKE_CCSWITCH_EXPECTED: JSON.stringify(fixture.expectation)
+    })
+  }
+
   let output = ''
   let timedOut = false
-  let fixture = null
-
   try {
-    fixture = shouldCreateCcSwitchFixture()
-      ? await createCcSwitchFixture(path.join(smokeRoot, 'windows-profile'))
-      : null
-    const childEnvironment = {
-      ...process.env,
-      OPS_DESKTOP_SMOKE_TEST: '1',
-      OPS_DESKTOP_SMOKE_RESULT_PATH: smokeResultPath
-    }
-    if (fixture) {
-      Object.assign(childEnvironment, {
-        USERPROFILE: fixture.profileRoot,
-        APPDATA: fixture.appDataPath,
-        LOCALAPPDATA: fixture.localAppDataPath,
-        OPS_DESKTOP_SMOKE_CCSWITCH_EXPECTED: JSON.stringify(fixture.expectation)
-      })
-    }
-
     console.log(`Launching packaged app smoke test: ${executablePath}`)
     const child = spawn(executablePath, ['--smoke-test', `--user-data-dir=${smokeUserDataPath}`], {
       cwd: root,
@@ -243,16 +232,40 @@ async function run() {
     const smokeResult = assertWindowsPackagedSmokeResult(readPackagedSmokeResult(smokeResultPath), {
       expectCcSwitch: Boolean(fixture)
     })
+    console.log(`Packaged smoke result: ${JSON.stringify(smokeResult)}`)
+    return smokeResult
+  } catch (error) {
+    if (output.trim()) console.error(output.trim())
+    throw error
+  }
+}
+
+async function run() {
+  if (process.platform !== 'win32') {
+    throw new Error('Windows packaged app smoke test must run on Windows')
+  }
+
+  const architecture = requestedArchitecture()
+  const executablePath = packagedExecutablePath(architecture)
+
+  const smokeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ops-desktop-smoke-'))
+  let fixture = null
+
+  try {
+    fixture = shouldCreateCcSwitchFixture()
+      ? await createCcSwitchFixture(path.join(smokeRoot, 'windows-profile'))
+      : null
+    await runPackagedExecutableSmoke({
+      executablePath,
+      smokeRoot: path.join(smokeRoot, 'app-run'),
+      fixture
+    })
 
     console.log(
       fixture
         ? 'Packaged app loaded its renderer and discovered the CC Switch fixture successfully'
         : 'Packaged app loaded its renderer and exited successfully'
     )
-    console.log(`Packaged smoke result: ${JSON.stringify(smokeResult)}`)
-  } catch (error) {
-    if (output.trim()) console.error(output.trim())
-    throw error
   } finally {
     fixture?.close()
     try {
@@ -282,6 +295,7 @@ module.exports = {
   packagedExecutablePath,
   readPackagedSmokeResult,
   requestedArchitecture,
+  runPackagedExecutableSmoke,
   run,
   shouldCreateCcSwitchFixture,
   unpackedDirectoryName

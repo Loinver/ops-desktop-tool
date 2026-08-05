@@ -8,6 +8,8 @@ const packageJson = require(path.join(root, 'package.json'))
 const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'ci.yml'), 'utf8')
 const smokeScriptPath = path.join(root, 'scripts', 'windows-packaged-app-smoke.cjs')
 const smokeScript = fs.readFileSync(smokeScriptPath, 'utf8')
+const installerSmokeScriptPath = path.join(root, 'scripts', 'windows-installer-smoke.cjs')
+const installerSmokeScript = fs.readFileSync(installerSmokeScriptPath, 'utf8')
 const {
   assertWindowsPackagedSmokeResult,
   createCcSwitchFixture,
@@ -17,6 +19,13 @@ const {
   shouldCreateCcSwitchFixture,
   unpackedDirectoryName
 } = require(smokeScriptPath)
+const {
+  installedExecutablePath,
+  installedUninstallerPath,
+  packagedInstallerPath,
+  renderWindowsArtifactName,
+  shouldAllowInstallerSmoke
+} = require(installerSmokeScriptPath)
 const { loadProviders } = require('../src/main/utils/ccswitch')
 
 test('Windows 构建生成安装包和可直接启动的解压目录', () => {
@@ -29,6 +38,7 @@ test('Windows 构建生成安装包和可直接启动的解压目录', () => {
   assert.match(packageJson.scripts['electron:build:win:x64'], /electron-builder --win --x64/)
   assert.match(packageJson.scripts['electron:build:win:arm64'], /electron-builder --win --arm64/)
   assert.equal(fs.existsSync(smokeScriptPath), true)
+  assert.equal(fs.existsSync(installerSmokeScriptPath), true)
 })
 
 test('Windows CI 在原生 x64 和 ARM64 runner 构建、启动并上传各自安装产物', () => {
@@ -42,11 +52,42 @@ test('Windows CI 在原生 x64 和 ARM64 runner 构建、启动并上传各自�
     workflow,
     /node scripts\/windows-packaged-app-smoke\.cjs --arch=\$\{\{ matrix\.arch \}\} --ccswitch-fixture/
   )
+  assert.match(
+    workflow,
+    /node scripts\/windows-installer-smoke\.cjs --arch=\$\{\{ matrix\.arch \}\} --allow-install/
+  )
   assert.match(workflow, /name: ops-desktop-win-\$\{\{ matrix\.arch \}\}/)
   assert.match(workflow, /pattern: ops-desktop-win-\*/)
   assert.match(workflow, /merge-multiple: true/)
   assert.match(workflow, /release\/\*\.exe/)
   assert.match(workflow, /release\/\*\.zip/)
+})
+
+test('Windows installer smoke test 使用架构化安装包并保护现有安装', () => {
+  assert.equal(renderWindowsArtifactName('x64'), 'Ops Desktop-1.0.2-windows-x64.exe')
+  assert.equal(renderWindowsArtifactName('arm64'), 'Ops Desktop-1.0.2-windows-arm64.exe')
+  assert.equal(
+    packagedInstallerPath('arm64'),
+    path.join(root, 'release', 'Ops Desktop-1.0.2-windows-arm64.exe')
+  )
+  assert.equal(
+    installedExecutablePath({ LOCALAPPDATA: 'C:\\Users\\runner\\AppData\\Local' }),
+    path.join('C:\\Users\\runner\\AppData\\Local', 'Programs', 'Ops Desktop', 'Ops Desktop.exe')
+  )
+  assert.equal(
+    installedUninstallerPath({ LOCALAPPDATA: 'C:\\Users\\runner\\AppData\\Local' }),
+    path.join(
+      'C:\\Users\\runner\\AppData\\Local',
+      'Programs',
+      'Ops Desktop',
+      'Uninstall Ops Desktop.exe'
+    )
+  )
+  assert.equal(shouldAllowInstallerSmoke(['node', 'script', '--allow-install']), true)
+  assert.equal(shouldAllowInstallerSmoke(['node', 'script']), false)
+  assert.match(installerSmokeScript, /Refusing to replace an existing Ops Desktop installation/)
+  assert.match(installerSmokeScript, /Windows installer.*\['\/S'\]/s)
+  assert.match(installerSmokeScript, /Windows uninstaller.*\['\/S'\]/s)
 })
 
 test('Windows smoke test 使用正确架构目录、隔离数据目录并等待渲染进程主动退出', () => {

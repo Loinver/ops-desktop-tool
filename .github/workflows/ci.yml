@@ -195,6 +195,9 @@ jobs:
       - name: Smoke test packaged Windows app
         run: node scripts/windows-packaged-app-smoke.cjs --arch=${{ matrix.arch }} --ccswitch-fixture
 
+      - name: Smoke test Windows installer lifecycle
+        run: node scripts/windows-installer-smoke.cjs --arch=${{ matrix.arch }} --allow-install
+
       - name: Upload Windows Installer
         uses: actions/upload-artifact@v4
         with:
