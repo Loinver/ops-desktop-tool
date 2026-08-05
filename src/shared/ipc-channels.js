@@ -23,6 +23,7 @@ const IPC_CHANNELS = {
   APP_BROWSE_FILE: 'app:browseFile',
   APP_RELAUNCH: 'app:relaunch',
   APP_NAVIGATE: 'app:navigate',
+  APP_THEME_MODE: 'app:themeMode',
   DESKTOP_INTEGRATION_GET: 'desktop:getIntegration',
   DESKTOP_LOGIN_ITEM_SAVE: 'desktop:saveLoginItem',
   DESKTOP_NOTIFICATION_SETTINGS_OPEN: 'desktop:openNotificationSettings',

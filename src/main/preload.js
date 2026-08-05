@@ -8,6 +8,7 @@ const CHANNELS = Object.freeze({
   APP_BROWSE_FILE: 'app:browseFile',
   APP_RELAUNCH: 'app:relaunch',
   APP_NAVIGATE: 'app:navigate',
+  APP_THEME_MODE: 'app:themeMode',
   DESKTOP_INTEGRATION_GET: 'desktop:getIntegration',
   DESKTOP_LOGIN_ITEM_SAVE: 'desktop:saveLoginItem',
   DESKTOP_NOTIFICATION_SETTINGS_OPEN: 'desktop:openNotificationSettings',
@@ -128,25 +129,33 @@ const subscribe = (channel, listener) => {
   return () => ipcRenderer.removeListener(channel, handler)
 }
 
-const appNavigationListeners = new Set()
-let pendingAppNavigation = null
-ipcRenderer.on(CHANNELS.APP_NAVIGATE, (_event, payload) => {
-  if (appNavigationListeners.size === 0) {
-    pendingAppNavigation = payload
-    return
+const createBufferedSubscription = (channel) => {
+  const listeners = new Set()
+  let hasPendingPayload = false
+  let pendingPayload
+  ipcRenderer.on(channel, (_event, payload) => {
+    if (listeners.size === 0) {
+      pendingPayload = payload
+      hasPendingPayload = true
+      return
+    }
+    for (const listener of listeners) listener(payload)
+  })
+  return (listener) => {
+    if (typeof listener !== 'function') return () => {}
+    listeners.add(listener)
+    if (hasPendingPayload) {
+      const payload = pendingPayload
+      pendingPayload = undefined
+      hasPendingPayload = false
+      listener(payload)
+    }
+    return () => listeners.delete(listener)
   }
-  for (const listener of appNavigationListeners) listener(payload)
-})
-const subscribeAppNavigation = (listener) => {
-  if (typeof listener !== 'function') return () => {}
-  appNavigationListeners.add(listener)
-  if (pendingAppNavigation !== null) {
-    const route = pendingAppNavigation
-    pendingAppNavigation = null
-    listener(route)
-  }
-  return () => appNavigationListeners.delete(listener)
 }
+
+const subscribeAppNavigation = createBufferedSubscription(CHANNELS.APP_NAVIGATE)
+const subscribeAppThemeMode = createBufferedSubscription(CHANNELS.APP_THEME_MODE)
 
 contextBridge.exposeInMainWorld(
   'opsApi',
@@ -163,6 +172,7 @@ contextBridge.exposeInMainWorld(
     confirm: (options) => invoke(CHANNELS.APP_CONFIRM, options),
     relaunchApp: () => invoke(CHANNELS.APP_RELAUNCH),
     onAppNavigate: subscribeAppNavigation,
+    onAppThemeMode: subscribeAppThemeMode,
     getDesktopIntegration: () => invoke(CHANNELS.DESKTOP_INTEGRATION_GET),
     saveDesktopLoginItem: (openAtLogin) =>
       invoke(CHANNELS.DESKTOP_LOGIN_ITEM_SAVE, openAtLogin === true),

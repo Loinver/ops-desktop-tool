@@ -1,13 +1,30 @@
 const fs = require('node:fs')
 const path = require('node:path')
+const { IPC_CHANNELS } = require('../shared/ipc-channels')
 
-function buildMacMenuTemplate({ appName, isDev, navigate, openLogs, openDataDirectory }) {
+function buildMacMenuTemplate({
+  appName,
+  isDev,
+  navigate,
+  setThemeMode,
+  openLogs,
+  openDataDirectory
+}) {
   const viewSubmenu = [
     ...(isDev ? [{ role: 'reload' }, { role: 'forceReload' }, { role: 'toggleDevTools' }] : []),
     ...(isDev ? [{ type: 'separator' }] : []),
     { role: 'resetZoom' },
     { role: 'zoomIn' },
     { role: 'zoomOut' },
+    { type: 'separator' },
+    {
+      label: '外观',
+      submenu: [
+        { label: '跟随系统', click: () => setThemeMode('system') },
+        { label: '浅色', click: () => setThemeMode('light') },
+        { label: '深色', click: () => setThemeMode('dark') }
+      ]
+    },
     { type: 'separator' },
     { role: 'togglefullscreen' }
   ]
@@ -100,20 +117,25 @@ function installMacApplicationMenu({ app, Menu, shell, getMainWindow, showMainWi
     }
   }
 
-  const navigate = (route) => {
+  const sendToRenderer = (channel, payload) => {
     showMainWindow()
     const window = getMainWindow()
-    if (!window || window.isDestroyed()) return
-    const send = () => window.webContents.send('app:navigate', route)
+    if (!window || window.isDestroyed() || window.webContents.isDestroyed()) return false
+    const send = () => window.webContents.send(channel, payload)
     if (window.webContents.isLoadingMainFrame()) window.webContents.once('did-finish-load', send)
     else send()
+    return true
   }
+
+  const navigate = (route) => sendToRenderer(IPC_CHANNELS.APP_NAVIGATE, route)
+  const setThemeMode = (mode) => sendToRenderer(IPC_CHANNELS.APP_THEME_MODE, mode)
 
   const userDataPath = app.getPath('userData')
   const template = buildMacMenuTemplate({
     appName: app.name,
     isDev: !app.isPackaged,
     navigate,
+    setThemeMode,
     openLogs: () => void openDirectory(path.join(userDataPath, 'logs')),
     openDataDirectory: () => void openDirectory(userDataPath)
   })

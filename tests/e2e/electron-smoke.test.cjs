@@ -188,3 +188,34 @@ test('外观菜单支持跟随系统并保持顶部控件紧凑', async () => {
   }))
   assert.deepEqual(mode, { attribute: 'system', stored: 'system' })
 })
+
+test(
+  'macOS 原生外观菜单可切换系统、浅色和深色模式',
+  { skip: process.platform !== 'darwin' },
+  async () => {
+    const page = await electronApp.firstWindow()
+
+    async function clickAppearance(label) {
+      const clicked = await electronApp.evaluate(({ Menu }, itemLabel) => {
+        const applicationMenu = Menu.getApplicationMenu()
+        const displayMenu = applicationMenu?.items.find((item) => item.label === '显示')
+        const appearanceMenu = displayMenu?.submenu?.items.find((item) => item.label === '外观')
+        const item = appearanceMenu?.submenu?.items.find((entry) => entry.label === itemLabel)
+        item?.click()
+        return Boolean(item)
+      }, label)
+      assert.equal(clicked, true)
+    }
+
+    await clickAppearance('深色')
+    await page.waitForFunction(() => document.documentElement.dataset.themeMode === 'dark')
+    assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'dark')
+
+    await clickAppearance('浅色')
+    await page.waitForFunction(() => document.documentElement.dataset.themeMode === 'light')
+    assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'light')
+
+    await clickAppearance('跟随系统')
+    await page.waitForFunction(() => document.documentElement.dataset.themeMode === 'system')
+  }
+)

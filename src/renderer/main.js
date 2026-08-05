@@ -5,7 +5,7 @@ import App from './App.vue'
 import router from './router'
 import pinia from './stores'
 import './assets/styles/base.css'
-import { initTheme } from './composables/useTheme'
+import { initTheme, useTheme } from './composables/useTheme'
 import { opsApi } from './api/opsApi.js'
 
 const LocalIcon = defineComponent({
@@ -52,14 +52,27 @@ async function bootstrap() {
   await applyRuntimePlatform()
 
   try {
+    const nativeMenuDisposers = []
     const stopNativeMenuNavigation = opsApi.onAppNavigate?.((path) => {
       if (typeof path === 'string' && path.startsWith('/')) void router.push(path)
     })
     if (typeof stopNativeMenuNavigation === 'function') {
-      window.addEventListener('beforeunload', stopNativeMenuNavigation, { once: true })
+      nativeMenuDisposers.push(stopNativeMenuNavigation)
+    }
+
+    const { setThemeMode } = useTheme()
+    const stopNativeThemeMode = opsApi.onAppThemeMode?.((mode) => setThemeMode(mode))
+    if (typeof stopNativeThemeMode === 'function') nativeMenuDisposers.push(stopNativeThemeMode)
+
+    if (nativeMenuDisposers.length > 0) {
+      window.addEventListener(
+        'beforeunload',
+        () => nativeMenuDisposers.forEach((dispose) => dispose()),
+        { once: true }
+      )
     }
   } catch {
-    // 浏览器预览环境没有 preload bridge，保持路由正常启动。
+    // 浏览器预览环境没有 preload bridge，保持路由和主题正常启动。
   }
 
   const app = createApp(App)
