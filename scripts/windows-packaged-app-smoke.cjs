@@ -2,16 +2,34 @@ const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 const { spawn } = require('node:child_process')
+const initSqlJs = require('sql.js')
 
 const root = path.resolve(__dirname, '..')
 const releaseDir = path.join(root, 'release')
 const packageJson = require(path.join(root, 'package.json'))
 const productName = packageJson.build?.productName || packageJson.productName || packageJson.name
 const timeoutMs = 45_000
+const ccSwitchFixtureArgument = '--ccswitch-fixture'
+const ccSwitchAppId = 'com.ccswitch.desktop'
+const fixtureProvider = Object.freeze({
+  providerId: 'windows-smoke-provider',
+  name: 'Windows Smoke Gateway',
+  appType: 'codex',
+  protocol: 'openai',
+  baseUrl: 'https://windows-smoke.example.com/v1',
+  endpoint: 'https://windows-smoke-backup.example.com/v1',
+  wireApi: 'responses',
+  model: 'gpt-windows-smoke',
+  secret: 'sk-windows-smoke-secret'
+})
 
 function requestedArchitecture() {
   const argument = process.argv.find((value) => value.startsWith('--arch='))
   return argument ? argument.slice('--arch='.length).toLowerCase() : 'x64'
+}
+
+function shouldCreateCcSwitchFixture(argv = process.argv) {
+  return argv.includes(ccSwitchFixtureArgument)
 }
 
 function unpackedDirectoryName(architecture) {
@@ -21,6 +39,82 @@ function unpackedDirectoryName(architecture) {
 
 function packagedExecutablePath(architecture) {
   return path.join(releaseDir, unpackedDirectoryName(architecture), `${productName}.exe`)
+}
+
+async function createCcSwitchFixture(profileRoot) {
+  const appDataPath = path.join(profileRoot, 'AppData', 'Roaming')
+  const localAppDataPath = path.join(profileRoot, 'AppData', 'Local')
+  const databaseDirectory = path.join(appDataPath, ccSwitchAppId)
+  const dbPath = path.join(databaseDirectory, 'cc-switch.db')
+  fs.mkdirSync(databaseDirectory, { recursive: true })
+  fs.mkdirSync(localAppDataPath, { recursive: true })
+
+  const SQL = await initSqlJs({
+    wasmBinary: fs.readFileSync(require.resolve('sql.js/dist/sql-wasm.wasm'))
+  })
+  const database = new SQL.Database()
+  const settings = JSON.stringify({
+    auth: { OPENAI_API_KEY: fixtureProvider.secret },
+    config: [
+      `base_url = "${fixtureProvider.baseUrl}"`,
+      `wire_api = "${fixtureProvider.wireApi}"`,
+      `model = "${fixtureProvider.model}"`
+    ].join('\n'),
+    modelCatalog: {
+      models: [{ model: fixtureProvider.model, displayName: 'GPT Windows Smoke' }]
+    }
+  })
+
+  try {
+    database.run(`
+      CREATE TABLE providers (
+        id TEXT NOT NULL,
+        app_type TEXT NOT NULL,
+        name TEXT NOT NULL,
+        settings_config TEXT NOT NULL,
+        website_url TEXT,
+        sort_index INTEGER,
+        meta TEXT NOT NULL DEFAULT '{}',
+        is_current BOOLEAN NOT NULL DEFAULT 0,
+        PRIMARY KEY (id, app_type)
+      );
+      CREATE TABLE provider_endpoints (
+        provider_id TEXT NOT NULL,
+        app_type TEXT NOT NULL,
+        url TEXT NOT NULL
+      );
+    `)
+    database.run(
+      `INSERT INTO providers
+        (id, app_type, name, settings_config, website_url, sort_index, meta, is_current)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
+      [
+        fixtureProvider.providerId,
+        fixtureProvider.appType,
+        fixtureProvider.name,
+        settings,
+        'https://windows-smoke.example.com',
+        1,
+        '{}',
+        1
+      ]
+    )
+    database.run(`INSERT INTO provider_endpoints (provider_id, app_type, url) VALUES (?, ?, ?);`, [
+      fixtureProvider.providerId,
+      fixtureProvider.appType,
+      `${fixtureProvider.endpoint}/`
+    ])
+    fs.writeFileSync(dbPath, Buffer.from(database.export()))
+  } finally {
+    database.close()
+  }
+
+  return {
+    appDataPath,
+    localAppDataPath,
+    profileRoot,
+    expectation: { ...fixtureProvider, dbPath }
+  }
 }
 
 async function run() {
@@ -34,18 +128,32 @@ async function run() {
     throw new Error(`Packaged Windows executable was not found: ${executablePath}`)
   }
 
-  const smokeUserDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'ops-desktop-smoke-'))
+  const smokeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ops-desktop-smoke-'))
+  const smokeUserDataPath = path.join(smokeRoot, 'ops-user-data')
   let output = ''
   let timedOut = false
 
   try {
+    const fixture = shouldCreateCcSwitchFixture()
+      ? await createCcSwitchFixture(path.join(smokeRoot, 'windows-profile'))
+      : null
+    const childEnvironment = {
+      ...process.env,
+      OPS_DESKTOP_SMOKE_TEST: '1'
+    }
+    if (fixture) {
+      Object.assign(childEnvironment, {
+        USERPROFILE: fixture.profileRoot,
+        APPDATA: fixture.appDataPath,
+        LOCALAPPDATA: fixture.localAppDataPath,
+        OPS_DESKTOP_SMOKE_CCSWITCH_EXPECTED: JSON.stringify(fixture.expectation)
+      })
+    }
+
     console.log(`Launching packaged app smoke test: ${executablePath}`)
     const child = spawn(executablePath, ['--smoke-test', `--user-data-dir=${smokeUserDataPath}`], {
       cwd: root,
-      env: {
-        ...process.env,
-        OPS_DESKTOP_SMOKE_TEST: '1'
-      },
+      env: childEnvironment,
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: false
     })
@@ -85,13 +193,17 @@ async function run() {
       )
     }
 
-    console.log('Packaged app loaded its renderer and exited successfully')
+    console.log(
+      fixture
+        ? 'Packaged app loaded its renderer and discovered the CC Switch fixture successfully'
+        : 'Packaged app loaded its renderer and exited successfully'
+    )
   } catch (error) {
     if (output.trim()) console.error(output.trim())
     throw error
   } finally {
     try {
-      fs.rmSync(smokeUserDataPath, {
+      fs.rmSync(smokeRoot, {
         recursive: true,
         force: true,
         maxRetries: 5,
@@ -110,4 +222,12 @@ if (require.main === module) {
   })
 }
 
-module.exports = { packagedExecutablePath, requestedArchitecture, run, unpackedDirectoryName }
+module.exports = {
+  createCcSwitchFixture,
+  fixtureProvider,
+  packagedExecutablePath,
+  requestedArchitecture,
+  run,
+  shouldCreateCcSwitchFixture,
+  unpackedDirectoryName
+}

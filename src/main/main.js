@@ -22,6 +22,7 @@ const {
 const { createWindowsTrayController } = require('./windows-tray-controller')
 const { installMacApplicationMenu } = require('./mac-application-menu')
 const logger = require('./utils/logger')
+const { runPackagedRendererSmokeAssertions } = require('./packaged-smoke-test')
 
 const WINDOWS_APP_ID = 'com.ops-desktop-tool'
 const isMcpMode = process.argv.includes('--mcp')
@@ -143,10 +144,20 @@ if (isMcpMode) {
         app.exit(1)
       }, 30_000)
       smokeTimeout.unref()
-      mainWindow.webContents.once('did-finish-load', () => {
-        clearTimeout(smokeTimeout)
-        logger.info('打包应用 smoke test 通过')
-        app.exit(0)
+      mainWindow.webContents.once('did-finish-load', async () => {
+        try {
+          const result = await runPackagedRendererSmokeAssertions(mainWindow.webContents)
+          logger.info('打包应用 smoke test 通过', result)
+          app.exit(0)
+        } catch (error) {
+          logger.error('打包应用 smoke test 断言失败', {
+            message: error?.message,
+            stack: error?.stack
+          })
+          app.exit(1)
+        } finally {
+          clearTimeout(smokeTimeout)
+        }
       })
       mainWindow.webContents.once('did-fail-load', (_event, errorCode, errorDescription) => {
         clearTimeout(smokeTimeout)

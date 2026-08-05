@@ -8,7 +8,14 @@ const packageJson = require(path.join(root, 'package.json'))
 const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'ci.yml'), 'utf8')
 const smokeScriptPath = path.join(root, 'scripts', 'windows-packaged-app-smoke.cjs')
 const smokeScript = fs.readFileSync(smokeScriptPath, 'utf8')
-const { packagedExecutablePath, unpackedDirectoryName } = require(smokeScriptPath)
+const {
+  createCcSwitchFixture,
+  fixtureProvider,
+  packagedExecutablePath,
+  shouldCreateCcSwitchFixture,
+  unpackedDirectoryName
+} = require(smokeScriptPath)
+const { loadProviders } = require('../src/main/utils/ccswitch')
 
 test('Windows 构建生成安装包和可直接启动的解压目录', () => {
   assert.deepEqual(packageJson.build.win.target, ['nsis', 'zip'])
@@ -19,7 +26,10 @@ test('Windows 构建生成安装包和可直接启动的解压目录', () => {
 test('Windows CI 构建后会启动打包应用并上传安装产物', () => {
   assert.match(workflow, /runs-on: windows-latest/)
   assert.match(workflow, /run: pnpm electron:build:win/)
-  assert.match(workflow, /node scripts\/windows-packaged-app-smoke\.cjs --arch=x64/)
+  assert.match(
+    workflow,
+    /node scripts\/windows-packaged-app-smoke\.cjs --arch=x64 --ccswitch-fixture/
+  )
   assert.match(workflow, /release\/\*\.exe/)
   assert.match(workflow, /release\/\*\.zip/)
 })
@@ -35,5 +45,32 @@ test('Windows smoke test 使用正确架构目录、隔离数据目录并等待�
   assert.match(smokeScript, /--smoke-test/)
   assert.match(smokeScript, /--user-data-dir=/)
   assert.match(smokeScript, /OPS_DESKTOP_SMOKE_TEST/)
+  assert.match(smokeScript, /OPS_DESKTOP_SMOKE_CCSWITCH_EXPECTED/)
+  assert.match(smokeScript, /APPDATA/)
+  assert.match(smokeScript, /LOCALAPPDATA/)
+  assert.match(smokeScript, /USERPROFILE/)
   assert.match(smokeScript, /child\.once\('exit'/)
+})
+
+test('Windows smoke test 可创建真实 SQLite CC Switch fixture', async () => {
+  const directory = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'windows-ccswitch-'))
+  try {
+    const fixture = await createCcSwitchFixture(directory)
+    assert.equal(fs.existsSync(fixture.expectation.dbPath), true)
+    assert.equal(shouldCreateCcSwitchFixture(['node', 'script', '--ccswitch-fixture']), true)
+    assert.equal(shouldCreateCcSwitchFixture(['node', 'script']), false)
+
+    const result = await loadProviders({ dbCandidates: [fixture.expectation.dbPath] })
+    assert.equal(result.ok, true, result.message)
+    assert.equal(result.providers.length, 1)
+    assert.equal(result.providers[0].id, fixtureProvider.providerId)
+    assert.equal(result.providers[0].apiKey, fixtureProvider.secret)
+    assert.equal(result.providers[0].models[0].model, fixtureProvider.model)
+    assert.deepEqual(result.providers[0].endpoints, [
+      fixtureProvider.baseUrl,
+      fixtureProvider.endpoint
+    ])
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true })
+  }
 })
