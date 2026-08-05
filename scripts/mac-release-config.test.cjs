@@ -60,7 +60,10 @@ test('release workflow signs, notarizes and verifies both Mac architectures', ()
   assert.match(workflow, /codesign --verify --deep --strict/)
   assert.match(workflow, /spctl --assess --type execute/)
   assert.match(workflow, /xcrun stapler validate/)
-  assert.match(workflow, /node scripts\/mac-packaged-app-smoke\.cjs/)
+  assert.match(
+    workflow,
+    /node scripts\/mac-packaged-app-smoke\.cjs --arch=\$\{\{ matrix\.arch \}\}/
+  )
   assert.match(workflow, /matrix\.executable_arch/)
   assert.match(workflow, /pattern: ops-desktop-mac-\*/)
   assert.equal(fs.existsSync(path.join(root, '.github', 'workflows', 'code-signing.yml')), false)

@@ -142,7 +142,7 @@ jobs:
           fi
 
       - name: Smoke test packaged Mac app
-        run: node scripts/mac-packaged-app-smoke.cjs
+        run: node scripts/mac-packaged-app-smoke.cjs --arch=${{ matrix.arch }}
 
       - name: Verify signed and notarized Mac app
         if: github.event_name == 'release'

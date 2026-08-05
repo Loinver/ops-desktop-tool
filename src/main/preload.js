@@ -124,6 +124,26 @@ const subscribe = (channel, listener) => {
   return () => ipcRenderer.removeListener(channel, handler)
 }
 
+const appNavigationListeners = new Set()
+let pendingAppNavigation = null
+ipcRenderer.on(CHANNELS.APP_NAVIGATE, (_event, payload) => {
+  if (appNavigationListeners.size === 0) {
+    pendingAppNavigation = payload
+    return
+  }
+  for (const listener of appNavigationListeners) listener(payload)
+})
+const subscribeAppNavigation = (listener) => {
+  if (typeof listener !== 'function') return () => {}
+  appNavigationListeners.add(listener)
+  if (pendingAppNavigation !== null) {
+    const route = pendingAppNavigation
+    pendingAppNavigation = null
+    listener(route)
+  }
+  return () => appNavigationListeners.delete(listener)
+}
+
 contextBridge.exposeInMainWorld(
   'opsApi',
   Object.freeze({
@@ -138,7 +158,7 @@ contextBridge.exposeInMainWorld(
     checkNodeServiceWatches: () => invoke(CHANNELS.NODE_MONITOR_CHECK),
     confirm: (options) => invoke(CHANNELS.APP_CONFIRM, options),
     relaunchApp: () => invoke(CHANNELS.APP_RELAUNCH),
-    onAppNavigate: (listener) => subscribe(CHANNELS.APP_NAVIGATE, listener),
+    onAppNavigate: subscribeAppNavigation,
     getDataBackupOverview: () => invoke(CHANNELS.DATA_BACKUP_OVERVIEW),
     exportDataBackup: (options) => invoke(CHANNELS.DATA_BACKUP_EXPORT, options),
     inspectDataBackup: (options) => invoke(CHANNELS.DATA_BACKUP_INSPECT, options),

@@ -7,16 +7,27 @@ const root = path.resolve(__dirname, '..')
 const releaseDir = path.join(root, 'release')
 const timeoutMs = 45_000
 
-function findAppBundle(directory, depth = 0) {
-  if (depth > 4 || !fs.existsSync(directory)) return ''
+function findAppBundles(directory, depth = 0) {
+  if (depth > 4 || !fs.existsSync(directory)) return []
+  const bundles = []
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue
     const fullPath = path.join(directory, entry.name)
-    if (entry.name.endsWith('.app')) return fullPath
-    const nested = findAppBundle(fullPath, depth + 1)
-    if (nested) return nested
+    if (entry.name.endsWith('.app')) bundles.push(fullPath)
+    else bundles.push(...findAppBundles(fullPath, depth + 1))
   }
-  return ''
+  return bundles
+}
+
+function requestedArchitecture() {
+  const argument = process.argv.find((value) => value.startsWith('--arch='))
+  return argument ? argument.slice('--arch='.length) : ''
+}
+
+function selectAppBundle(bundles, architecture) {
+  if (!architecture) return bundles[0] || ''
+  const expectedDirectory = architecture === 'x64' ? 'mac' : `mac-${architecture}`
+  return bundles.find((bundle) => path.basename(path.dirname(bundle)) === expectedDirectory) || ''
 }
 
 if (process.platform !== 'darwin') {
@@ -24,9 +35,12 @@ if (process.platform !== 'darwin') {
   process.exit(1)
 }
 
-const appPath = findAppBundle(releaseDir)
+const architecture = requestedArchitecture()
+const appPath = selectAppBundle(findAppBundles(releaseDir), architecture)
 if (!appPath) {
-  console.error(`Packaged macOS app was not found under ${releaseDir}`)
+  console.error(
+    `Packaged macOS app was not found under ${releaseDir}${architecture ? ` for ${architecture}` : ''}`
+  )
   process.exit(1)
 }
 
