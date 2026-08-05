@@ -25,7 +25,10 @@ const { installMacApplicationMenu } = require('./mac-application-menu')
 const { createMacDesktopController } = require('./mac-desktop-controller')
 const { IPC_CHANNELS } = require('../shared/ipc-channels')
 const logger = require('./utils/logger')
-const { runPackagedRendererSmokeAssertions } = require('./packaged-smoke-test')
+const {
+  runPackagedRendererSmokeAssertions,
+  writePackagedSmokeResult
+} = require('./packaged-smoke-test')
 
 const WINDOWS_APP_ID = 'com.ops-desktop-tool'
 const isMcpMode = process.argv.includes('--mcp')
@@ -197,10 +200,28 @@ if (isMcpMode) {
       smokeTimeout.unref()
       mainWindow.webContents.once('did-finish-load', async () => {
         try {
-          const result = await runPackagedRendererSmokeAssertions(mainWindow.webContents)
+          const result = {
+            ok: true,
+            ...(await runPackagedRendererSmokeAssertions(mainWindow.webContents))
+          }
+          if (process.platform === 'win32') {
+            if (!windowsTaskbarController) {
+              throw new Error('Windows 任务栏控制器未初始化')
+            }
+            Object.assign(result, windowsTaskbarController.runSmokeCheck(mainWindow))
+          }
+          writePackagedSmokeResult(result)
           logger.info('打包应用 smoke test 通过', result)
           app.exit(0)
         } catch (error) {
+          try {
+            writePackagedSmokeResult({ ok: false, message: error?.message || String(error) })
+          } catch (writeError) {
+            logger.error('写入打包应用 smoke test 结果失败', {
+              message: writeError?.message,
+              stack: writeError?.stack
+            })
+          }
           logger.error('打包应用 smoke test 断言失败', {
             message: error?.message,
             stack: error?.stack

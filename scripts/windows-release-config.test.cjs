@@ -9,9 +9,11 @@ const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'ci.yml
 const smokeScriptPath = path.join(root, 'scripts', 'windows-packaged-app-smoke.cjs')
 const smokeScript = fs.readFileSync(smokeScriptPath, 'utf8')
 const {
+  assertWindowsPackagedSmokeResult,
   createCcSwitchFixture,
   fixtureProvider,
   packagedExecutablePath,
+  readPackagedSmokeResult,
   shouldCreateCcSwitchFixture,
   unpackedDirectoryName
 } = require(smokeScriptPath)
@@ -46,6 +48,9 @@ test('Windows smoke test 使用正确架构目录、隔离数据目录并等待�
   assert.match(smokeScript, /--user-data-dir=/)
   assert.match(smokeScript, /OPS_DESKTOP_SMOKE_TEST/)
   assert.match(smokeScript, /OPS_DESKTOP_SMOKE_CCSWITCH_EXPECTED/)
+  assert.match(smokeScript, /OPS_DESKTOP_SMOKE_RESULT_PATH/)
+  assert.match(smokeScript, /windowsTaskbarSupported/)
+  assert.match(smokeScript, /windowsTaskbarOverlayReady/)
   assert.match(smokeScript, /APPDATA/)
   assert.match(smokeScript, /LOCALAPPDATA/)
   assert.match(smokeScript, /USERPROFILE/)
@@ -74,6 +79,34 @@ test('Windows smoke test 可创建真实 SQLite WAL 模式的 CC Switch fixture'
     ])
   } finally {
     fixture?.close()
+    fs.rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+test('Windows smoke test 读取并校验打包应用的任务栏与 CC Switch 结果', () => {
+  const directory = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'windows-smoke-result-'))
+  const resultPath = path.join(directory, 'result.json')
+  const result = {
+    ok: true,
+    ccSwitchChecked: true,
+    providerId: fixtureProvider.providerId,
+    windowsTaskbarSupported: true,
+    windowsTaskbarOverlayReady: true
+  }
+
+  try {
+    fs.writeFileSync(resultPath, JSON.stringify(result))
+    assert.deepEqual(readPackagedSmokeResult(resultPath), result)
+    assert.deepEqual(assertWindowsPackagedSmokeResult(result, { expectCcSwitch: true }), result)
+    assert.throws(
+      () =>
+        assertWindowsPackagedSmokeResult({
+          ...result,
+          windowsTaskbarOverlayReady: false
+        }),
+      /overlay icon/
+    )
+  } finally {
     fs.rmSync(directory, { recursive: true, force: true })
   }
 })

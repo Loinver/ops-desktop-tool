@@ -3,9 +3,11 @@ const test = require('node:test')
 
 const {
   CCSWITCH_EXPECTATION_ENV,
+  SMOKE_RESULT_PATH_ENV,
   assertCcSwitchRendererResult,
   readCcSwitchExpectation,
-  runPackagedRendererSmokeAssertions
+  runPackagedRendererSmokeAssertions,
+  writePackagedSmokeResult
 } = require('../src/main/packaged-smoke-test')
 
 const expectation = {
@@ -92,4 +94,31 @@ test('打包 smoke test 从页面上下文通过 preload API 读取 Provider', a
 
   assert.match(script, /window\.opsApi\.listModelProviders/)
   assert.deepEqual(result, { ccSwitchChecked: true, providerId: expectation.providerId })
+})
+
+test('打包 smoke test 将主进程断言结果写入调用方指定路径', () => {
+  const writes = []
+  const fileSystem = {
+    writeFileSync(...args) {
+      writes.push(args)
+    }
+  }
+  const result = {
+    ok: true,
+    windowsTaskbarSupported: true,
+    windowsTaskbarOverlayReady: true
+  }
+
+  assert.equal(writePackagedSmokeResult(result, {}, fileSystem), false)
+  assert.equal(
+    writePackagedSmokeResult(
+      result,
+      { [SMOKE_RESULT_PATH_ENV]: 'C:\\Temp\\ops-smoke-result.json' },
+      fileSystem
+    ),
+    true
+  )
+  assert.deepEqual(writes, [
+    ['C:\\Temp\\ops-smoke-result.json', `${JSON.stringify(result)}\n`, 'utf8']
+  ])
 })

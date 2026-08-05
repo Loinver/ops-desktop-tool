@@ -143,6 +143,56 @@ function createWindowsTaskbarController({
     return { supported: true, ...summary }
   }
 
+  function runSmokeCheck(window = getWindow()) {
+    if (!supported) {
+      return {
+        windowsTaskbarSupported: false,
+        windowsTaskbarOverlayReady: false
+      }
+    }
+    if (!window || window.isDestroyed?.()) {
+      throw new Error('Windows 任务栏 smoke test 找不到可用窗口')
+    }
+    if (typeof window.setOverlayIcon !== 'function') {
+      throw new Error('BrowserWindow.setOverlayIcon 不可用')
+    }
+
+    // 使用真实事件摘要重新应用一次当前状态，同时避免传入 change 触发任务栏闪烁。
+    refresh()
+    if (!attachWindow(window)) {
+      throw new Error('Windows 任务栏 smoke test 无法附加窗口')
+    }
+
+    const icon = getOverlayIcon()
+    let overlayApplied = false
+    let overlayCleared = false
+    let stateRestored = false
+    try {
+      window.setOverlayIcon(icon, 'Ops Desktop Windows taskbar smoke test')
+      overlayApplied = true
+      window.setOverlayIcon(null, '')
+      overlayCleared = true
+    } finally {
+      if (overlayApplied && !overlayCleared) {
+        try {
+          window.setOverlayIcon(null, '')
+        } catch {
+          // 保留原始 smoke test 异常。
+        }
+      }
+      // 恢复 smoke test 前应展示的真实未读状态。
+      stateRestored = apply(null, window)
+    }
+    if (!stateRestored) {
+      throw new Error('Windows 任务栏 smoke test 无法恢复未读状态')
+    }
+
+    return {
+      windowsTaskbarSupported: true,
+      windowsTaskbarOverlayReady: true
+    }
+  }
+
   function destroy() {
     stopListening?.()
     stopListening = null
@@ -163,6 +213,7 @@ function createWindowsTaskbarController({
     destroy,
     initialize,
     refresh,
+    runSmokeCheck,
     status() {
       return { supported, ...summary, flashing }
     },

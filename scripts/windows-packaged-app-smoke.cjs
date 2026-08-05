@@ -11,6 +11,7 @@ const productName = packageJson.build?.productName || packageJson.productName ||
 const timeoutMs = 45_000
 const ccSwitchFixtureArgument = '--ccswitch-fixture'
 const ccSwitchAppId = 'com.ccswitch.desktop'
+const smokeResultFileName = 'smoke-result.json'
 const fixtureProvider = Object.freeze({
   providerId: 'windows-smoke-provider',
   name: 'Windows Smoke Gateway',
@@ -39,6 +40,45 @@ function unpackedDirectoryName(architecture) {
 
 function packagedExecutablePath(architecture) {
   return path.join(releaseDir, unpackedDirectoryName(architecture), `${productName}.exe`)
+}
+
+function readPackagedSmokeResult(resultPath) {
+  if (!fs.existsSync(resultPath)) {
+    throw new Error(`Packaged app did not write its smoke-test result: ${resultPath}`)
+  }
+
+  try {
+    const result = JSON.parse(fs.readFileSync(resultPath, 'utf8'))
+    if (!result || typeof result !== 'object') throw new Error('result must be an object')
+    return result
+  } catch (error) {
+    throw new Error(`Failed to parse packaged app smoke-test result: ${error.message}`, {
+      cause: error
+    })
+  }
+}
+
+function assertWindowsPackagedSmokeResult(result, { expectCcSwitch = false } = {}) {
+  if (result?.ok !== true) {
+    throw new Error(
+      `Packaged app reported a failed smoke test: ${result?.message || 'unknown error'}`
+    )
+  }
+  if (result.windowsTaskbarSupported !== true) {
+    throw new Error('Packaged app did not confirm Windows taskbar support')
+  }
+  if (result.windowsTaskbarOverlayReady !== true) {
+    throw new Error('Packaged app did not create and apply a Windows taskbar overlay icon')
+  }
+  if (expectCcSwitch && result.ccSwitchChecked !== true) {
+    throw new Error('Packaged app did not confirm CC Switch discovery')
+  }
+  if (expectCcSwitch && result.providerId !== fixtureProvider.providerId) {
+    throw new Error(
+      `Packaged app returned an unexpected CC Switch provider: ${result.providerId || 'missing'}`
+    )
+  }
+  return result
 }
 
 async function createCcSwitchFixture(profileRoot) {
@@ -129,6 +169,7 @@ async function run() {
 
   const smokeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ops-desktop-smoke-'))
   const smokeUserDataPath = path.join(smokeRoot, 'ops-user-data')
+  const smokeResultPath = path.join(smokeRoot, smokeResultFileName)
   let output = ''
   let timedOut = false
   let fixture = null
@@ -139,7 +180,8 @@ async function run() {
       : null
     const childEnvironment = {
       ...process.env,
-      OPS_DESKTOP_SMOKE_TEST: '1'
+      OPS_DESKTOP_SMOKE_TEST: '1',
+      OPS_DESKTOP_SMOKE_RESULT_PATH: smokeResultPath
     }
     if (fixture) {
       Object.assign(childEnvironment, {
@@ -188,16 +230,26 @@ async function run() {
       throw new Error(`Packaged app did not finish its smoke test within ${timeoutMs}ms`)
     }
     if (result.code !== 0) {
+      const reportedFailure = fs.existsSync(smokeResultPath)
+        ? readPackagedSmokeResult(smokeResultPath).message
+        : ''
       throw new Error(
-        `Packaged app smoke test failed (code=${result.code}, signal=${result.signal || 'none'})`
+        `Packaged app smoke test failed (code=${result.code}, signal=${result.signal || 'none'})${
+          reportedFailure ? `: ${reportedFailure}` : ''
+        }`
       )
     }
+
+    const smokeResult = assertWindowsPackagedSmokeResult(readPackagedSmokeResult(smokeResultPath), {
+      expectCcSwitch: Boolean(fixture)
+    })
 
     console.log(
       fixture
         ? 'Packaged app loaded its renderer and discovered the CC Switch fixture successfully'
         : 'Packaged app loaded its renderer and exited successfully'
     )
+    console.log(`Packaged smoke result: ${JSON.stringify(smokeResult)}`)
   } catch (error) {
     if (output.trim()) console.error(output.trim())
     throw error
@@ -224,9 +276,11 @@ if (require.main === module) {
 }
 
 module.exports = {
+  assertWindowsPackagedSmokeResult,
   createCcSwitchFixture,
   fixtureProvider,
   packagedExecutablePath,
+  readPackagedSmokeResult,
   requestedArchitecture,
   run,
   shouldCreateCcSwitchFixture,

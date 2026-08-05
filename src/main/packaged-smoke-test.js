@@ -1,4 +1,7 @@
+const fs = require('node:fs')
+
 const CCSWITCH_EXPECTATION_ENV = 'OPS_DESKTOP_SMOKE_CCSWITCH_EXPECTED'
+const SMOKE_RESULT_PATH_ENV = 'OPS_DESKTOP_SMOKE_RESULT_PATH'
 
 function readCcSwitchExpectation(env = process.env) {
   const raw = String(env[CCSWITCH_EXPECTATION_ENV] || '').trim()
@@ -88,9 +91,18 @@ async function runPackagedRendererSmokeAssertions(webContents, env = process.env
   return { ccSwitchChecked: true, providerId: provider.id }
 }
 
+function writePackagedSmokeResult(result, env = process.env, fileSystem = fs) {
+  const resultPath = String(env[SMOKE_RESULT_PATH_ENV] || '').trim()
+  if (!resultPath) return false
+  fileSystem.writeFileSync(resultPath, `${JSON.stringify(result)}\n`, 'utf8')
+  return true
+}
+
 module.exports = {
   CCSWITCH_EXPECTATION_ENV,
+  SMOKE_RESULT_PATH_ENV,
   assertCcSwitchRendererResult,
   readCcSwitchExpectation,
-  runPackagedRendererSmokeAssertions
+  runPackagedRendererSmokeAssertions,
+  writePackagedSmokeResult
 }

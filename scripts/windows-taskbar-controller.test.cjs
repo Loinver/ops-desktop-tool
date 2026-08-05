@@ -123,6 +123,41 @@ test('Windows 任务栏未读辅助函数规范化计数和闪烁条件', () => 
   assert.equal(shouldFlashForChange({ kind: 'recovered', item: { severity: 'critical' } }), false)
 })
 
+test('Windows 任务栏 smoke check 使用真实 overlay 路径并恢复当前状态', () => {
+  const window = createWindow()
+  const nativeImage = createNativeImage()
+  const controller = createWindowsTaskbarController({
+    nativeImage,
+    userDataPath: 'C:\\Users\\tester\\AppData\\Roaming\\Ops Desktop',
+    getWindow: () => window,
+    platform: 'win32',
+    summarizeEvents: () => ({ unread: 2, unreadCritical: 0 }),
+    subscribeToEvents: () => () => {}
+  })
+
+  controller.initialize()
+  const result = controller.runSmokeCheck(window)
+
+  assert.deepEqual(result, {
+    windowsTaskbarSupported: true,
+    windowsTaskbarOverlayReady: true
+  })
+  assert.equal(nativeImage.calls.length, 1)
+  assert.equal(
+    window.overlays.some(
+      ({ icon, description }) =>
+        icon === nativeImage.calls[0] && description === 'Ops Desktop Windows taskbar smoke test'
+    ),
+    true
+  )
+  assert.equal(
+    window.overlays.some(({ icon, description }) => icon === null && description === ''),
+    true
+  )
+  assert.equal(window.overlays.at(-1).description, '2 条未读运维事件')
+  assert.deepEqual(window.flashes, [])
+})
+
 test('非 Windows 平台不注册任务栏监听', () => {
   let subscribed = false
   const controller = createWindowsTaskbarController({
@@ -142,4 +177,8 @@ test('非 Windows 平台不注册任务栏监听', () => {
     unreadCritical: 0
   })
   assert.equal(subscribed, false)
+  assert.deepEqual(controller.runSmokeCheck(), {
+    windowsTaskbarSupported: false,
+    windowsTaskbarOverlayReady: false
+  })
 })
