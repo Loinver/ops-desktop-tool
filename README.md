@@ -209,6 +209,8 @@ macOS Release 会分别生成 `arm64` 和 `x64` 的 DMG/ZIP，并在上传前完
 
 CI 分别使用 `macos-15`（Apple Silicon）和 `macos-15-intel`（Intel）Runner 构建，并在每个架构上直接启动打包后的 `.app`，确认主进程与渲染页面能够正常加载后才上传产物。
 
+Windows CI 也会在构建完成后直接启动 `win-unpacked/Ops Desktop.exe`，使用隔离的临时数据目录确认主进程和渲染页面可以正常加载，再上传 NSIS/ZIP 产物。
+
 ### 发布前检查清单
 
 - [ ] `pnpm verify`（Prettier、lint、单元/Renderer 测试与 Electron E2E）全部通过

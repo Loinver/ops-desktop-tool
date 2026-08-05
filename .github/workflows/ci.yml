@@ -184,6 +184,9 @@ jobs:
       - name: Build Windows
         run: pnpm electron:build:win
 
+      - name: Smoke test packaged Windows app
+        run: node scripts/windows-packaged-app-smoke.cjs --arch=x64
+
       - name: Upload Windows Installer
         uses: actions/upload-artifact@v4
         with:
