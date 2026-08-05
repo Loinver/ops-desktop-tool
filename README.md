@@ -209,7 +209,7 @@ macOS Release 会分别生成 `arm64` 和 `x64` 的 DMG/ZIP，并在上传前完
 
 CI 分别使用 `macos-15`（Apple Silicon）和 `macos-15-intel`（Intel）Runner 构建，并在每个架构上直接启动打包后的 `.app`，确认主进程与渲染页面能够正常加载后才上传产物。
 
-Windows CI 也会在构建完成后直接启动 `win-unpacked/Ops Desktop.exe`，在隔离的临时 Windows 用户目录中生成真实 SQLite 格式的 CC Switch 配置，并从渲染页面通过 preload/IPC 验证应用能自动发现 Provider、模型和端点，同时确认 API Key 不会返回渲染层；全部通过后才上传 NSIS/ZIP 产物。
+Windows CI 也会在构建完成后直接启动 `win-unpacked/Ops Desktop.exe`，在隔离的临时 Windows 用户目录中生成处于 WAL 模式、且尚未 checkpoint 的真实 SQLite CC Switch 配置，并从渲染页面通过 preload/IPC 验证应用能读取最新快照、自动发现 Provider、模型和端点，同时确认 API Key 不会返回渲染层；全部通过后才上传 NSIS/ZIP 产物。
 
 ### 发布前检查清单
 

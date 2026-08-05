@@ -52,11 +52,13 @@ test('Windows smoke test 使用正确架构目录、隔离数据目录并等待�
   assert.match(smokeScript, /child\.once\('exit'/)
 })
 
-test('Windows smoke test 可创建真实 SQLite CC Switch fixture', async () => {
+test('Windows smoke test 可创建真实 SQLite WAL 模式的 CC Switch fixture', async () => {
   const directory = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'windows-ccswitch-'))
+  let fixture = null
   try {
-    const fixture = await createCcSwitchFixture(directory)
+    fixture = await createCcSwitchFixture(directory)
     assert.equal(fs.existsSync(fixture.expectation.dbPath), true)
+    assert.ok(fs.statSync(`${fixture.expectation.dbPath}-wal`).size > 0)
     assert.equal(shouldCreateCcSwitchFixture(['node', 'script', '--ccswitch-fixture']), true)
     assert.equal(shouldCreateCcSwitchFixture(['node', 'script']), false)
 
@@ -71,6 +73,7 @@ test('Windows smoke test 可创建真实 SQLite CC Switch fixture', async () => 
       fixtureProvider.endpoint
     ])
   } finally {
+    fixture?.close()
     fs.rmSync(directory, { recursive: true, force: true })
   }
 })

@@ -16,6 +16,7 @@
 - macOS 小屏最小窗口尺寸调整为 960×640，外接显示器断开后自动将窗口拉回可见区域
 
 ### Fixed
+- CC Switch 数据库处于 WAL 模式且尚未 checkpoint 时，使用 Electron 内置 SQLite 的只读快照读取最新 Provider，并保留非 WAL 数据库的 sql.js 回退
 - Windows 端口进程结束改用 `taskkill /T`，强制结束时使用 `/F`，避免遗留子进程
 - Windows 自动备份目录比较忽略路径大小写，确保保留策略正确清理旧备份
 

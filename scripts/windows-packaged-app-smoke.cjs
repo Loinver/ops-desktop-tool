@@ -2,7 +2,7 @@ const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 const { spawn } = require('node:child_process')
-const initSqlJs = require('sql.js')
+const { DatabaseSync } = require('node:sqlite')
 
 const root = path.resolve(__dirname, '..')
 const releaseDir = path.join(root, 'release')
@@ -49,10 +49,7 @@ async function createCcSwitchFixture(profileRoot) {
   fs.mkdirSync(databaseDirectory, { recursive: true })
   fs.mkdirSync(localAppDataPath, { recursive: true })
 
-  const SQL = await initSqlJs({
-    wasmBinary: fs.readFileSync(require.resolve('sql.js/dist/sql-wasm.wasm'))
-  })
-  const database = new SQL.Database()
+  const database = new DatabaseSync(dbPath)
   const settings = JSON.stringify({
     auth: { OPENAI_API_KEY: fixtureProvider.secret },
     config: [
@@ -65,55 +62,57 @@ async function createCcSwitchFixture(profileRoot) {
     }
   })
 
-  try {
-    database.run(`
-      CREATE TABLE providers (
-        id TEXT NOT NULL,
-        app_type TEXT NOT NULL,
-        name TEXT NOT NULL,
-        settings_config TEXT NOT NULL,
-        website_url TEXT,
-        sort_index INTEGER,
-        meta TEXT NOT NULL DEFAULT '{}',
-        is_current BOOLEAN NOT NULL DEFAULT 0,
-        PRIMARY KEY (id, app_type)
-      );
-      CREATE TABLE provider_endpoints (
-        provider_id TEXT NOT NULL,
-        app_type TEXT NOT NULL,
-        url TEXT NOT NULL
-      );
-    `)
-    database.run(
+  database.prepare('PRAGMA journal_mode=WAL;').get()
+  database.exec(`
+    PRAGMA wal_autocheckpoint=0;
+    CREATE TABLE providers (
+      id TEXT NOT NULL,
+      app_type TEXT NOT NULL,
+      name TEXT NOT NULL,
+      settings_config TEXT NOT NULL,
+      website_url TEXT,
+      sort_index INTEGER,
+      meta TEXT NOT NULL DEFAULT '{}',
+      is_current BOOLEAN NOT NULL DEFAULT 0,
+      PRIMARY KEY (id, app_type)
+    );
+    CREATE TABLE provider_endpoints (
+      provider_id TEXT NOT NULL,
+      app_type TEXT NOT NULL,
+      url TEXT NOT NULL
+    );
+  `)
+  database
+    .prepare(
       `INSERT INTO providers
         (id, app_type, name, settings_config, website_url, sort_index, meta, is_current)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
-      [
-        fixtureProvider.providerId,
-        fixtureProvider.appType,
-        fixtureProvider.name,
-        settings,
-        'https://windows-smoke.example.com',
-        1,
-        '{}',
-        1
-      ]
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?);`
     )
-    database.run(`INSERT INTO provider_endpoints (provider_id, app_type, url) VALUES (?, ?, ?);`, [
+    .run(
       fixtureProvider.providerId,
       fixtureProvider.appType,
-      `${fixtureProvider.endpoint}/`
-    ])
-    fs.writeFileSync(dbPath, Buffer.from(database.export()))
-  } finally {
-    database.close()
-  }
+      fixtureProvider.name,
+      settings,
+      'https://windows-smoke.example.com',
+      1,
+      '{}',
+      1
+    )
+  database
+    .prepare('INSERT INTO provider_endpoints (provider_id, app_type, url) VALUES (?, ?, ?);')
+    .run(fixtureProvider.providerId, fixtureProvider.appType, `${fixtureProvider.endpoint}/`)
 
+  let closed = false
   return {
     appDataPath,
     localAppDataPath,
     profileRoot,
-    expectation: { ...fixtureProvider, dbPath }
+    expectation: { ...fixtureProvider, dbPath },
+    close: () => {
+      if (closed) return
+      closed = true
+      database.close()
+    }
   }
 }
 
@@ -132,9 +131,10 @@ async function run() {
   const smokeUserDataPath = path.join(smokeRoot, 'ops-user-data')
   let output = ''
   let timedOut = false
+  let fixture = null
 
   try {
-    const fixture = shouldCreateCcSwitchFixture()
+    fixture = shouldCreateCcSwitchFixture()
       ? await createCcSwitchFixture(path.join(smokeRoot, 'windows-profile'))
       : null
     const childEnvironment = {
@@ -202,6 +202,7 @@ async function run() {
     if (output.trim()) console.error(output.trim())
     throw error
   } finally {
+    fixture?.close()
     try {
       fs.rmSync(smokeRoot, {
         recursive: true,

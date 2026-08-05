@@ -2,7 +2,8 @@
  * cc-switch 配置读取
  *
  * cc-switch 把中转站（供应商）配置存在 SQLite 库的 providers 表里。
- * 使用随应用打包的 sql.js 只读数据库，避免依赖 Windows 默认不存在的 sqlite3 命令。
+ * 优先使用 Electron 内置的 node:sqlite 只读连接，以原生支持 WAL 快照；普通数据库在
+ * 运行时不提供 node:sqlite 时回退到随应用打包的 sql.js，避免依赖系统 sqlite3 命令。
  */
 
 const os = require('node:os')
@@ -124,7 +125,36 @@ async function readStableDatabaseFile(dbPath) {
   return lastBytes
 }
 
+function activeWalPath(dbPath) {
+  const walPath = `${dbPath}-wal`
+  try {
+    const stat = fs.statSync(walPath)
+    return stat.isFile() && stat.size > 0 ? walPath : null
+  } catch {
+    return null
+  }
+}
+
+function nativeDatabaseClass(options = {}) {
+  if (Object.hasOwn(options, 'nativeDatabaseClass')) return options.nativeDatabaseClass
+  try {
+    return require('node:sqlite').DatabaseSync
+  } catch {
+    return null
+  }
+}
+
+function openNativeDatabase(dbPath, DatabaseSync) {
+  const database = new DatabaseSync(dbPath, { readOnly: true, timeout: 2_000 })
+  return {
+    queryRows: (sql) => database.prepare(sql).all(),
+    close: () => database.close()
+  }
+}
+
 function queryRows(database, sql) {
+  if (typeof database?.queryRows === 'function') return database.queryRows(sql)
+
   const results = database.exec(sql)
   const rows = []
   for (const result of results) {
@@ -135,7 +165,24 @@ function queryRows(database, sql) {
   return rows
 }
 
-async function openDatabase(dbPath) {
+async function openDatabase(dbPath, options = {}) {
+  const walPath = activeWalPath(dbPath)
+  const DatabaseSync = options.preferNativeSqlite === false ? null : nativeDatabaseClass(options)
+
+  if (DatabaseSync) {
+    try {
+      return openNativeDatabase(dbPath, DatabaseSync)
+    } catch (error) {
+      if (walPath) {
+        throw new Error(`无法使用内置 SQLite 读取 WAL 快照：${error.message}`, { cause: error })
+      }
+    }
+  }
+
+  if (walPath) {
+    throw new Error(`检测到尚未 checkpoint 的 SQLite WAL，但当前运行时无法安全读取：${walPath}`)
+  }
+
   const SQL = await loadSqlJs()
   const bytes = await readStableDatabaseFile(dbPath)
   return new SQL.Database(bytes)
@@ -400,7 +447,7 @@ async function loadProviders(options = {}) {
   const appFilter = SUPPORTED_APP_TYPES.map((type) => `'${type}'`).join(', ')
   let database
   try {
-    database = await openDatabase(dbPath)
+    database = await openDatabase(dbPath, options)
     const providerColumns = new Set(
       queryRows(database, 'PRAGMA table_info(providers);').map((column) => String(column.name))
     )
@@ -458,7 +505,10 @@ module.exports = {
   SUPPORTED_APP_TYPES,
   __testables: {
     ccSwitchStoreDirectories,
+    activeWalPath,
     databaseCandidatesFor,
+    nativeDatabaseClass,
+    openDatabase,
     queryRows
   }
 }
