@@ -1,26 +1,17 @@
 <template>
   <div class="page model-test-page">
     <ModelTestHeader
-      :summary="summary"
-      :result-filter="resultFilter"
-      :ok-summary-title="okSummaryTitle"
-      :failed-breakdown-title="failedBreakdownTitle"
       :scope-configured="scopeConfigured"
       :model-filter-configured="modelListSettingsConfigured"
       :model-filter-summary="modelListSettingsSummary"
       :bulk-count="bulkTestProviders.length"
       :testable-count="testableProviders.length"
-      :failed-task-count="failedTaskCount"
       :loading="loading"
       :running="running"
       :preparing="preparing"
       :stopping="stopping"
-      @toggle-result-filter="toggleResultFilter"
       @open-scope="openScopeSettings"
       @open-model-filter="openModelListSettings"
-      @reload="reload"
-      @copy-available="copyAvailableSummary"
-      @test-failed="testFailed"
       @cancel="cancel"
       @test-all="testAll"
     />
@@ -57,17 +48,20 @@
           v-model:family-filter="familyFilter"
           v-model:search-query="searchQuery"
           :result-filter="resultFilter"
+          :summary="summary"
+          :failed-task-count="failedTaskCount"
           :app-tabs="appTabs"
           :family-tabs="familyTabs"
           :has-active-filters="hasActiveFilters"
-          :failed-count="summary.failed"
-          :ok-count="summary.ok"
           :tested-count="summary.total"
           :loading="loading"
           :running="running"
           :preparing="preparing"
           :visible-count="visibleProviders.length"
           @toggle-result-filter="toggleResultFilter"
+          @reload="reload"
+          @copy-available="copyAvailableSummary"
+          @test-failed="testFailed"
           @expand-all="expandAllVisible"
           @collapse-all="collapseAllProviders"
           @clear-filters="clearFilters"
@@ -210,8 +204,6 @@ const {
   failedTaskCount,
   availableNavGroups,
   summary,
-  failedBreakdownTitle,
-  okSummaryTitle,
   progressPercent,
   progressCurrentLabel,
   isExpanded,

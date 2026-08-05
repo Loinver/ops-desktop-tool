@@ -2,6 +2,7 @@ const path = require('node:path')
 const { app, BrowserWindow, shell } = require('electron')
 
 const isDev = !app.isPackaged
+const isMac = process.platform === 'darwin'
 const ALLOWED_EXTERNAL_PROTOCOLS = new Set(['http:', 'https:', 'mailto:'])
 
 let mainWindow = null
@@ -45,7 +46,7 @@ function createWindow({ showOnReady = true } = {}) {
     minWidth: 1100,
     minHeight: 700,
     title: 'Ops Desktop',
-    titleBarStyle: 'hiddenInset',
+    ...(isMac ? { titleBarStyle: 'hiddenInset' } : {}),
     backgroundColor: '#f5f7fa',
     show: false,
     webPreferences: {

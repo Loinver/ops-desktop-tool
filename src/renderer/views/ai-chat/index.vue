@@ -614,7 +614,7 @@ function configureProvider() {
 
 .chat-history {
   position: relative;
-  min-height: clamp(340px, 48vh, 620px);
+  min-height: 0;
   flex: 1 1 auto;
   overflow-y: auto;
   padding: 0 var(--panel-padding) clamp(24px, 3vw, 40px);
@@ -921,6 +921,7 @@ function configureProvider() {
 }
 
 .composer-area {
+  flex: 0 0 auto;
   padding: 0 var(--panel-padding) var(--spacing-md);
   border-top: 1px solid var(--border-light);
   background: var(--card-bg);
@@ -1066,13 +1067,46 @@ function configureProvider() {
   }
 }
 
+@media (max-height: 760px) {
+  .ai-chat-page {
+    padding-block: var(--spacing-md);
+  }
+
+  .ai-chat-page :deep(.page-header) {
+    margin-bottom: var(--spacing-md);
+  }
+
+  .chat-welcome {
+    padding-block: var(--spacing-lg);
+  }
+
+  .prompt-suggestions {
+    margin-top: var(--spacing-md);
+  }
+
+  .suggestion-card {
+    min-height: 64px;
+    padding: 10px 12px;
+  }
+
+  .composer textarea {
+    min-height: 56px;
+    max-height: 120px;
+    padding-block: 8px;
+  }
+
+  .composer-note {
+    margin-top: var(--spacing-xs);
+  }
+}
+
 @media (max-width: 760px) {
   .chat-page-content {
     min-height: auto;
   }
 
   .chat-workspace {
-    min-height: 620px;
+    min-height: 0;
   }
 
   .provider-switch {
@@ -1094,7 +1128,7 @@ function configureProvider() {
   }
 
   .chat-history {
-    min-height: 340px;
+    min-height: 0;
     padding: var(--spacing-lg) var(--spacing-md);
   }
 

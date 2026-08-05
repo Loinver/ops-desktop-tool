@@ -9,7 +9,7 @@
       <div class="page-actions header-actions">
         <button
           type="button"
-          class="btn-primary"
+          class="btn-secondary"
           :disabled="batchOpening"
           :title="
             store.quickOpenItems.length
@@ -25,42 +25,23 @@
               : `一键打开${store.quickOpenItems.length ? `（${store.quickOpenItems.length}）` : ''}`
           }}</span>
         </button>
-        <button
-          type="button"
-          class="btn-secondary"
-          title="选择一键打开的网站"
-          @click="showQuickOpenDialog = true"
-        >
-          <t-icon name="setting" />
-          <span>配置网站</span>
-        </button>
-        <button
-          type="button"
-          class="btn-secondary"
-          title="粘贴 JSON 文本，批量添加网址快捷方式"
-          @click="showBatchTextDialog = true"
-        >
-          <t-icon name="edit" />
-          <span>粘贴 JSON</span>
-        </button>
-        <button
-          type="button"
-          class="btn-secondary"
-          title="从 JSON 文件批量导入网址快捷方式"
-          @click="importWebsites"
-        >
-          <t-icon name="upload" />
-          <span>导入</span>
-        </button>
-        <button
-          type="button"
-          class="btn-secondary"
-          title="导出当前网址快捷方式"
-          @click="exportWebsites"
-        >
-          <t-icon name="download" />
-          <span>导出</span>
-        </button>
+        <details ref="moreActionsRef" class="quick-actions-menu">
+          <summary class="btn-secondary"><t-icon name="more" /><span>更多</span></summary>
+          <div class="quick-actions-menu__panel">
+            <button type="button" @click="openQuickOpenSettings">
+              <t-icon name="setting" /><span>配置一键打开网站</span>
+            </button>
+            <button type="button" @click="openBatchTextImport">
+              <t-icon name="edit" /><span>粘贴 JSON</span>
+            </button>
+            <button type="button" @click="runImportWebsites">
+              <t-icon name="upload" /><span>导入网址</span>
+            </button>
+            <button type="button" @click="runExportWebsites">
+              <t-icon name="download" /><span>导出网址</span>
+            </button>
+          </div>
+        </details>
         <button type="button" class="btn-primary" @click="openAdd">
           <t-icon name="add" />
           <span>添加</span>
@@ -175,6 +156,7 @@ const batchOpening = ref(false)
 const showAddDialog = ref(false)
 const showBatchTextDialog = ref(false)
 const showQuickOpenDialog = ref(false)
+const moreActionsRef = ref(null)
 const editingItem = ref(null)
 
 const tabs = computed(() => [
@@ -193,6 +175,30 @@ const tabs = computed(() => [
     count: store.items.filter((item) => item.type === 'folder').length
   }
 ])
+
+function closeMoreActions() {
+  if (moreActionsRef.value) moreActionsRef.value.open = false
+}
+
+function openQuickOpenSettings() {
+  closeMoreActions()
+  showQuickOpenDialog.value = true
+}
+
+function openBatchTextImport() {
+  closeMoreActions()
+  showBatchTextDialog.value = true
+}
+
+async function runImportWebsites() {
+  closeMoreActions()
+  await importWebsites()
+}
+
+async function runExportWebsites() {
+  closeMoreActions()
+  await exportWebsites()
+}
 
 function openAdd() {
   editingItem.value = null
@@ -377,6 +383,60 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.quick-actions-menu {
+  position: relative;
+}
+
+.quick-actions-menu > summary {
+  list-style: none;
+  user-select: none;
+}
+
+.quick-actions-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.quick-actions-menu[open] > summary {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--primary-light);
+}
+
+.quick-actions-menu__panel {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 210px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+  box-shadow: var(--shadow-lg);
+}
+
+.quick-actions-menu__panel button {
+  width: 100%;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--font-size-body);
+  text-align: left;
+}
+
+.quick-actions-menu__panel button:hover {
+  color: var(--primary);
+  background: var(--primary-light);
+}
+
 /* 筛选与搜索 */
 .list-toolbar {
   display: flex;
@@ -621,7 +681,8 @@ onMounted(async () => {
 
 @media (max-width: 760px) {
   .header-actions .btn-primary,
-  .header-actions .btn-secondary {
+  .header-actions > .btn-secondary,
+  .header-actions .quick-actions-menu > summary {
     flex: 1 1 auto;
     justify-content: center;
     padding: 0 12px;

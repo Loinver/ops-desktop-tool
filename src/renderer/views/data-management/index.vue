@@ -46,7 +46,19 @@
         </article>
       </section>
 
-      <section class="surface-panel page-section" aria-labelledby="backup-title">
+      <nav class="surface-panel data-section-nav" aria-label="数据管理区段导航">
+        <span>快速定位</span>
+        <button type="button" @click="scrollToSection('backup-section')">创建备份</button>
+        <button type="button" @click="scrollToSection('restore-section')">校验恢复</button>
+        <button type="button" @click="scrollToSection('auto-backup-section')">自动备份</button>
+        <button type="button" @click="scrollToSection('recovery-section')">备份记录</button>
+      </nav>
+
+      <section
+        id="backup-section"
+        class="surface-panel page-section data-anchor-section"
+        aria-labelledby="backup-title"
+      >
         <div class="section-heading">
           <div>
             <h3 id="backup-title" class="section-title">创建加密备份</h3>
@@ -128,7 +140,11 @@
         </div>
       </section>
 
-      <section class="surface-panel page-section" aria-labelledby="restore-title">
+      <section
+        id="restore-section"
+        class="surface-panel page-section data-anchor-section"
+        aria-labelledby="restore-title"
+      >
         <div class="section-heading">
           <div>
             <h3 id="restore-title" class="section-title">校验并恢复备份</h3>
@@ -213,7 +229,11 @@
         </div>
       </section>
 
-      <section class="surface-panel page-section" aria-labelledby="auto-backup-title">
+      <section
+        id="auto-backup-section"
+        class="surface-panel page-section data-anchor-section"
+        aria-labelledby="auto-backup-title"
+      >
         <div class="section-heading">
           <div>
             <h3 id="auto-backup-title" class="section-title">自动备份计划</h3>
@@ -359,7 +379,11 @@
         </div>
       </section>
 
-      <section class="surface-panel page-section" aria-labelledby="recovery-history-title">
+      <section
+        id="recovery-section"
+        class="surface-panel page-section data-anchor-section"
+        aria-labelledby="recovery-history-title"
+      >
         <div class="section-heading">
           <div>
             <h3 id="recovery-history-title" class="section-title">自动备份与恢复点</h3>
@@ -570,6 +594,10 @@ function formatBytes(value) {
 function formatDate(value) {
   const timestamp = Number(value)
   return timestamp ? new Date(timestamp).toLocaleString('zh-CN', { hour12: false }) : '未知时间'
+}
+
+function scrollToSection(id) {
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
 function autoBackupStateLabel(item) {
@@ -947,6 +975,45 @@ onMounted(loadDataManagementState)
 .data-management-page :deep(.btn-danger:disabled) {
   cursor: not-allowed;
   opacity: 0.55;
+}
+.data-section-nav {
+  position: sticky;
+  z-index: 3;
+  top: 12px;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  width: fit-content;
+  max-width: 100%;
+  padding: 6px;
+  overflow-x: auto;
+  box-shadow: var(--shadow-xs);
+}
+.data-section-nav > span {
+  flex: 0 0 auto;
+  padding: 0 8px;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+}
+.data-section-nav button {
+  min-height: 30px;
+  flex: 0 0 auto;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--font-size-sm);
+}
+.data-section-nav button:hover {
+  color: var(--primary);
+  background: var(--primary-light);
+}
+.data-anchor-section {
+  scroll-margin-top: 64px;
 }
 .data-summary {
   display: grid;

@@ -773,6 +773,7 @@ onActivated(() => {
 }
 
 .event-panel {
+  order: -1;
   min-width: 0;
 }
 .event-heading {

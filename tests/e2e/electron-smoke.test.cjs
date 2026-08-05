@@ -47,10 +47,7 @@ async function waitForVite(url, timeoutMs = 30_000) {
 async function stopProcess(process) {
   if (!process || process.exitCode !== null) return
   process.kill('SIGTERM')
-  await Promise.race([
-    once(process, 'exit'),
-    new Promise((resolve) => setTimeout(resolve, 5000))
-  ])
+  await Promise.race([once(process, 'exit'), new Promise((resolve) => setTimeout(resolve, 5000))])
   if (process.exitCode === null) process.kill('SIGKILL')
 }
 
@@ -103,15 +100,19 @@ test('navigates through the sidebar without a renderer error', async () => {
 
   await page.locator('[aria-label="系统发布"]').click()
   await page.waitForURL(/#\/system-release$/)
-  await page.waitForFunction(() => document.querySelector('.page-title')?.textContent === '系统发布')
+  await page.waitForFunction(
+    () => document.querySelector('.page-title')?.textContent === '系统发布'
+  )
 
-  // 临时 userData 没有 SFTP 配置时，发布页会在连接检查完成后主动引导配置。
-  const settingsDialog = page.locator('.sftp-settings-dialog')
-  await settingsDialog.waitFor({ state: 'visible' })
-  await settingsDialog.getByRole('button', { name: '取消' }).click()
-  await settingsDialog.waitFor({ state: 'hidden' })
+  // 临时 userData 没有 SFTP 配置时，发布页保留在首次配置引导，不主动打断用户。
+  const onboarding = page.locator('.release-onboarding')
+  await onboarding.waitFor({ state: 'visible' })
+  assert.equal(await onboarding.getByRole('heading').textContent(), '尚未配置发布环境')
+  assert.equal(await page.locator('.sftp-settings-dialog').count(), 0)
 
   await page.locator('[aria-label="本地数据管理"]').click()
   await page.waitForURL(/#\/data-management$/)
-  await page.waitForFunction(() => document.querySelector('.page-title')?.textContent === '本地数据管理')
+  await page.waitForFunction(
+    () => document.querySelector('.page-title')?.textContent === '本地数据管理'
+  )
 })

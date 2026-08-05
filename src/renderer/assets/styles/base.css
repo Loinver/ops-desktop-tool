@@ -42,8 +42,8 @@
   --sidebar-width: 252px;
   --sidebar-collapsed-width: 72px;
   --topbar-height: 68px;
-  /* macOS hiddenInset 标题栏下，侧栏品牌与系统窗口控制区保持安全距离。 */
-  --window-safe-top: 36px;
+  /* 标准标题栏平台只需基础内边距；macOS hiddenInset 在下方按平台覆盖。 */
+  --window-safe-top: 12px;
 
   /* 圆角 */
   --radius-xs: 6px;
@@ -113,6 +113,10 @@
   --transition-fast: 0.15s ease;
   --transition: 0.2s ease;
   --transition-slow: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+[data-platform='darwin'] {
+  --window-safe-top: 36px;
 }
 
 /* 暗色主题：通过 [data-theme="dark"] 覆盖颜色 token */

@@ -5,62 +5,75 @@
       <div class="page-heading header-left">
         <div class="page-eyebrow"><t-icon name="folder-open" /> SYSTEM RELEASE</div>
         <h2 class="page-title">系统发布</h2>
-        <p class="page-desc" v-if="connectionStatus?.success">
+        <p v-if="!loading && releaseProfiles.length === 0" class="page-desc">
+          配置发布环境后，可对比本地与服务器文件并执行安全发布。
+        </p>
+        <p v-else-if="connectionStatus?.success" class="page-desc">
           <t-icon name="check-circle-filled" class="status-icon success" />
           {{ connectionStatus.message }}
         </p>
-        <p class="page-desc" v-else-if="connectionStatus?.success === false">
+        <p v-else-if="connectionStatus?.success === false" class="page-desc">
           <t-icon name="close-circle-filled" class="status-icon error" />
           {{ connectionStatus.message }}
         </p>
       </div>
       <div class="page-actions header-actions">
-        <select
-          v-if="releaseProfiles.length"
-          v-model="activeProfileId"
-          class="profile-select"
-          :disabled="syncing || savingSftpSettings"
-          @change="switchReleaseProfile"
-        >
-          <option v-for="profile in releaseProfiles" :key="profile.id" :value="profile.id">
-            {{ profile.name }}
-          </option>
-        </select>
         <button
+          v-if="!loading && releaseProfiles.length === 0"
           type="button"
-          class="btn-settings profile-add"
-          title="新建发布环境"
-          :disabled="syncing || savingSftpSettings"
+          class="btn-primary"
+          :disabled="savingSftpSettings"
           @click="startNewReleaseProfile"
         >
-          <t-icon name="add" /><span>新建环境</span>
+          <t-icon name="add" /><span>配置发布环境</span>
         </button>
-        <button
-          type="button"
-          class="btn-settings"
-          :disabled="syncing || savingSftpSettings"
-          @click="openReleaseHistory"
-        >
-          <t-icon name="history" /><span>发布历史</span>
-        </button>
-        <button
-          type="button"
-          class="btn-settings"
-          :disabled="syncing || savingSftpSettings"
-          @click="openExistingSftpSettings"
-        >
-          <t-icon name="setting" />
-          <span>连接设置</span>
-        </button>
-        <button
-          type="button"
-          class="btn-refresh"
-          @click="refresh"
-          :disabled="refreshing || syncing || savingSftpSettings"
-        >
-          <t-icon name="refresh" :class="{ spinning: refreshing }" />
-          <span>刷新</span>
-        </button>
+        <template v-else-if="releaseProfiles.length">
+          <select
+            v-model="activeProfileId"
+            class="profile-select"
+            :disabled="syncing || savingSftpSettings"
+            aria-label="当前发布环境"
+            @change="switchReleaseProfile"
+          >
+            <option v-for="profile in releaseProfiles" :key="profile.id" :value="profile.id">
+              {{ profile.name }}
+            </option>
+          </select>
+          <button
+            type="button"
+            class="btn-settings profile-add"
+            :disabled="syncing || savingSftpSettings"
+            @click="startNewReleaseProfile"
+          >
+            <t-icon name="add" /><span>新建环境</span>
+          </button>
+          <button
+            type="button"
+            class="btn-settings"
+            :disabled="syncing || savingSftpSettings"
+            @click="openExistingSftpSettings"
+          >
+            <t-icon name="setting" />
+            <span>连接设置</span>
+          </button>
+          <button
+            type="button"
+            class="btn-settings btn-quiet"
+            :disabled="syncing || savingSftpSettings"
+            @click="openReleaseHistory"
+          >
+            <t-icon name="history" /><span>发布历史</span>
+          </button>
+          <button
+            type="button"
+            class="btn-refresh"
+            :disabled="refreshing || syncing || savingSftpSettings"
+            @click="refresh"
+          >
+            <t-icon name="refresh" :class="{ spinning: refreshing }" />
+            <span>刷新</span>
+          </button>
+        </template>
       </div>
     </header>
 
@@ -302,341 +315,369 @@
     </Teleport>
 
     <main class="page-content">
-      <!-- 路径栏 -->
-      <div class="path-bar">
-        <div class="path-group">
-          <label>本地</label>
-          <div class="path-select">
-            <input
-              v-model.trim="localDir"
-              type="text"
-              class="path-input"
-              @keyup.enter="applyLocalDir"
-            />
-            <button
-              type="button"
-              class="browse-btn"
-              title="选择并保存本地目录"
-              @click="browseLocalDir()"
-            >
-              <t-icon name="folder-open" />
-            </button>
-            <button type="button" class="go-btn" @click="applyLocalDir">应用</button>
-          </div>
+      <section
+        v-if="!loading && releaseProfiles.length === 0"
+        class="surface-panel page-section release-onboarding"
+      >
+        <div class="release-onboarding__icon" aria-hidden="true">
+          <t-icon name="cloud-upload" />
         </div>
-        <div class="path-group">
-          <label>服务器</label>
-          <div class="path-select">
-            <input
-              v-model="currentPath"
-              type="text"
-              class="path-input"
-              @keyup.enter="navigateTo(currentPath)"
-            />
-            <button type="button" class="go-btn" @click="navigateTo(currentPath)">应用</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- 统一对比表格 -->
-      <div class="compare-container">
-        <!-- 加载中 -->
-        <div v-if="loading || localLoading" class="loading-state">
-          <div class="loading-spinner"></div>
-          <span>加载中...</span>
-        </div>
-
-        <!-- 空状态 -->
-        <div v-else-if="mergedRows.length === 0" class="empty-state">
-          <t-icon name="folder-open" />
-          <span>无文件</span>
-        </div>
-
-        <!-- 表格 -->
-        <div v-else class="compare-scroll">
-          <!-- 表头 -->
-          <div class="compare-header">
-            <div class="col-name">本地文件</div>
-            <div class="col-time">修改时间</div>
-            <div class="col-status"></div>
-            <div class="col-time">修改时间</div>
-            <div class="col-name">服务器文件</div>
-            <div class="col-action"></div>
-          </div>
-
-          <!-- 表体 -->
-          <div class="compare-body">
-            <div v-for="row in mergedRows" :key="row.key" :class="['compare-row', row.status]">
-              <!-- 本地文件 -->
-              <div class="col-name">
-                <div class="cell-file" v-if="row.local">
-                  <t-icon
-                    :name="row.local.type === 'directory' ? 'folder' : 'file'"
-                    class="file-icon"
-                  />
-                  <span class="file-name">{{ row.local.name }}</span>
-                </div>
-              </div>
-              <div class="col-time">
-                <span v-if="row.local" class="time-text">{{
-                  formatTime(row.local.modifyTime)
-                }}</span>
-              </div>
-
-              <!-- 状态 + 操作 -->
-              <div class="col-status">
-                <template v-if="row.status === 'only-local'">
-                  <button
-                    type="button"
-                    class="status-btn publish"
-                    @click="deploySingleFile(row.local)"
-                    title="发布到服务器"
-                  >
-                    <t-icon name="arrow-right" />
-                  </button>
-                </template>
-                <template v-else-if="row.status === 'modified'">
-                  <button
-                    type="button"
-                    class="status-btn update"
-                    @click="deploySingleFile(row.local)"
-                    title="更新到服务器"
-                  >
-                    <t-icon name="refresh" />
-                  </button>
-                </template>
-                <template v-else-if="row.status === 'only-remote'">
-                  <button
-                    type="button"
-                    class="status-btn delete"
-                    @click="confirmDelete(row.remote)"
-                    :disabled="syncing"
-                    title="同步队列执行时不能删除"
-                  >
-                    <t-icon name="delete" />
-                  </button>
-                </template>
-                <template v-else>
-                  <t-icon name="check" class="synced-icon" />
-                </template>
-              </div>
-
-              <!-- 远程文件 -->
-              <div class="col-time">
-                <span v-if="row.remote" class="time-text">{{
-                  row.remote.modifyTimeFormatted
-                }}</span>
-              </div>
-              <div class="col-name">
-                <div class="cell-file" v-if="row.remote">
-                  <t-icon
-                    :name="row.remote.type === 'directory' ? 'folder' : 'file'"
-                    class="file-icon"
-                  />
-                  <span class="file-name">{{ row.remote.name }}</span>
-                </div>
-              </div>
-
-              <!-- 操作 -->
-              <div class="col-action">
-                <button
-                  type="button"
-                  v-if="row.status === 'only-local' && row.local?.type === 'directory'"
-                  class="deploy-folder-btn"
-                  @click="deployFolder(row.local)"
-                  title="部署文件夹到服务器"
-                >
-                  <t-icon name="upload" />
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 底部操作栏 -->
-      <div class="bottom-bar">
-        <!-- 同步中：显示进度 -->
-        <div v-if="syncing" class="sync-progress">
-          <div class="sync-progress-info">
-            <div class="loading-spinner small"></div>
-            <span class="sync-progress-label">同步进行中</span>
-            <span class="sync-progress-count" v-if="syncProgress.total > 0">
-              {{ syncProgress.current }}/{{ syncProgress.total }} · {{ syncPercent }}%
-            </span>
-            <span class="sync-queue-count" v-if="queuedSyncCount > 0">
-              待执行 {{ queuedSyncCount }} 项
-            </span>
-          </div>
-          <div class="sync-progress-track">
-            <div
-              class="sync-progress-fill"
-              :class="{ indeterminate: syncProgress.total === 0 }"
-              :style="syncProgress.total > 0 ? { width: syncPercent + '%' } : {}"
-            ></div>
-          </div>
-        </div>
-
-        <!-- 空闲：显示统计与操作 -->
-        <template v-else>
-          <div class="stats">
-            <span class="stat-item">
-              <span class="stat-dot local"></span>
-              仅本地: {{ summary.onlyLocal }}
-            </span>
-            <span class="stat-item">
-              <span class="stat-dot modified"></span>
-              已修改: {{ summary.modified }}
-            </span>
-            <span class="stat-item">
-              <span class="stat-dot synced"></span>
-              已同步: {{ summary.synced }}
-            </span>
-            <span class="stat-item">
-              <span class="stat-dot remote"></span>
-              仅远程: {{ summary.onlyRemote }}
-            </span>
-          </div>
-          <div class="actions">
-            <button
-              type="button"
-              v-if="summary.onlyLocal > 0"
-              class="action-btn publish"
-              @click="publishAll"
-              :disabled="syncing"
-            >
-              <t-icon name="upload" />
-              发布全部新增 ({{ summary.onlyLocal }})
-            </button>
-            <button
-              type="button"
-              v-if="summary.modified > 0"
-              class="action-btn update"
-              @click="updateAll"
-              :disabled="syncing"
-            >
-              <t-icon name="refresh" />
-              更新全部修改 ({{ summary.modified }})
-            </button>
-          </div>
-        </template>
-      </div>
-
-      <!-- 同步日志面板：运行中、等待队列与最近任务记录分层展示 -->
-      <div class="log-panel" :class="{ collapsed: !showLogPanel }">
-        <div class="log-header">
-          <button
-            type="button"
-            class="log-toggle"
-            :aria-expanded="showLogPanel"
-            aria-controls="release-log-panel"
-            @click="showLogPanel = !showLogPanel"
-          >
-            <div class="log-header-left">
-              <t-icon name="file" />
-              <span>同步日志</span>
-              <span v-if="activeSyncTask" class="log-running-badge">同步中</span>
-              <span v-if="queuedSyncCount > 0" class="log-queue-badge">
-                待执行 {{ queuedSyncCount }}
-              </span>
-              <span v-if="retryableErrors.length > 0" class="log-error-badge">
-                {{ retryableErrors.length }} 个失败
-              </span>
-            </div>
-            <t-icon :name="showLogPanel ? 'chevron-down' : 'chevron-up'" />
+        <div class="release-onboarding__content">
+          <div class="release-onboarding__eyebrow">开始第一次发布</div>
+          <h3>尚未配置发布环境</h3>
+          <p>先填写服务器连接、本地目录和远程目录，保存后即可开始文件对比与发布。</p>
+          <ol class="release-onboarding__steps" aria-label="配置流程">
+            <li><span>1</span>连接服务器</li>
+            <li><span>2</span>设置发布目录</li>
+            <li><span>3</span>预检并发布</li>
+          </ol>
+          <button type="button" class="btn-primary" @click="startNewReleaseProfile">
+            <t-icon name="add" /> 配置第一个发布环境
           </button>
-          <div class="log-header-right">
-            <button
-              v-if="retryableErrors.length > 0 && !syncing"
-              type="button"
-              class="log-retry-btn"
-              title="重新执行全部失败任务"
-              @click="retryFailedUploads"
-            >
-              <t-icon name="refresh" />
-              <span>重试失败</span>
-            </button>
-            <button
-              v-if="syncHistory.length > 0 || syncErrors.length > 0"
-              type="button"
-              class="log-clear-btn"
-              aria-label="清空同步记录"
-              title="清空同步记录"
-              @click="clearSyncLog"
-            >
-              <t-icon name="delete" />
-            </button>
-          </div>
         </div>
+      </section>
 
-        <div v-if="showLogPanel" id="release-log-panel" class="log-body">
-          <div
-            v-if="activeSyncTask || queuedSyncCount > 0 || syncHistory.length > 0"
-            class="log-timeline"
-          >
-            <div v-if="activeSyncTask" class="log-timeline-item running">
-              <t-icon name="play-circle-filled" class="log-timeline-icon" />
-              <div class="log-timeline-content">
-                <div class="log-timeline-title">
-                  <span class="log-timeline-label">{{ activeSyncTask.label }}</span>
-                  <span class="log-task-type">{{ taskTypeLabel(activeSyncTask.type) }}</span>
-                </div>
-                <p class="log-timeline-message">
-                  {{ syncMessage || '正在准备同步任务...' }}
-                </p>
-              </div>
-              <span v-if="syncProgress.total > 0" class="log-timeline-meta">
-                {{ syncProgress.current }}/{{ syncProgress.total }} · {{ syncPercent }}%
-              </span>
-            </div>
-
-            <div v-for="(task, index) in syncQueue" :key="task.id" class="log-timeline-item queued">
-              <span class="log-queue-position">{{ index + 1 }}</span>
-              <div class="log-timeline-content">
-                <div class="log-timeline-title">
-                  <span class="log-timeline-label">{{ task.label }}</span>
-                  <span class="log-task-type">{{ taskTypeLabel(task.type) }}</span>
-                </div>
-                <p class="log-timeline-message">等待前方任务完成后自动执行</p>
-              </div>
-              <span class="log-timeline-meta">排队中</span>
-            </div>
-
-            <div
-              v-for="entry in syncHistory"
-              :key="entry.id"
-              class="log-timeline-item"
-              :class="entry.status"
-            >
-              <t-icon
-                :name="entry.status === 'success' ? 'check-circle-filled' : 'close-circle-filled'"
-                class="log-timeline-icon"
+      <template v-else>
+        <!-- 路径栏 -->
+        <div class="path-bar">
+          <div class="path-group">
+            <label>本地</label>
+            <div class="path-select">
+              <input
+                v-model.trim="localDir"
+                type="text"
+                class="path-input"
+                @keyup.enter="applyLocalDir"
               />
-              <div class="log-timeline-content">
-                <div class="log-timeline-title">
-                  <span class="log-timeline-label">{{ entry.label }}</span>
-                  <span class="log-task-type">{{ taskTypeLabel(entry.type) }}</span>
-                </div>
-                <p class="log-timeline-message">{{ entry.message }}</p>
-              </div>
-              <time class="log-timeline-meta">{{ formatLogTime(entry.timestamp) }}</time>
               <button
                 type="button"
-                v-if="canRetryHistoryEntry(entry)"
-                class="log-item-retry"
-                @click="retryHistoryEntry(entry)"
-                title="重新执行此任务"
+                class="browse-btn"
+                title="选择并保存本地目录"
+                @click="browseLocalDir()"
+              >
+                <t-icon name="folder-open" />
+              </button>
+              <button type="button" class="go-btn" @click="applyLocalDir">应用</button>
+            </div>
+          </div>
+          <div class="path-group">
+            <label>服务器</label>
+            <div class="path-select">
+              <input
+                v-model="currentPath"
+                type="text"
+                class="path-input"
+                @keyup.enter="navigateTo(currentPath)"
+              />
+              <button type="button" class="go-btn" @click="navigateTo(currentPath)">应用</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 统一对比表格 -->
+        <div class="compare-container">
+          <!-- 加载中 -->
+          <div v-if="loading || localLoading" class="loading-state">
+            <div class="loading-spinner"></div>
+            <span>加载中...</span>
+          </div>
+
+          <!-- 空状态 -->
+          <div v-else-if="mergedRows.length === 0" class="empty-state">
+            <t-icon name="folder-open" />
+            <span>无文件</span>
+          </div>
+
+          <!-- 表格 -->
+          <div v-else class="compare-scroll">
+            <!-- 表头 -->
+            <div class="compare-header">
+              <div class="col-name">本地文件</div>
+              <div class="col-time">修改时间</div>
+              <div class="col-status"></div>
+              <div class="col-time">修改时间</div>
+              <div class="col-name">服务器文件</div>
+              <div class="col-action"></div>
+            </div>
+
+            <!-- 表体 -->
+            <div class="compare-body">
+              <div v-for="row in mergedRows" :key="row.key" :class="['compare-row', row.status]">
+                <!-- 本地文件 -->
+                <div class="col-name">
+                  <div class="cell-file" v-if="row.local">
+                    <t-icon
+                      :name="row.local.type === 'directory' ? 'folder' : 'file'"
+                      class="file-icon"
+                    />
+                    <span class="file-name">{{ row.local.name }}</span>
+                  </div>
+                </div>
+                <div class="col-time">
+                  <span v-if="row.local" class="time-text">{{
+                    formatTime(row.local.modifyTime)
+                  }}</span>
+                </div>
+
+                <!-- 状态 + 操作 -->
+                <div class="col-status">
+                  <template v-if="row.status === 'only-local'">
+                    <button
+                      type="button"
+                      class="status-btn publish"
+                      @click="deploySingleFile(row.local)"
+                      title="发布到服务器"
+                    >
+                      <t-icon name="arrow-right" />
+                    </button>
+                  </template>
+                  <template v-else-if="row.status === 'modified'">
+                    <button
+                      type="button"
+                      class="status-btn update"
+                      @click="deploySingleFile(row.local)"
+                      title="更新到服务器"
+                    >
+                      <t-icon name="refresh" />
+                    </button>
+                  </template>
+                  <template v-else-if="row.status === 'only-remote'">
+                    <button
+                      type="button"
+                      class="status-btn delete"
+                      @click="confirmDelete(row.remote)"
+                      :disabled="syncing"
+                      title="同步队列执行时不能删除"
+                    >
+                      <t-icon name="delete" />
+                    </button>
+                  </template>
+                  <template v-else>
+                    <t-icon name="check" class="synced-icon" />
+                  </template>
+                </div>
+
+                <!-- 远程文件 -->
+                <div class="col-time">
+                  <span v-if="row.remote" class="time-text">{{
+                    row.remote.modifyTimeFormatted
+                  }}</span>
+                </div>
+                <div class="col-name">
+                  <div class="cell-file" v-if="row.remote">
+                    <t-icon
+                      :name="row.remote.type === 'directory' ? 'folder' : 'file'"
+                      class="file-icon"
+                    />
+                    <span class="file-name">{{ row.remote.name }}</span>
+                  </div>
+                </div>
+
+                <!-- 操作 -->
+                <div class="col-action">
+                  <button
+                    type="button"
+                    v-if="row.status === 'only-local' && row.local?.type === 'directory'"
+                    class="deploy-folder-btn"
+                    @click="deployFolder(row.local)"
+                    title="部署文件夹到服务器"
+                  >
+                    <t-icon name="upload" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 底部操作栏 -->
+        <div class="bottom-bar">
+          <!-- 同步中：显示进度 -->
+          <div v-if="syncing" class="sync-progress">
+            <div class="sync-progress-info">
+              <div class="loading-spinner small"></div>
+              <span class="sync-progress-label">同步进行中</span>
+              <span class="sync-progress-count" v-if="syncProgress.total > 0">
+                {{ syncProgress.current }}/{{ syncProgress.total }} · {{ syncPercent }}%
+              </span>
+              <span class="sync-queue-count" v-if="queuedSyncCount > 0">
+                待执行 {{ queuedSyncCount }} 项
+              </span>
+            </div>
+            <div class="sync-progress-track">
+              <div
+                class="sync-progress-fill"
+                :class="{ indeterminate: syncProgress.total === 0 }"
+                :style="syncProgress.total > 0 ? { width: syncPercent + '%' } : {}"
+              ></div>
+            </div>
+          </div>
+
+          <!-- 空闲：显示统计与操作 -->
+          <template v-else>
+            <div class="stats">
+              <span class="stat-item">
+                <span class="stat-dot local"></span>
+                仅本地: {{ summary.onlyLocal }}
+              </span>
+              <span class="stat-item">
+                <span class="stat-dot modified"></span>
+                已修改: {{ summary.modified }}
+              </span>
+              <span class="stat-item">
+                <span class="stat-dot synced"></span>
+                已同步: {{ summary.synced }}
+              </span>
+              <span class="stat-item">
+                <span class="stat-dot remote"></span>
+                仅远程: {{ summary.onlyRemote }}
+              </span>
+            </div>
+            <div class="actions">
+              <button
+                type="button"
+                v-if="summary.onlyLocal > 0"
+                class="action-btn publish"
+                @click="publishAll"
+                :disabled="syncing"
+              >
+                <t-icon name="upload" />
+                发布全部新增 ({{ summary.onlyLocal }})
+              </button>
+              <button
+                type="button"
+                v-if="summary.modified > 0"
+                class="action-btn update"
+                @click="updateAll"
+                :disabled="syncing"
               >
                 <t-icon name="refresh" />
+                更新全部修改 ({{ summary.modified }})
+              </button>
+            </div>
+          </template>
+        </div>
+
+        <!-- 同步日志面板：运行中、等待队列与最近任务记录分层展示 -->
+        <div class="log-panel" :class="{ collapsed: !showLogPanel }">
+          <div class="log-header">
+            <button
+              type="button"
+              class="log-toggle"
+              :aria-expanded="showLogPanel"
+              aria-controls="release-log-panel"
+              @click="showLogPanel = !showLogPanel"
+            >
+              <div class="log-header-left">
+                <t-icon name="file" />
+                <span>同步日志</span>
+                <span v-if="activeSyncTask" class="log-running-badge">同步中</span>
+                <span v-if="queuedSyncCount > 0" class="log-queue-badge">
+                  待执行 {{ queuedSyncCount }}
+                </span>
+                <span v-if="retryableErrors.length > 0" class="log-error-badge">
+                  {{ retryableErrors.length }} 个失败
+                </span>
+              </div>
+              <t-icon :name="showLogPanel ? 'chevron-down' : 'chevron-up'" />
+            </button>
+            <div class="log-header-right">
+              <button
+                v-if="retryableErrors.length > 0 && !syncing"
+                type="button"
+                class="log-retry-btn"
+                title="重新执行全部失败任务"
+                @click="retryFailedUploads"
+              >
+                <t-icon name="refresh" />
+                <span>重试失败</span>
+              </button>
+              <button
+                v-if="syncHistory.length > 0 || syncErrors.length > 0"
+                type="button"
+                class="log-clear-btn"
+                aria-label="清空同步记录"
+                title="清空同步记录"
+                @click="clearSyncLog"
+              >
+                <t-icon name="delete" />
               </button>
             </div>
           </div>
 
-          <div v-else class="log-empty">
-            暂无同步任务；开始发布或更新后，任务进度和结果会显示在这里。
+          <div v-if="showLogPanel" id="release-log-panel" class="log-body">
+            <div
+              v-if="activeSyncTask || queuedSyncCount > 0 || syncHistory.length > 0"
+              class="log-timeline"
+            >
+              <div v-if="activeSyncTask" class="log-timeline-item running">
+                <t-icon name="play-circle-filled" class="log-timeline-icon" />
+                <div class="log-timeline-content">
+                  <div class="log-timeline-title">
+                    <span class="log-timeline-label">{{ activeSyncTask.label }}</span>
+                    <span class="log-task-type">{{ taskTypeLabel(activeSyncTask.type) }}</span>
+                  </div>
+                  <p class="log-timeline-message">
+                    {{ syncMessage || '正在准备同步任务...' }}
+                  </p>
+                </div>
+                <span v-if="syncProgress.total > 0" class="log-timeline-meta">
+                  {{ syncProgress.current }}/{{ syncProgress.total }} · {{ syncPercent }}%
+                </span>
+              </div>
+
+              <div
+                v-for="(task, index) in syncQueue"
+                :key="task.id"
+                class="log-timeline-item queued"
+              >
+                <span class="log-queue-position">{{ index + 1 }}</span>
+                <div class="log-timeline-content">
+                  <div class="log-timeline-title">
+                    <span class="log-timeline-label">{{ task.label }}</span>
+                    <span class="log-task-type">{{ taskTypeLabel(task.type) }}</span>
+                  </div>
+                  <p class="log-timeline-message">等待前方任务完成后自动执行</p>
+                </div>
+                <span class="log-timeline-meta">排队中</span>
+              </div>
+
+              <div
+                v-for="entry in syncHistory"
+                :key="entry.id"
+                class="log-timeline-item"
+                :class="entry.status"
+              >
+                <t-icon
+                  :name="entry.status === 'success' ? 'check-circle-filled' : 'close-circle-filled'"
+                  class="log-timeline-icon"
+                />
+                <div class="log-timeline-content">
+                  <div class="log-timeline-title">
+                    <span class="log-timeline-label">{{ entry.label }}</span>
+                    <span class="log-task-type">{{ taskTypeLabel(entry.type) }}</span>
+                  </div>
+                  <p class="log-timeline-message">{{ entry.message }}</p>
+                </div>
+                <time class="log-timeline-meta">{{ formatLogTime(entry.timestamp) }}</time>
+                <button
+                  type="button"
+                  v-if="canRetryHistoryEntry(entry)"
+                  class="log-item-retry"
+                  @click="retryHistoryEntry(entry)"
+                  title="重新执行此任务"
+                >
+                  <t-icon name="refresh" />
+                </button>
+              </div>
+            </div>
+
+            <div v-else class="log-empty">
+              暂无同步任务；开始发布或更新后，任务进度和结果会显示在这里。
+            </div>
           </div>
         </div>
-      </div>
+      </template>
     </main>
   </div>
 </template>
@@ -1806,9 +1847,7 @@ onMounted(async () => {
       await refresh()
     } else {
       connectionStatus.value = { success: false, message: result.error }
-      if (result.error?.includes('SFTP 配置未配置')) {
-        await openSftpSettings()
-      }
+      // 未配置时保留在引导页，由用户主动开始配置，避免启动后直接弹窗。
     }
   } catch (err) {
     connectionStatus.value = { success: false, message: err.message }

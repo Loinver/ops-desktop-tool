@@ -6,6 +6,7 @@ import router from './router'
 import pinia from './stores'
 import './assets/styles/base.css'
 import { initTheme } from './composables/useTheme'
+import { opsApi } from './api/opsApi.js'
 
 const LocalIcon = defineComponent({
   name: 'LocalIcon',
@@ -28,6 +29,18 @@ function loadLocalIconSprite() {
   })
 }
 
+async function applyRuntimePlatform() {
+  try {
+    const appInfo = await opsApi.getAppInfo()
+    const platform = ['darwin', 'win32', 'linux'].includes(appInfo?.platform)
+      ? appInfo.platform
+      : 'unknown'
+    document.documentElement.dataset.platform = platform
+  } catch {
+    document.documentElement.dataset.platform = 'unknown'
+  }
+}
+
 async function bootstrap() {
   try {
     await loadLocalIconSprite()
@@ -36,6 +49,7 @@ async function bootstrap() {
   }
 
   initTheme()
+  await applyRuntimePlatform()
 
   const app = createApp(App)
   app.component('TIcon', LocalIcon)

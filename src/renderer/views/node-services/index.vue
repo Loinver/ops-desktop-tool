@@ -166,7 +166,7 @@
                 <td class="truncate-cell">
                   <span class="cell-mono" :title="service.command">{{ service.command }}</span>
                 </td>
-                <td class="truncate-cell">
+                <td class="truncate-cell col-address-cell">
                   <span v-if="service.address" class="cell-mono" :title="service.address">
                     {{ service.address }}
                   </span>
@@ -191,21 +191,23 @@
                     </button>
                     <button
                       type="button"
-                      class="action-btn danger"
+                      class="action-btn danger terminate-action"
                       aria-label="结束进程"
                       title="结束进程"
                       @click="handleKill(service)"
                     >
                       <t-icon name="close-circle" />
+                      <span>结束</span>
                     </button>
                     <button
                       type="button"
-                      class="action-btn"
+                      class="action-btn danger-strong"
                       aria-label="强制结束进程"
                       title="强制结束"
                       @click="handleForceKill(service)"
                     >
                       <t-icon name="poweroff" />
+                      <span>强制</span>
                     </button>
                   </div>
                 </td>
@@ -881,6 +883,7 @@ onMounted(() => {
 .action-btn {
   width: 32px;
   height: 32px;
+  flex: 0 0 auto;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--card-bg);
@@ -890,6 +893,7 @@ onMounted(() => {
   justify-content: center;
   font-size: 15px;
   cursor: pointer;
+  white-space: nowrap;
   transition: all var(--transition);
 }
 
@@ -909,6 +913,25 @@ onMounted(() => {
   border-color: color-mix(in srgb, var(--primary) 40%, var(--border));
   background: var(--primary-soft);
   color: var(--primary);
+}
+.action-btn.terminate-action {
+  width: auto;
+  padding: 0 9px;
+  gap: 5px;
+  font-size: 12px;
+}
+.action-btn.danger-strong {
+  width: auto;
+  padding: 0 9px;
+  gap: 5px;
+  border-color: color-mix(in srgb, var(--danger) 34%, var(--border));
+  color: var(--danger);
+  font-size: 12px;
+}
+.action-btn.danger-strong:hover {
+  border-color: var(--danger);
+  background: var(--danger);
+  color: #fff;
 }
 .service-table tbody tr.target-service {
   background: color-mix(in srgb, var(--primary-soft) 70%, #fff);
@@ -931,6 +954,46 @@ onMounted(() => {
   color: var(--text-secondary);
   font-size: 13px;
   backdrop-filter: blur(1px);
+}
+
+@media (max-width: 1199px) {
+  .service-table {
+    min-width: 700px;
+  }
+
+  .col-port,
+  .col-protocol {
+    width: 78px;
+  }
+
+  .col-pid {
+    width: 92px;
+  }
+
+  .col-address,
+  .col-address-cell {
+    display: none;
+  }
+
+  .col-actions {
+    width: 224px;
+  }
+
+  .cell-actions {
+    gap: 4px;
+  }
+
+  .action-btn.watch-action,
+  .action-btn.terminate-action,
+  .action-btn.danger-strong {
+    padding-inline: 7px;
+    gap: 4px;
+  }
+
+  .service-table th,
+  .service-table td {
+    padding-inline: 10px;
+  }
 }
 
 @media (max-width: 760px) {

@@ -32,23 +32,15 @@
 }
 
 .btn-refresh {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: var(--header-control-height);
-  padding: 0 var(--button-padding-x);
-  border: none;
-  border-radius: var(--radius);
-  background: var(--primary);
-  color: #fff;
-  font-size: var(--header-control-font-size);
-  font-weight: 500;
-  cursor: pointer;
-  transition: all var(--transition);
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+  color: var(--text-secondary);
 }
 
 .btn-refresh:hover:not(:disabled) {
-  background: var(--primary-hover);
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--primary-light);
 }
 
 .btn-refresh:disabled {
@@ -332,6 +324,87 @@
   .sftp-field-username {
     grid-column: span 1;
   }
+}
+
+.release-onboarding {
+  width: min(760px, 100%);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--spacing-lg);
+  align-items: flex-start;
+  margin: clamp(24px, 8vh, 72px) auto 0;
+  padding: clamp(24px, 4vw, 40px);
+}
+
+.release-onboarding__icon {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-lg);
+  color: var(--primary);
+  background: var(--primary-light);
+  font-size: 24px;
+}
+
+.release-onboarding__content {
+  min-width: 0;
+}
+
+.release-onboarding__eyebrow {
+  margin-bottom: var(--spacing-xs);
+  color: var(--primary);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.release-onboarding h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--font-size-2xl);
+  line-height: 1.4;
+}
+
+.release-onboarding p {
+  max-width: 560px;
+  margin: var(--spacing-sm) 0 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-body);
+  line-height: 1.7;
+}
+
+.release-onboarding__steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm) var(--spacing-lg);
+  margin: var(--spacing-lg) 0;
+  padding: 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  list-style: none;
+}
+
+.release-onboarding__steps li {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.release-onboarding__steps span {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  color: var(--primary);
+  background: var(--primary-light);
+  font-weight: 700;
+}
+
+.btn-quiet {
+  border-color: transparent;
+  background: transparent;
 }
 
 /* 路径栏 */
@@ -1142,6 +1215,11 @@
 }
 
 @media (max-width: 760px) {
+  .release-onboarding {
+    grid-template-columns: 1fr;
+    margin-top: var(--spacing-md);
+  }
+
   .path-bar,
   .path-group,
   .bottom-bar {

@@ -1,5 +1,81 @@
 <template>
   <div class="toolbar">
+    <div v-if="summary.total || summary.idle" class="toolbar-overview">
+      <div class="summary" aria-label="巡检结果概览">
+        <button
+          type="button"
+          class="chip ok"
+          :class="{ active: resultFilter === 'ok' }"
+          @click="$emit('toggle-result-filter', 'ok')"
+        >
+          可用 {{ summary.ok }}
+        </button>
+        <button
+          type="button"
+          class="chip fail"
+          :class="{ active: resultFilter === 'failed' }"
+          @click="$emit('toggle-result-filter', 'failed')"
+        >
+          失败 {{ summary.failed }}
+        </button>
+        <button
+          v-if="summary.gateway"
+          type="button"
+          class="chip gateway"
+          :class="{ active: resultFilter === 'gateway' }"
+          @click="$emit('toggle-result-filter', 'gateway')"
+        >
+          无法验证 {{ summary.gateway }}
+        </button>
+        <button
+          v-if="summary.idle"
+          type="button"
+          class="chip idle"
+          :class="{ active: resultFilter === 'idle' }"
+          @click="$emit('toggle-result-filter', 'idle')"
+        >
+          未测 {{ summary.idle }}
+        </button>
+        <span v-if="summary.total" class="chip quiet">已测 {{ summary.total }}</span>
+      </div>
+      <div class="toolbar-utilities">
+        <button
+          type="button"
+          class="btn-ghost small"
+          :disabled="loading || running || preparing"
+          @click="$emit('reload')"
+        >
+          <t-icon name="refresh" />重新加载
+        </button>
+        <button
+          v-if="summary.ok"
+          type="button"
+          class="btn-ghost small"
+          :disabled="loading || running || preparing"
+          @click="$emit('copy-available')"
+        >
+          <t-icon name="file-copy" />复制可用
+        </button>
+        <button
+          v-if="failedTaskCount && !running"
+          type="button"
+          class="btn-ghost small"
+          :disabled="loading || preparing"
+          @click="$emit('test-failed')"
+        >
+          <t-icon name="refresh" />重测失败 ({{ failedTaskCount }})
+        </button>
+        <button
+          v-if="testedCount"
+          type="button"
+          class="btn-ghost small"
+          :disabled="loading || running || preparing"
+          @click="$emit('clear-results')"
+        >
+          清除结果
+        </button>
+      </div>
+    </div>
     <div class="filter-line">
       <div class="filter-group filter-group-main">
         <span class="filter-label">应用</span>
@@ -57,24 +133,6 @@
         >
           全部收起
         </button>
-        <div class="result-filter-group" title="按探测结果筛选">
-          <button
-            type="button"
-            class="result-filter-chip ok"
-            :class="{ active: resultFilter === 'ok' }"
-            @click="$emit('toggle-result-filter', 'ok')"
-          >
-            只看可用{{ okCount ? ` ${okCount}` : '' }}
-          </button>
-          <button
-            type="button"
-            class="result-filter-chip fail"
-            :class="{ active: resultFilter === 'failed' }"
-            @click="$emit('toggle-result-filter', 'failed')"
-          >
-            只看失败{{ failedCount ? ` ${failedCount}` : '' }}
-          </button>
-        </div>
         <button
           v-if="hasActiveFilters"
           type="button"
@@ -83,16 +141,6 @@
           @click="$emit('clear-filters')"
         >
           清除筛选
-        </button>
-        <button
-          v-if="testedCount"
-          type="button"
-          class="btn-ghost small"
-          :disabled="loading || running || preparing"
-          title="清除本地测试结果缓存（不影响范围与配置）"
-          @click="$emit('clear-results')"
-        >
-          清除结果
         </button>
       </div>
     </div>
@@ -123,10 +171,10 @@ defineProps({
   appFilter: { type: String, default: 'all' },
   familyFilter: { type: String, default: 'all' },
   resultFilter: { type: String, default: 'all' },
+  summary: { type: Object, required: true },
+  failedTaskCount: { type: Number, default: 0 },
   searchQuery: { type: String, default: '' },
   hasActiveFilters: { type: Boolean, default: false },
-  failedCount: { type: Number, default: 0 },
-  okCount: { type: Number, default: 0 },
   testedCount: { type: Number, default: 0 },
   loading: { type: Boolean, default: false },
   running: { type: Boolean, default: false },
@@ -139,6 +187,9 @@ defineEmits([
   'update:familyFilter',
   'update:searchQuery',
   'toggle-result-filter',
+  'reload',
+  'copy-available',
+  'test-failed',
   'expand-all',
   'collapse-all',
   'clear-filters',
