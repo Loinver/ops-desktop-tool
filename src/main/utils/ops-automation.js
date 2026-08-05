@@ -298,15 +298,18 @@ function markOpsEventsRead(userDataPath, { ids = [], all = false } = {}) {
   )
   if (!all && selectedIds.size === 0) return { updated: 0, readAt: 0 }
   const readAt = Date.now()
-  let updated = 0
+  const changedItems = []
   for (const item of state.items) {
     if (!item.readAt && (all || selectedIds.has(item.id))) {
       item.readAt = readAt
-      updated += 1
+      changedItems.push(normalizeStoredEvent(item))
     }
   }
-  if (updated > 0) saveEventState(userDataPath, state)
-  return { updated, readAt: updated > 0 ? readAt : 0 }
+  if (changedItems.length > 0) {
+    saveEventState(userDataPath, state)
+    for (const item of changedItems) emitOpsEventChange('read', item)
+  }
+  return { updated: changedItems.length, readAt: changedItems.length > 0 ? readAt : 0 }
 }
 
 function listOpsEvents(

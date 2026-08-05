@@ -145,6 +145,55 @@
             </select>
           </label>
 
+          <fieldset
+            v-if="desktopIntegration.supported"
+            class="notification-setting-group mac-integration-settings"
+          >
+            <legend>macOS 集成</legend>
+            <label class="notification-setting-row compact">
+              <span>
+                <strong>登录时启动</strong>
+                <small>{{
+                  desktopIntegration.loginItemAvailable
+                    ? '登录 macOS 后自动启动 Ops Desktop'
+                    : '安装版应用中可启用此选项'
+                }}</small>
+              </span>
+              <input
+                :checked="desktopIntegration.openAtLogin"
+                type="checkbox"
+                :disabled="!desktopIntegration.loginItemAvailable || savingDesktopIntegration"
+                @change="saveLoginItem($event.target.checked)"
+              />
+            </label>
+            <div class="mac-integration-summary">
+              <span>
+                <strong>Dock 未读角标</strong>
+                <small v-if="desktopIntegration.dockBadgeSupported">
+                  {{
+                    desktopIntegration.unreadCount
+                      ? `当前显示 ${desktopIntegration.unreadCount} 条未读`
+                      : '有未读运维事件时自动显示'
+                  }}
+                </small>
+                <small v-else>当前环境不支持 Dock 未读角标</small>
+              </span>
+            </div>
+            <div class="mac-integration-summary">
+              <span>
+                <strong>系统通知权限</strong>
+                <small>若未看到通知，请在 macOS 系统设置中确认允许。</small>
+              </span>
+              <button
+                type="button"
+                :disabled="openingNotificationSettings"
+                @click="openSystemNotificationSettings"
+              >
+                {{ openingNotificationSettings ? '打开中…' : '系统设置' }}
+              </button>
+            </div>
+          </fieldset>
+
           <div class="notification-settings-actions">
             <span :class="{ error: preferenceError }">{{ preferenceMessage }}</span>
             <div>
@@ -231,6 +280,8 @@ const loading = ref(false)
 const markingRead = ref(false)
 const savingPreferences = ref(false)
 const testingNotification = ref(false)
+const savingDesktopIntegration = ref(false)
+const openingNotificationSettings = ref(false)
 const notificationSupported = ref(true)
 const quietNow = ref(false)
 const preferenceMessage = ref('')
@@ -239,6 +290,17 @@ const events = ref([])
 const summary = ref({})
 let pollTimer = null
 let unsubscribeNotificationOpen = null
+let unsubscribeNotificationSettingsOpen = null
+
+const desktopIntegration = reactive({
+  supported: false,
+  packaged: false,
+  dockBadgeSupported: false,
+  unreadCount: 0,
+  loginItemAvailable: false,
+  openAtLogin: false,
+  notificationSettingsAvailable: false
+})
 
 const preferences = reactive({
   desktopEnabled: true,
@@ -351,6 +413,56 @@ async function loadEvents() {
   }
 }
 
+async function loadDesktopIntegration() {
+  try {
+    const result = await opsApi?.getDesktopIntegration?.()
+    if (!result?.ok) throw new Error(result?.error || '读取桌面集成设置失败')
+    Object.assign(desktopIntegration, result)
+  } catch (error) {
+    console.warn('读取桌面集成设置失败:', error)
+  }
+}
+
+async function saveLoginItem(openAtLogin) {
+  if (savingDesktopIntegration.value) return
+  const previous = desktopIntegration.openAtLogin
+  desktopIntegration.openAtLogin = Boolean(openAtLogin)
+  savingDesktopIntegration.value = true
+  preferenceMessage.value = ''
+  preferenceError.value = false
+  try {
+    const result = await opsApi?.saveDesktopLoginItem?.(desktopIntegration.openAtLogin)
+    if (!result?.ok) throw new Error(result?.error || '保存登录启动设置失败')
+    desktopIntegration.openAtLogin = result.openAtLogin === true
+    preferenceMessage.value = desktopIntegration.openAtLogin
+      ? '已启用登录时启动'
+      : '已关闭登录时启动'
+  } catch (error) {
+    desktopIntegration.openAtLogin = previous
+    preferenceMessage.value = error.message || '保存登录启动设置失败'
+    preferenceError.value = true
+  } finally {
+    savingDesktopIntegration.value = false
+  }
+}
+
+async function openSystemNotificationSettings() {
+  if (openingNotificationSettings.value) return
+  openingNotificationSettings.value = true
+  preferenceMessage.value = ''
+  preferenceError.value = false
+  try {
+    const result = await opsApi?.openDesktopNotificationSettings?.()
+    if (!result?.ok) throw new Error(result?.error || '打开系统通知设置失败')
+    preferenceMessage.value = '已打开 macOS 通知设置'
+  } catch (error) {
+    preferenceMessage.value = error.message || '打开系统通知设置失败'
+    preferenceError.value = true
+  } finally {
+    openingNotificationSettings.value = false
+  }
+}
+
 async function loadPreferences() {
   preferenceMessage.value = ''
   preferenceError.value = false
@@ -457,7 +569,13 @@ function toggle() {
 
 function openSettings() {
   settingsOpen.value = true
-  void loadPreferences()
+  void Promise.all([loadPreferences(), loadDesktopIntegration()])
+}
+
+function handleNativeNotificationSettingsOpen() {
+  open.value = true
+  settingsOpen.value = true
+  void Promise.all([loadPreferences(), loadDesktopIntegration()])
 }
 
 function handleDocumentClick(event) {
@@ -484,9 +602,12 @@ watch(
 )
 
 onMounted(() => {
-  void Promise.all([loadEvents(), loadPreferences()])
+  void Promise.all([loadEvents(), loadPreferences(), loadDesktopIntegration()])
   pollTimer = window.setInterval(loadEvents, 45_000)
   unsubscribeNotificationOpen = opsApi?.onOpsNotificationOpen?.(handleNativeNotificationOpen)
+  unsubscribeNotificationSettingsOpen = opsApi?.onOpsNotificationSettingsOpen?.(
+    handleNativeNotificationSettingsOpen
+  )
   document.addEventListener('click', handleDocumentClick)
   document.addEventListener('keydown', handleKeydown)
   window.addEventListener('focus', handleFocus)
@@ -495,6 +616,7 @@ onMounted(() => {
 onUnmounted(() => {
   window.clearInterval(pollTimer)
   unsubscribeNotificationOpen?.()
+  unsubscribeNotificationSettingsOpen?.()
   document.removeEventListener('click', handleDocumentClick)
   document.removeEventListener('keydown', handleKeydown)
   window.removeEventListener('focus', handleFocus)
@@ -939,6 +1061,63 @@ onUnmounted(() => {
 .notification-repeat-field select {
   width: 92px;
   flex: none;
+}
+.mac-integration-settings {
+  padding: 10px 12px 6px;
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  background: var(--bg-subtle);
+}
+.mac-integration-settings legend {
+  padding: 0 4px;
+  margin: 0;
+}
+.mac-integration-summary {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-light);
+}
+.mac-integration-summary:last-child {
+  border-bottom: 0;
+}
+.mac-integration-summary > span {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+.mac-integration-summary strong {
+  color: var(--text);
+  font-size: 12px;
+  line-height: 17px;
+}
+.mac-integration-summary small {
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 15px;
+}
+.mac-integration-summary button {
+  min-height: 30px;
+  flex: none;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.mac-integration-summary button:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+.mac-integration-summary button:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 .notification-settings-actions {
   display: flex;

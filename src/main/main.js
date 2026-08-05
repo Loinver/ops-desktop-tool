@@ -1,5 +1,5 @@
 const path = require('node:path')
-const { app, nativeImage, shell, Tray, Menu } = require('electron')
+const { app, ipcMain, nativeImage, shell, Tray, Menu } = require('electron')
 const { createWindow, getMainWindow } = require('./window')
 const { registerPortsHandlers, stopNodeServiceMonitor } = require('./ipc/ports')
 const { registerSystemHandlers } = require('./ipc/system')
@@ -21,6 +21,7 @@ const {
 } = require('./ops-auto-backup-scheduler')
 const { createWindowsTrayController } = require('./windows-tray-controller')
 const { installMacApplicationMenu } = require('./mac-application-menu')
+const { createMacDesktopController } = require('./mac-desktop-controller')
 const logger = require('./utils/logger')
 const { runPackagedRendererSmokeAssertions } = require('./packaged-smoke-test')
 
@@ -30,6 +31,7 @@ const startHidden = process.platform === 'win32' && process.argv.includes('--hid
 const isSmokeTest =
   process.argv.includes('--smoke-test') || process.env.OPS_DESKTOP_SMOKE_TEST === '1'
 let trayController = null
+let macDesktopController = null
 
 if (process.platform === 'win32') {
   // 保持与 electron-builder 的 appId 一致，确保通知中心能稳定识别应用身份。
@@ -138,6 +140,17 @@ if (isMcpMode) {
       showMainWindow,
       logger
     })
+    macDesktopController = createMacDesktopController({
+      app,
+      Menu,
+      shell,
+      ipcMain,
+      userDataPath: app.getPath('userData'),
+      getMainWindow,
+      showMainWindow,
+      logger
+    })
+    macDesktopController.initialize()
     if (isSmokeTest) {
       const smokeTimeout = setTimeout(() => {
         logger.error('打包应用 smoke test 超时')
@@ -192,6 +205,8 @@ if (isMcpMode) {
     stopNodeServiceMonitor()
     stopOpsNotificationService()
     stopAutoBackupScheduler()
+    macDesktopController?.destroy()
+    macDesktopController = null
     trayController?.destroy()
     trayController = null
     await closeSftpConnection()

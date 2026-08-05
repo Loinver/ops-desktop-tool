@@ -116,3 +116,46 @@ test('navigates through the sidebar without a renderer error', async () => {
     () => document.querySelector('.page-title')?.textContent === '本地数据管理'
   )
 })
+
+test('通知设置保持紧凑按钮和 checkbox 垂直对齐', async () => {
+  const page = await electronApp.firstWindow()
+  await page.locator('.notification-trigger').click()
+  await page.locator('.notification-header-actions [title="通知设置"]').click()
+
+  const settings = page.locator('.notification-settings')
+  await settings.waitFor({ state: 'visible' })
+  if (process.platform === 'darwin') {
+    await settings.locator('.mac-integration-settings').waitFor({ state: 'attached' })
+  }
+
+  const metrics = await settings.evaluate((container) => {
+    const row = container.querySelector('.notification-setting-row')
+    const checkbox = row?.querySelector('input[type="checkbox"]')
+    const actionButton = container.querySelector('.notification-settings-actions button')
+    const systemButton = container.querySelector('.mac-integration-summary button')
+    const rowBox = row?.getBoundingClientRect()
+    const checkboxBox = checkbox?.getBoundingClientRect()
+    return {
+      centerOffset:
+        rowBox && checkboxBox
+          ? Math.abs(checkboxBox.y + checkboxBox.height / 2 - (rowBox.y + rowBox.height / 2))
+          : Number.POSITIVE_INFINITY,
+      actionButtonHeight: actionButton?.offsetHeight || 0,
+      hasDockBadge: container.textContent.includes('Dock 未读角标'),
+      hasNotificationPermission: container.textContent.includes('系统通知权限'),
+      loginCheckboxDisabled:
+        container.querySelector('.mac-integration-settings input[type="checkbox"]')?.disabled ??
+        false,
+      systemButtonHeight: systemButton?.offsetHeight || 0
+    }
+  })
+
+  assert.ok(metrics.centerOffset <= 1, 'checkbox 应与右侧设置文字保持垂直居中')
+  assert.ok(metrics.actionButtonHeight > 0 && metrics.actionButtonHeight <= 34)
+  if (process.platform === 'darwin') {
+    assert.equal(metrics.hasDockBadge, true)
+    assert.equal(metrics.hasNotificationPermission, true)
+    assert.equal(metrics.loginCheckboxDisabled, true)
+    assert.ok(metrics.systemButtonHeight > 0 && metrics.systemButtonHeight <= 32)
+  }
+})

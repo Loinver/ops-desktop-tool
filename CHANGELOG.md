@@ -4,6 +4,7 @@
 ### Added
 - macOS arm64/x64 双架构构建、Hardened Runtime 权限与签名公证验证流程
 - macOS 原生应用菜单、标准快捷键、日志/数据目录入口与窗口位置/全屏状态恢复
+- macOS Dock 未读角标与快捷菜单、登录时启动开关，以及系统通知设置入口
 - macOS 安装包在真实 Apple Silicon 与 Intel Runner 上执行启动 smoke test
 - Windows 安装包构建后在 Windows Runner 上执行主进程与渲染页面启动 smoke test，并使用真实 SQLite fixture 验证 CC Switch 配置自动发现、模型解析与密钥隔离
 - Windows 系统托盘后台运行，可从托盘恢复窗口、退出应用或配置开机隐藏启动

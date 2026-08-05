@@ -11,6 +11,7 @@ const {
   listOpsEvents,
   loadEventState,
   markOpsEventsRead,
+  onOpsEventChange,
   recoverOpsEvent,
   runAutomationTask,
   runHttpHealthCheck,
@@ -180,6 +181,29 @@ test('统一事件支持单条和全部已读，重复发生后重新变为未�
     assert.equal(eventSummary(userDataPath).unreadCritical, 1)
     assert.ok(listOpsEvents(userDataPath).find(item => item.id === second.id).readAt > 0)
   } finally {
+    fs.rmSync(userDataPath, { recursive: true, force: true })
+  }
+})
+
+test('标记事件已读会广播变更，供 Dock 等桌面入口同步未读数', () => {
+  const userDataPath = createTempDir()
+  const changes = []
+  const stopListening = onOpsEventChange(change => changes.push(change))
+  try {
+    const item = addOpsEvent(userDataPath, {
+      fingerprint: 'system:dock-badge',
+      sourceType: 'system',
+      severity: 'warning',
+      title: 'Dock 未读同步测试',
+    })
+    changes.length = 0
+    markOpsEventsRead(userDataPath, { ids: [item.id] })
+    assert.equal(changes.length, 1)
+    assert.equal(changes[0].kind, 'read')
+    assert.equal(changes[0].item.id, item.id)
+    assert.ok(changes[0].item.readAt > 0)
+  } finally {
+    stopListening()
     fs.rmSync(userDataPath, { recursive: true, force: true })
   }
 })
