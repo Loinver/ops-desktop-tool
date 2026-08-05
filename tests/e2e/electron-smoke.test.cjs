@@ -207,15 +207,40 @@ test(
       assert.equal(clicked, true)
     }
 
+    async function checkedAppearanceItems() {
+      return electronApp.evaluate(({ Menu }) => {
+        const applicationMenu = Menu.getApplicationMenu()
+        const displayMenu = applicationMenu?.items.find((item) => item.label === '显示')
+        const appearanceMenu = displayMenu?.submenu?.items.find((item) => item.label === '外观')
+        return (appearanceMenu?.submenu?.items || [])
+          .filter((item) => item.checked)
+          .map((item) => item.label)
+      })
+    }
+
+    async function waitForCheckedAppearance(label, timeoutMs = 2000) {
+      const deadline = Date.now() + timeoutMs
+      let checked = []
+      while (Date.now() < deadline) {
+        checked = await checkedAppearanceItems()
+        if (checked.length === 1 && checked[0] === label) return
+        await new Promise((resolve) => setTimeout(resolve, 50))
+      }
+      assert.deepEqual(checked, [label])
+    }
+
     await clickAppearance('深色')
     await page.waitForFunction(() => document.documentElement.dataset.themeMode === 'dark')
     assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'dark')
+    await waitForCheckedAppearance('深色')
 
-    await clickAppearance('浅色')
+    await page.locator('.theme-toggle').click()
+    await page.locator('.theme-popover').getByText('浅色', { exact: true }).click()
     await page.waitForFunction(() => document.documentElement.dataset.themeMode === 'light')
-    assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'light')
+    await waitForCheckedAppearance('浅色')
 
     await clickAppearance('跟随系统')
     await page.waitForFunction(() => document.documentElement.dataset.themeMode === 'system')
+    await waitForCheckedAppearance('跟随系统')
   }
 )

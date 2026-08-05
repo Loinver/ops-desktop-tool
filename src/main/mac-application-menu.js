@@ -2,14 +2,27 @@ const fs = require('node:fs')
 const path = require('node:path')
 const { IPC_CHANNELS } = require('../shared/ipc-channels')
 
+const THEME_MODES = Object.freeze(['system', 'light', 'dark'])
+const APPEARANCE_MENU_ITEM_IDS = Object.freeze({
+  system: 'appearance-system',
+  light: 'appearance-light',
+  dark: 'appearance-dark'
+})
+
+function isThemeMode(value) {
+  return THEME_MODES.includes(value)
+}
+
 function buildMacMenuTemplate({
   appName,
   isDev,
   navigate,
   setThemeMode,
+  themeMode = 'system',
   openLogs,
   openDataDirectory
 }) {
+  const activeThemeMode = isThemeMode(themeMode) ? themeMode : 'system'
   const viewSubmenu = [
     ...(isDev ? [{ role: 'reload' }, { role: 'forceReload' }, { role: 'toggleDevTools' }] : []),
     ...(isDev ? [{ type: 'separator' }] : []),
@@ -20,9 +33,27 @@ function buildMacMenuTemplate({
     {
       label: '外观',
       submenu: [
-        { label: '跟随系统', click: () => setThemeMode('system') },
-        { label: '浅色', click: () => setThemeMode('light') },
-        { label: '深色', click: () => setThemeMode('dark') }
+        {
+          id: APPEARANCE_MENU_ITEM_IDS.system,
+          type: 'radio',
+          label: '跟随系统',
+          checked: activeThemeMode === 'system',
+          click: () => setThemeMode('system')
+        },
+        {
+          id: APPEARANCE_MENU_ITEM_IDS.light,
+          type: 'radio',
+          label: '浅色',
+          checked: activeThemeMode === 'light',
+          click: () => setThemeMode('light')
+        },
+        {
+          id: APPEARANCE_MENU_ITEM_IDS.dark,
+          type: 'radio',
+          label: '深色',
+          checked: activeThemeMode === 'dark',
+          click: () => setThemeMode('dark')
+        }
       ]
     },
     { type: 'separator' },
@@ -106,6 +137,7 @@ function buildMacMenuTemplate({
 
 function installMacApplicationMenu({ app, Menu, shell, getMainWindow, showMainWindow, logger }) {
   if (process.platform !== 'darwin') return null
+  const { ipcMain } = require('electron')
 
   const openDirectory = async (directory) => {
     try {
@@ -127,21 +159,45 @@ function installMacApplicationMenu({ app, Menu, shell, getMainWindow, showMainWi
     return true
   }
 
+  let currentThemeMode = 'system'
+  let menu = null
   const navigate = (route) => sendToRenderer(IPC_CHANNELS.APP_NAVIGATE, route)
-  const setThemeMode = (mode) => sendToRenderer(IPC_CHANNELS.APP_THEME_MODE, mode)
+  const setThemeMode = (mode) => {
+    if (!isThemeMode(mode)) return false
+    currentThemeMode = mode
+    return sendToRenderer(IPC_CHANNELS.APP_THEME_MODE, mode)
+  }
 
   const userDataPath = app.getPath('userData')
-  const template = buildMacMenuTemplate({
-    appName: app.name,
-    isDev: !app.isPackaged,
-    navigate,
-    setThemeMode,
-    openLogs: () => void openDirectory(path.join(userDataPath, 'logs')),
-    openDataDirectory: () => void openDirectory(userDataPath)
+  const buildAndInstallMenu = () => {
+    const template = buildMacMenuTemplate({
+      appName: app.name,
+      isDev: !app.isPackaged,
+      navigate,
+      setThemeMode,
+      themeMode: currentThemeMode,
+      openLogs: () => void openDirectory(path.join(userDataPath, 'logs')),
+      openDataDirectory: () => void openDirectory(userDataPath)
+    })
+    menu = Menu.buildFromTemplate(template)
+    Menu.setApplicationMenu(menu)
+    return menu
+  }
+  buildAndInstallMenu()
+
+  const syncThemeMode = (event, mode) => {
+    const window = getMainWindow()
+    if (!window || window.isDestroyed() || event.sender !== window.webContents) return
+    if (!isThemeMode(mode) || currentThemeMode === mode) return
+    currentThemeMode = mode
+    buildAndInstallMenu()
+  }
+  ipcMain?.on(IPC_CHANNELS.APP_THEME_MODE_SYNC, syncThemeMode)
+  app.once?.('will-quit', () => {
+    ipcMain?.removeListener(IPC_CHANNELS.APP_THEME_MODE_SYNC, syncThemeMode)
   })
-  const menu = Menu.buildFromTemplate(template)
-  Menu.setApplicationMenu(menu)
+
   return menu
 }
 
-module.exports = { buildMacMenuTemplate, installMacApplicationMenu }
+module.exports = { APPEARANCE_MENU_ITEM_IDS, buildMacMenuTemplate, installMacApplicationMenu }

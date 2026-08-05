@@ -9,6 +9,7 @@ const CHANNELS = Object.freeze({
   APP_RELAUNCH: 'app:relaunch',
   APP_NAVIGATE: 'app:navigate',
   APP_THEME_MODE: 'app:themeMode',
+  APP_THEME_MODE_SYNC: 'app:themeModeSync',
   DESKTOP_INTEGRATION_GET: 'desktop:getIntegration',
   DESKTOP_LOGIN_ITEM_SAVE: 'desktop:saveLoginItem',
   DESKTOP_NOTIFICATION_SETTINGS_OPEN: 'desktop:openNotificationSettings',
@@ -156,6 +157,7 @@ const createBufferedSubscription = (channel) => {
 
 const subscribeAppNavigation = createBufferedSubscription(CHANNELS.APP_NAVIGATE)
 const subscribeAppThemeMode = createBufferedSubscription(CHANNELS.APP_THEME_MODE)
+const themeModes = new Set(['system', 'light', 'dark'])
 
 contextBridge.exposeInMainWorld(
   'opsApi',
@@ -173,6 +175,11 @@ contextBridge.exposeInMainWorld(
     relaunchApp: () => invoke(CHANNELS.APP_RELAUNCH),
     onAppNavigate: subscribeAppNavigation,
     onAppThemeMode: subscribeAppThemeMode,
+    syncAppThemeMode: (mode) => {
+      if (!themeModes.has(mode)) return false
+      ipcRenderer.send(CHANNELS.APP_THEME_MODE_SYNC, mode)
+      return true
+    },
     getDesktopIntegration: () => invoke(CHANNELS.DESKTOP_INTEGRATION_GET),
     saveDesktopLoginItem: (openAtLogin) =>
       invoke(CHANNELS.DESKTOP_LOGIN_ITEM_SAVE, openAtLogin === true),

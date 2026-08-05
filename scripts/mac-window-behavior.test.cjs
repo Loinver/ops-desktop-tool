@@ -119,6 +119,7 @@ test('macOS 原生菜单提供标准角色、设置快捷键和页面导航', ()
     isDev: false,
     navigate: (route) => routes.push(route),
     setThemeMode: (mode) => themeModes.push(mode),
+    themeMode: 'light',
     openLogs() {},
     openDataDirectory() {}
   })
@@ -142,6 +143,12 @@ test('macOS 原生菜单提供标准角色、设置快捷键和页面导航', ()
     appearance.submenu.map((item) => item.label),
     ['跟随系统', '浅色', '深色']
   )
+  assert.ok(appearance.submenu.every((item) => item.type === 'radio'))
+  assert.deepEqual(
+    appearance.submenu.map((item) => item.checked),
+    [false, true, false]
+  )
+
   appearance.submenu.forEach((item) => item.click())
 
   assert.deepEqual(routes, ['/data-management', '/system-info'])

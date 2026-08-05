@@ -1,4 +1,4 @@
-import { createApp, defineComponent, h } from 'vue'
+import { createApp, defineComponent, h, watch } from 'vue'
 import { Icon } from 'tdesign-icons-vue-next'
 import 'tdesign-vue-next/es/message/style/index.css'
 import App from './App.vue'
@@ -60,9 +60,14 @@ async function bootstrap() {
       nativeMenuDisposers.push(stopNativeMenuNavigation)
     }
 
-    const { setThemeMode } = useTheme()
+    const { setThemeMode, themeMode } = useTheme()
     const stopNativeThemeMode = opsApi.onAppThemeMode?.((mode) => setThemeMode(mode))
     if (typeof stopNativeThemeMode === 'function') nativeMenuDisposers.push(stopNativeThemeMode)
+
+    const stopNativeThemeSync = watch(themeMode, (mode) => opsApi.syncAppThemeMode?.(mode), {
+      immediate: true
+    })
+    nativeMenuDisposers.push(stopNativeThemeSync)
 
     if (nativeMenuDisposers.length > 0) {
       window.addEventListener(
