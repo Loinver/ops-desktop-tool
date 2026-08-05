@@ -21,17 +21,30 @@ const { loadProviders } = require('../src/main/utils/ccswitch')
 
 test('Windows 构建生成安装包和可直接启动的解压目录', () => {
   assert.deepEqual(packageJson.build.win.target, ['nsis', 'zip'])
+  assert.equal(
+    packageJson.build.win.artifactName,
+    '${productName}-${version}-windows-${arch}.${ext}'
+  )
   assert.match(packageJson.scripts['electron:build:win'], /electron-builder --win/)
+  assert.match(packageJson.scripts['electron:build:win:x64'], /electron-builder --win --x64/)
+  assert.match(packageJson.scripts['electron:build:win:arm64'], /electron-builder --win --arm64/)
   assert.equal(fs.existsSync(smokeScriptPath), true)
 })
 
-test('Windows CI 构建后会启动打包应用并上传安装产物', () => {
-  assert.match(workflow, /runs-on: windows-latest/)
-  assert.match(workflow, /run: pnpm electron:build:win/)
+test('Windows CI 在原生 x64 和 ARM64 runner 构建、启动并上传各自安装产物', () => {
+  assert.match(workflow, /runs-on: \$\{\{ matrix\.os \}\}/)
+  assert.match(workflow, /os: windows-latest/)
+  assert.match(workflow, /os: windows-11-arm/)
+  assert.match(workflow, /arch: x64/)
+  assert.match(workflow, /arch: arm64/)
+  assert.match(workflow, /run: pnpm electron:build:win:\$\{\{ matrix\.arch \}\}/)
   assert.match(
     workflow,
-    /node scripts\/windows-packaged-app-smoke\.cjs --arch=x64 --ccswitch-fixture/
+    /node scripts\/windows-packaged-app-smoke\.cjs --arch=\$\{\{ matrix\.arch \}\} --ccswitch-fixture/
   )
+  assert.match(workflow, /name: ops-desktop-win-\$\{\{ matrix\.arch \}\}/)
+  assert.match(workflow, /pattern: ops-desktop-win-\*/)
+  assert.match(workflow, /merge-multiple: true/)
   assert.match(workflow, /release\/\*\.exe/)
   assert.match(workflow, /release\/\*\.zip/)
 })

@@ -23,6 +23,8 @@
     "electron:build:mac": "vite build && electron-builder --mac",
     "electron:build:win": "vite build && electron-builder --win",
     "electron:build:linux": "vite build && electron-builder --linux",
+    "electron:build:win:arm64": "vite build && electron-builder --win --arm64",
+    "electron:build:win:x64": "vite build && electron-builder --win --x64",
     "verify": "pnpm format:check && pnpm lint && pnpm test && pnpm test:e2e",
     "test:e2e": "node --test tests/e2e/*.test.cjs",
     "electron:build:mac:arm64": "vite build && electron-builder --mac --arm64",
@@ -88,7 +90,8 @@
         "nsis",
         "zip"
       ],
-      "icon": "build/icons/ops-desktop-rounded.png"
+      "icon": "build/icons/ops-desktop-rounded.png",
+      "artifactName": "${productName}-${version}-windows-${arch}.${ext}"
     },
     "linux": {
       "target": [

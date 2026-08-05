@@ -162,8 +162,16 @@ jobs:
           if-no-files-found: error
 
   win-build:
-    runs-on: windows-latest
+    runs-on: ${{ matrix.os }}
     needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            os: windows-latest
+          - arch: arm64
+            os: windows-11-arm
     steps:
       - uses: actions/checkout@v4
 
@@ -182,15 +190,15 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build Windows
-        run: pnpm electron:build:win
+        run: pnpm electron:build:win:${{ matrix.arch }}
 
       - name: Smoke test packaged Windows app
-        run: node scripts/windows-packaged-app-smoke.cjs --arch=x64 --ccswitch-fixture
+        run: node scripts/windows-packaged-app-smoke.cjs --arch=${{ matrix.arch }} --ccswitch-fixture
 
       - name: Upload Windows Installer
         uses: actions/upload-artifact@v4
         with:
-          name: ops-desktop-win
+          name: ops-desktop-win-${{ matrix.arch }}
           path: |
             release/*.exe
             release/*.zip
@@ -242,11 +250,12 @@ jobs:
           path: release
           merge-multiple: true
 
-      - name: Download Windows artifact
+      - name: Download Windows artifacts
         uses: actions/download-artifact@v4
         with:
-          name: ops-desktop-win
+          pattern: ops-desktop-win-*
           path: release
+          merge-multiple: true
 
       - name: Download Linux artifact
         uses: actions/download-artifact@v4
