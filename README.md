@@ -22,7 +22,7 @@
 
 - Node.js `>= 22.12`（CI 使用 Node.js 24）
 - pnpm（项目声明版本为 `11.5.2`）
-- 模型可靠性功能需要系统可执行文件 `sqlite3`
+- 模型可靠性会直接读取 CC Switch 的 SQLite 配置；应用优先使用 Electron 内置 `node:sqlite`，不可用时自动回退到随包内置的 `sql.js`，无需额外安装系统 `sqlite3`。
 - ZIP 远程部署要求目标服务器支持 SSH 命令，并安装 `unzip`
 
 ## 开发
@@ -91,8 +91,14 @@ pnpm electron:build:mac
 pnpm electron:build:mac:arm64
 pnpm electron:build:mac:x64
 pnpm electron:build:win
+pnpm electron:build:win:x64
+pnpm electron:build:win:arm64
 pnpm electron:build:linux
 ```
+
+Windows CI 会分别在原生 x64 与 ARM64 Runner 上生成 NSIS 安装包和 ZIP，并验证解压版与安装版均可启动、读取 CC Switch SQLite/WAL 配置、创建任务栏未读角标以及调用 Windows 系统通知。安装生命周期 smoke 会静默安装、运行、卸载，并确认安装目录已清理。
+
+Windows 版本会自动查找 CC Switch 默认目录、自定义 `app_paths.json` 目录和 `%USERPROFILE%\.cc-switch\cc-switch.db`。配置中的密钥只在主进程使用，Renderer 不会收到 API Key。
 
 项目已在 `electron-builder.env` 中配置 Electron 与 electron-builder 二进制镜像，避免访问 GitHub Releases 超时。外部环境变量的优先级更高；若需要改回官方源，可在执行命令时临时覆盖：
 
