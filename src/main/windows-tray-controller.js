@@ -4,6 +4,14 @@ const { readJsonFile, writeJsonFile } = require('./utils/json-store')
 const SETTINGS_FILE = 'desktop-behavior-settings.json'
 const LOGIN_ARGUMENTS = ['--hidden']
 
+function windowsLoginItemOptions(openAtLogin, executablePath = process.execPath) {
+  return {
+    openAtLogin: openAtLogin === true,
+    path: executablePath,
+    args: [...LOGIN_ARGUMENTS]
+  }
+}
+
 function normalizeDesktopBehaviorSettings(value = {}) {
   return {
     closeToTray: value?.closeToTray !== false
@@ -43,18 +51,10 @@ function createWindowsTrayController({
   let settings = loadDesktopBehaviorSettings(userDataPath)
   let tray = new Tray(icon)
 
-  function loginItemOptions(openAtLogin) {
-    return {
-      openAtLogin,
-      path: process.execPath,
-      args: LOGIN_ARGUMENTS
-    }
-  }
-
   function getOpenAtLogin() {
     if (!app.isPackaged) return false
     try {
-      return Boolean(app.getLoginItemSettings(loginItemOptions(true))?.openAtLogin)
+      return Boolean(app.getLoginItemSettings(windowsLoginItemOptions(true))?.openAtLogin)
     } catch (error) {
       logger.warn?.('读取 Windows 开机启动状态失败', { message: error?.message })
       return false
@@ -97,7 +97,7 @@ function createWindowsTrayController({
           enabled: canManageLoginItem,
           click: (menuItem) => {
             try {
-              app.setLoginItemSettings(loginItemOptions(Boolean(menuItem.checked)))
+              app.setLoginItemSettings(windowsLoginItemOptions(Boolean(menuItem.checked)))
             } catch (error) {
               logger.error?.('设置 Windows 开机启动失败', {
                 message: error?.message,
@@ -139,6 +139,9 @@ function createWindowsTrayController({
     },
     getSettings() {
       return { ...settings }
+    },
+    refresh() {
+      rebuildMenu()
     }
   }
 }
@@ -148,6 +151,7 @@ module.exports = {
   loadDesktopBehaviorSettings,
   normalizeDesktopBehaviorSettings,
   saveDesktopBehaviorSettings,
+  windowsLoginItemOptions,
   __testables: {
     LOGIN_ARGUMENTS,
     SETTINGS_FILE

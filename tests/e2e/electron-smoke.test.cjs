@@ -125,14 +125,14 @@ test('通知设置保持紧凑按钮和 checkbox 垂直对齐', async () => {
   const settings = page.locator('.notification-settings')
   await settings.waitFor({ state: 'visible' })
   if (process.platform === 'darwin') {
-    await settings.locator('.mac-integration-settings').waitFor({ state: 'attached' })
+    await settings.locator('.desktop-integration-settings').waitFor({ state: 'attached' })
   }
 
   const metrics = await settings.evaluate((container) => {
     const row = container.querySelector('.notification-setting-row')
     const checkbox = row?.querySelector('input[type="checkbox"]')
     const actionButton = container.querySelector('.notification-settings-actions button')
-    const systemButton = container.querySelector('.mac-integration-summary button')
+    const systemButton = container.querySelector('.desktop-integration-summary button')
     const rowBox = row?.getBoundingClientRect()
     const checkboxBox = checkbox?.getBoundingClientRect()
     return {
@@ -144,7 +144,7 @@ test('通知设置保持紧凑按钮和 checkbox 垂直对齐', async () => {
       hasDockBadge: container.textContent.includes('Dock 未读角标'),
       hasNotificationPermission: container.textContent.includes('系统通知权限'),
       loginCheckboxDisabled:
-        container.querySelector('.mac-integration-settings input[type="checkbox"]')?.disabled ??
+        container.querySelector('.desktop-integration-settings input[type="checkbox"]')?.disabled ??
         false,
       systemButtonHeight: systemButton?.offsetHeight || 0
     }

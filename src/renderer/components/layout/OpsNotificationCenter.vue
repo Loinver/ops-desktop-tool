@@ -147,15 +147,17 @@
 
           <fieldset
             v-if="desktopIntegration.supported"
-            class="notification-setting-group mac-integration-settings"
+            class="notification-setting-group desktop-integration-settings"
           >
-            <legend>macOS 集成</legend>
+            <legend>{{ desktopIntegration.platformLabel }} 集成</legend>
             <label class="notification-setting-row compact">
               <span>
                 <strong>登录时启动</strong>
                 <small>{{
                   desktopIntegration.loginItemAvailable
-                    ? '登录 macOS 后自动启动 Ops Desktop'
+                    ? desktopIntegration.platform === 'win32'
+                      ? '登录 Windows 后自动在系统托盘后台启动 Ops Desktop'
+                      : '登录 macOS 后自动启动 Ops Desktop'
                     : '安装版应用中可启用此选项'
                 }}</small>
               </span>
@@ -166,27 +168,36 @@
                 @change="saveLoginItem($event.target.checked)"
               />
             </label>
-            <div class="mac-integration-summary">
+            <div v-if="desktopIntegration.dockBadgeSupported" class="desktop-integration-summary">
               <span>
                 <strong>Dock 未读角标</strong>
-                <small v-if="desktopIntegration.dockBadgeSupported">
+                <small>
                   {{
                     desktopIntegration.unreadCount
                       ? `当前显示 ${desktopIntegration.unreadCount} 条未读`
                       : '有未读运维事件时自动显示'
                   }}
                 </small>
-                <small v-else>当前环境不支持 Dock 未读角标</small>
               </span>
             </div>
-            <div class="mac-integration-summary">
+            <div v-else-if="desktopIntegration.traySupported" class="desktop-integration-summary">
+              <span>
+                <strong>系统托盘后台运行</strong>
+                <small>关闭窗口后继续运行，可从托盘菜单恢复窗口或退出应用。</small>
+              </span>
+            </div>
+            <div class="desktop-integration-summary">
               <span>
                 <strong>系统通知权限</strong>
-                <small>若未看到通知，请在 macOS 系统设置中确认允许。</small>
+                <small>
+                  若未看到通知，请在 {{ desktopIntegration.platformLabel }} 系统设置中确认允许。
+                </small>
               </span>
               <button
                 type="button"
-                :disabled="openingNotificationSettings"
+                :disabled="
+                  openingNotificationSettings || !desktopIntegration.notificationSettingsAvailable
+                "
                 @click="openSystemNotificationSettings"
               >
                 {{ openingNotificationSettings ? '打开中…' : '系统设置' }}
@@ -294,8 +305,11 @@ let unsubscribeNotificationSettingsOpen = null
 
 const desktopIntegration = reactive({
   supported: false,
+  platform: '',
+  platformLabel: '',
   packaged: false,
   dockBadgeSupported: false,
+  traySupported: false,
   unreadCount: 0,
   loginItemAvailable: false,
   openAtLogin: false,
@@ -454,7 +468,7 @@ async function openSystemNotificationSettings() {
   try {
     const result = await opsApi?.openDesktopNotificationSettings?.()
     if (!result?.ok) throw new Error(result?.error || '打开系统通知设置失败')
-    preferenceMessage.value = '已打开 macOS 通知设置'
+    preferenceMessage.value = `已打开 ${desktopIntegration.platformLabel || '系统'} 通知设置`
   } catch (error) {
     preferenceMessage.value = error.message || '打开系统通知设置失败'
     preferenceError.value = true
@@ -1062,17 +1076,17 @@ onUnmounted(() => {
   width: 92px;
   flex: none;
 }
-.mac-integration-settings {
+.desktop-integration-settings {
   padding: 10px 12px 6px;
   border: 1px solid var(--border-light);
   border-radius: 10px;
   background: var(--bg-subtle);
 }
-.mac-integration-settings legend {
+.desktop-integration-settings legend {
   padding: 0 4px;
   margin: 0;
 }
-.mac-integration-summary {
+.desktop-integration-summary {
   min-width: 0;
   display: flex;
   align-items: center;
@@ -1081,25 +1095,25 @@ onUnmounted(() => {
   padding: 8px 0;
   border-bottom: 1px solid var(--border-light);
 }
-.mac-integration-summary:last-child {
+.desktop-integration-summary:last-child {
   border-bottom: 0;
 }
-.mac-integration-summary > span {
+.desktop-integration-summary > span {
   min-width: 0;
   display: grid;
   gap: 1px;
 }
-.mac-integration-summary strong {
+.desktop-integration-summary strong {
   color: var(--text);
   font-size: 12px;
   line-height: 17px;
 }
-.mac-integration-summary small {
+.desktop-integration-summary small {
   color: var(--text-muted);
   font-size: 10px;
   line-height: 15px;
 }
-.mac-integration-summary button {
+.desktop-integration-summary button {
   min-height: 30px;
   flex: none;
   padding: 0 9px;
@@ -1111,11 +1125,11 @@ onUnmounted(() => {
   font-size: 11px;
   cursor: pointer;
 }
-.mac-integration-summary button:hover:not(:disabled) {
+.desktop-integration-summary button:hover:not(:disabled) {
   border-color: var(--primary);
   color: var(--primary);
 }
-.mac-integration-summary button:disabled {
+.desktop-integration-summary button:disabled {
   opacity: 0.5;
   cursor: default;
 }

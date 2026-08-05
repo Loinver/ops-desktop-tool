@@ -125,6 +125,10 @@ test('Windows 托盘使用隐藏启动参数配置开机启动，并支持明确
   assert.equal(loginSettings.path, process.execPath)
   assert.deepEqual(loginSettings.args, ['--hidden'])
 
+  app.getLoginItemSettings = () => ({ openAtLogin: true })
+  controller.refresh()
+  assert.equal(menuItem(tray, '开机自动启动').checked, true)
+
   menuItem(tray, '退出应用').click()
   assert.equal(quitCount, 1)
   assert.equal(controller.shouldKeepAlive(), false)

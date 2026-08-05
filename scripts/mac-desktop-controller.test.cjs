@@ -3,6 +3,7 @@ const test = require('node:test')
 const { IPC_CHANNELS } = require('../src/shared/ipc-channels')
 const {
   MAC_NOTIFICATION_SETTINGS_URL,
+  WINDOWS_NOTIFICATION_SETTINGS_URL,
   buildMacDockMenuTemplate,
   createMacDesktopController,
   dockBadgeLabel
@@ -136,26 +137,74 @@ test('macOS 控制器同步 Dock 角标、登录启动和通知设置 IPC', asyn
   assert.equal(badges.at(-1), '')
 })
 
-test('非 macOS 平台保持 no-op，并明确返回不支持', async () => {
+test('Windows 集成复用隐藏启动参数并可打开系统通知设置', async () => {
   const ipcMain = createIpcMain()
   let subscribed = false
+  let loginSettings = null
+  let openAtLogin = false
+  let trayRefreshes = 0
+  const externalUrls = []
   const controller = createMacDesktopController({
-    app: { isPackaged: true },
+    app: {
+      isPackaged: true,
+      getLoginItemSettings: () => ({ openAtLogin }),
+      setLoginItemSettings: (settings) => {
+        loginSettings = settings
+        openAtLogin = settings.openAtLogin
+      }
+    },
     Menu: { buildFromTemplate: () => [] },
-    shell: { openExternal: async () => {} },
+    shell: { openExternal: async (url) => externalUrls.push(url) },
     ipcMain,
     userDataPath: '/tmp/ops-other-desktop-test',
     getMainWindow: () => null,
     showMainWindow() {},
     platform: 'win32',
+    refreshWindowsTray: () => {
+      trayRefreshes += 1
+    },
     subscribeToEvents: () => {
       subscribed = true
       return () => {}
     }
   })
 
-  assert.equal(controller.initialize().supported, false)
+  const initial = controller.initialize()
+  assert.equal(initial.supported, true)
+  assert.equal(initial.platform, 'win32')
+  assert.equal(initial.platformLabel, 'Windows')
+  assert.equal(initial.traySupported, true)
+  assert.equal(initial.dockBadgeSupported, false)
+  assert.equal(initial.loginItemAvailable, true)
   assert.equal(subscribed, false)
+  const saveLoginItem = ipcMain.handlers.get(IPC_CHANNELS.DESKTOP_LOGIN_ITEM_SAVE)
+  assert.deepEqual(await saveLoginItem({}, true), { ok: true, openAtLogin: true })
+  assert.equal(loginSettings.openAtLogin, true)
+  assert.equal(loginSettings.path, process.execPath)
+  assert.deepEqual(loginSettings.args, ['--hidden'])
+  assert.equal(trayRefreshes, 1)
+
+  const openNotificationSettings = ipcMain.handlers.get(
+    IPC_CHANNELS.DESKTOP_NOTIFICATION_SETTINGS_OPEN
+  )
+  assert.deepEqual(await openNotificationSettings(), { ok: true })
+  assert.deepEqual(externalUrls, [WINDOWS_NOTIFICATION_SETTINGS_URL])
+})
+
+test('Linux 平台保持 no-op，并明确返回不支持', async () => {
+  const ipcMain = createIpcMain()
+  const controller = createMacDesktopController({
+    app: { isPackaged: true },
+    Menu: { buildFromTemplate: () => [] },
+    shell: { openExternal: async () => {} },
+    ipcMain,
+    userDataPath: '/tmp/ops-linux-desktop-test',
+    getMainWindow: () => null,
+    showMainWindow() {},
+    platform: 'linux'
+  })
+
+  assert.equal(controller.initialize().supported, false)
   const saveLoginItem = ipcMain.handlers.get(IPC_CHANNELS.DESKTOP_LOGIN_ITEM_SAVE)
   assert.equal((await saveLoginItem({}, true)).ok, false)
 })

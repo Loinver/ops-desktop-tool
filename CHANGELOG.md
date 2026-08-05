@@ -10,6 +10,7 @@
 - Windows 安装包构建后在 Windows Runner 上执行主进程与渲染页面启动 smoke test，并使用真实 SQLite fixture 验证 CC Switch 配置自动发现、模型解析与密钥隔离
 - Windows 系统托盘后台运行，可从托盘恢复窗口、退出应用或配置开机隐藏启动
 - Windows 通知 AppUserModelID，提升通知中心识别稳定性
+- Windows 通知设置可直接管理开机隐藏启动、查看托盘后台运行说明并打开系统通知权限页面
 
 ### Changed
 - Electron 升级至 43.2.0、electron-builder 升级至 26.15.3，CI 构建环境升级至 Node.js 24

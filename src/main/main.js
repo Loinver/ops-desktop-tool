@@ -148,6 +148,7 @@ if (isMcpMode) {
       userDataPath: app.getPath('userData'),
       getMainWindow,
       showMainWindow,
+      refreshWindowsTray: () => trayController?.refresh(),
       logger
     })
     macDesktopController.initialize()
