@@ -100,6 +100,8 @@ Windows CI 会分别在原生 x64 与 ARM64 Runner 上生成 NSIS 安装包和 Z
 
 Windows 版本会自动查找 CC Switch 默认目录、自定义 `app_paths.json` 目录和 `%USERPROFILE%\.cc-switch\cc-switch.db`。配置中的密钥只在主进程使用，Renderer 不会收到 API Key。
 
+正式分发建议进行 Authenticode 签名：本仓库的 Windows CI 会在配置 `WINDOWS_CSC_LINK` 与 `WINDOWS_CSC_KEY_PASSWORD` Secrets 后自动传递给 electron-builder，并校验应用与安装包的签名；未配置证书时仍会构建与执行功能 smoke，但安装包会是未签名状态，可能触发 SmartScreen 提示。
+
 项目已在 `electron-builder.env` 中配置 Electron 与 electron-builder 二进制镜像，避免访问 GitHub Releases 超时。外部环境变量的优先级更高；若需要改回官方源，可在执行命令时临时覆盖：
 
 ```bash

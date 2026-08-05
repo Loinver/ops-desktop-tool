@@ -48,6 +48,10 @@ test('Windows CI 在原生 x64 和 ARM64 runner 构建、启动并上传各自�
   assert.match(workflow, /arch: x64/)
   assert.match(workflow, /arch: arm64/)
   assert.match(workflow, /run: pnpm electron:build:win:\$\{\{ matrix\.arch \}\}/)
+  assert.match(workflow, /CSC_LINK: \$\{\{ secrets\.WINDOWS_CSC_LINK \}\}/)
+  assert.match(workflow, /CSC_KEY_PASSWORD: \$\{\{ secrets\.WINDOWS_CSC_KEY_PASSWORD \}\}/)
+  assert.match(workflow, /Get-AuthenticodeSignature -FilePath \$target\.FullName/)
+  assert.match(workflow, /skipping Authenticode verification/)
   assert.match(
     workflow,
     /node scripts\/windows-packaged-app-smoke\.cjs --arch=\$\{\{ matrix\.arch \}\} --ccswitch-fixture/

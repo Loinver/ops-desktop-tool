@@ -190,7 +190,33 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build Windows
+        env:
+          CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
         run: pnpm electron:build:win:${{ matrix.arch }}
+
+      - name: Verify signed Windows artifacts when certificate is configured
+        shell: pwsh
+        env:
+          CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:CSC_LINK)) {
+            Write-Host 'Windows signing certificate is not configured; skipping Authenticode verification.'
+            exit 0
+          }
+          $targets = @(
+            Get-ChildItem release -Recurse -File -Filter 'Ops Desktop.exe'
+            Get-ChildItem release -File -Filter '*.exe'
+          ) | Sort-Object -Property FullName -Unique
+          if ($targets.Count -eq 0) {
+            throw 'No Windows executables were found for Authenticode verification.'
+          }
+          foreach ($target in $targets) {
+            $signature = Get-AuthenticodeSignature -FilePath $target.FullName
+            if ($signature.Status -ne 'Valid') {
+              throw "Authenticode signature is invalid for $($target.FullName): $($signature.Status)"
+            }
+          }
 
       - name: Smoke test packaged Windows app
         run: node scripts/windows-packaged-app-smoke.cjs --arch=${{ matrix.arch }} --ccswitch-fixture
