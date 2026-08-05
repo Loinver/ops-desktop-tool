@@ -22,6 +22,7 @@ const {
 const { createWindowsTrayController } = require('./windows-tray-controller')
 const { installMacApplicationMenu } = require('./mac-application-menu')
 const { createMacDesktopController } = require('./mac-desktop-controller')
+const { IPC_CHANNELS } = require('../shared/ipc-channels')
 const logger = require('./utils/logger')
 const { runPackagedRendererSmokeAssertions } = require('./packaged-smoke-test')
 
@@ -56,6 +57,16 @@ function showMainWindow() {
   if (win.isMinimized()) win.restore()
   win.show()
   win.focus()
+  return win
+}
+
+function navigateMainWindow(route) {
+  const win = showMainWindow()
+  if (!win || win.isDestroyed() || win.webContents.isDestroyed()) return false
+  const send = () => win.webContents.send(IPC_CHANNELS.APP_NAVIGATE, route)
+  if (win.webContents.isLoadingMainFrame()) win.webContents.once('did-finish-load', send)
+  else send()
+  return true
 }
 
 function createWindowsTray() {
@@ -72,6 +83,7 @@ function createWindowsTray() {
       icon: trayIcon,
       userDataPath: app.getPath('userData'),
       showWindow: showMainWindow,
+      openNotifications: () => navigateMainWindow('/ops-control-center'),
       logger
     })
     return true
@@ -181,7 +193,8 @@ if (isMcpMode) {
     }
     initializeOpsNotificationService({
       userDataPath: app.getPath('userData'),
-      getWindow: getMainWindow
+      getWindow: getMainWindow,
+      showWindow: showMainWindow
     })
     initializeAutoBackupScheduler({ userDataPath: app.getPath('userData') })
     registerAllHandlers()

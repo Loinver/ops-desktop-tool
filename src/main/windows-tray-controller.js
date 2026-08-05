@@ -1,5 +1,6 @@
 const path = require('node:path')
 const { readJsonFile, writeJsonFile } = require('./utils/json-store')
+const { eventSummary, onOpsEventChange } = require('./utils/ops-automation')
 
 const SETTINGS_FILE = 'desktop-behavior-settings.json'
 const LOGIN_ARGUMENTS = ['--hidden']
@@ -34,6 +35,17 @@ function saveDesktopBehaviorSettings(userDataPath, settings) {
   return normalized
 }
 
+function unreadCountLabel(unreadCount) {
+  const count = Math.max(0, Math.floor(Number(unreadCount) || 0))
+  if (count === 0) return '0'
+  return count > 99 ? '99+' : String(count)
+}
+
+function trayToolTip(unreadCount) {
+  const count = Math.max(0, Math.floor(Number(unreadCount) || 0))
+  return count > 0 ? `Ops Desktop · ${unreadCountLabel(count)} 条未读运维事件` : 'Ops Desktop'
+}
+
 function createWindowsTrayController({
   app,
   Tray,
@@ -41,7 +53,10 @@ function createWindowsTrayController({
   icon,
   userDataPath,
   showWindow,
-  logger = console
+  openNotifications = showWindow,
+  logger = console,
+  summarizeEvents = eventSummary,
+  subscribeToEvents = onOpsEventChange
 }) {
   if (!app || !Tray || !Menu || !icon || !userDataPath || typeof showWindow !== 'function') {
     throw new Error('创建 Windows 托盘缺少必要参数')
@@ -49,6 +64,8 @@ function createWindowsTrayController({
 
   let quitting = false
   let settings = loadDesktopBehaviorSettings(userDataPath)
+  let unreadCount = 0
+  let stopListening = null
   let tray = new Tray(icon)
 
   function getOpenAtLogin() {
@@ -69,6 +86,13 @@ function createWindowsTrayController({
         {
           label: '打开 Ops Desktop',
           click: () => showWindow()
+        },
+        {
+          label:
+            unreadCount > 0
+              ? `查看 ${unreadCountLabel(unreadCount)} 条未读运维事件`
+              : '查看运维事件',
+          click: () => openNotifications()
         },
         { type: 'separator' },
         {
@@ -119,12 +143,30 @@ function createWindowsTrayController({
     )
   }
 
-  tray.setToolTip('Ops Desktop')
+  function refreshUnreadState() {
+    if (!tray) return unreadCount
+    try {
+      unreadCount = Math.max(0, Number(summarizeEvents(userDataPath)?.unread) || 0)
+      tray.setToolTip(trayToolTip(unreadCount))
+      rebuildMenu()
+    } catch (error) {
+      logger.warn?.('更新 Windows 托盘未读状态失败', { message: error?.message })
+    }
+    return unreadCount
+  }
+
   tray.on('click', () => showWindow())
-  rebuildMenu()
+  refreshUnreadState()
+  try {
+    stopListening = subscribeToEvents(refreshUnreadState)
+  } catch (error) {
+    logger.warn?.('监听 Windows 托盘运维事件失败', { message: error?.message })
+  }
 
   return {
     destroy() {
+      stopListening?.()
+      stopListening = null
       tray?.destroy()
       tray = null
     },
@@ -141,8 +183,9 @@ function createWindowsTrayController({
       return { ...settings }
     },
     refresh() {
-      rebuildMenu()
-    }
+      return refreshUnreadState()
+    },
+    refreshUnreadState
   }
 }
 
@@ -151,6 +194,8 @@ module.exports = {
   loadDesktopBehaviorSettings,
   normalizeDesktopBehaviorSettings,
   saveDesktopBehaviorSettings,
+  trayToolTip,
+  unreadCountLabel,
   windowsLoginItemOptions,
   __testables: {
     LOGIN_ARGUMENTS,

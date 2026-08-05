@@ -19,8 +19,9 @@ function supported() {
   return typeof Notification?.isSupported === 'function' && Notification.isSupported()
 }
 
-function focusMainWindow() {
-  const window = runtime?.getWindow?.()
+function revealMainWindow({ getWindow, showWindow } = {}) {
+  if (typeof showWindow === 'function') showWindow()
+  const window = getWindow?.()
   if (!window || window.isDestroyed()) return null
   if (window.isMinimized()) window.restore()
   if (!window.isVisible()) window.show()
@@ -28,12 +29,33 @@ function focusMainWindow() {
   return window
 }
 
-function sendEventToRenderer(item) {
-  const window = focusMainWindow()
-  if (!window || window.webContents.isDestroyed()) return
-  const send = () => window.webContents.send(IPC_CHANNELS.OPS_NOTIFICATION_OPEN, item)
+function focusMainWindow() {
+  return revealMainWindow(runtime)
+}
+
+function notificationFallbackRoute(item = {}) {
+  const query = new URLSearchParams()
+  if (item.id) query.set('event', String(item.id))
+  if (item.sourceId || item.relatedId)
+    query.set('sourceId', String(item.sourceId || item.relatedId))
+  const suffix = query.toString()
+  return suffix ? `/ops-control-center?${suffix}` : '/ops-control-center'
+}
+
+function sendEventToWindow(window, item) {
+  if (!window || window.isDestroyed() || window.webContents.isDestroyed()) return false
+  const send = () => {
+    // APP_NAVIGATE 在 preload 中带缓冲，可覆盖窗口刚重建、Vue 尚未挂载的场景。
+    window.webContents.send(IPC_CHANNELS.APP_NAVIGATE, notificationFallbackRoute(item))
+    window.webContents.send(IPC_CHANNELS.OPS_NOTIFICATION_OPEN, item)
+  }
   if (window.webContents.isLoadingMainFrame()) window.webContents.once('did-finish-load', send)
   else send()
+  return true
+}
+
+function sendEventToRenderer(item) {
+  return sendEventToWindow(focusMainWindow(), item)
 }
 
 function showEventNotification(change) {
@@ -133,11 +155,12 @@ function registerHandlers() {
 
 function initializeOpsNotificationService({
   userDataPath,
-  getWindow = () => BrowserWindow.getAllWindows()[0]
+  getWindow = () => BrowserWindow.getAllWindows()[0],
+  showWindow
 } = {}) {
   if (!userDataPath) throw new Error('通知服务缺少数据目录')
   stopOpsNotificationService()
-  runtime = { userDataPath, getWindow }
+  runtime = { userDataPath, getWindow, showWindow }
   registerHandlers()
   stopListening = onOpsEventChange((change) => {
     try {
@@ -161,5 +184,10 @@ module.exports = {
   initializeOpsNotificationService,
   showEventNotification,
   showTestNotification,
-  stopOpsNotificationService
+  stopOpsNotificationService,
+  __testables: {
+    notificationFallbackRoute,
+    revealMainWindow,
+    sendEventToWindow
+  }
 }

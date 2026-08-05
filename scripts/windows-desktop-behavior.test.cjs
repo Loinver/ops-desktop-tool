@@ -6,7 +6,9 @@ const test = require('node:test')
 const {
   createWindowsTrayController,
   loadDesktopBehaviorSettings,
-  normalizeDesktopBehaviorSettings
+  normalizeDesktopBehaviorSettings,
+  trayToolTip,
+  unreadCountLabel
 } = require('../src/main/windows-tray-controller')
 
 function tempDir() {
@@ -142,4 +144,65 @@ test('桌面运行设置只接受明确的 false 关闭托盘模式', () => {
   assert.deepEqual(normalizeDesktopBehaviorSettings({ closeToTray: 'false' }), {
     closeToTray: true
   })
+})
+
+test('Windows 托盘同步未读事件，并从菜单打开运维中心', () => {
+  const root = tempDir()
+  let tray
+  let unread = 3
+  let eventListener = null
+  let unsubscribed = 0
+  let opened = 0
+  const app = {
+    isPackaged: false,
+    quit() {}
+  }
+
+  const controller = createWindowsTrayController({
+    app,
+    Tray: class extends MockTray {
+      constructor(icon) {
+        super(icon)
+        tray = this
+      }
+    },
+    Menu: MockMenu,
+    icon: { id: 'icon' },
+    userDataPath: root,
+    showWindow() {},
+    openNotifications() {
+      opened += 1
+    },
+    summarizeEvents: () => ({ unread }),
+    subscribeToEvents(listener) {
+      eventListener = listener
+      return () => {
+        unsubscribed += 1
+      }
+    }
+  })
+
+  assert.equal(tray.tooltip, 'Ops Desktop · 3 条未读运维事件')
+  menuItem(tray, '查看 3 条未读运维事件').click()
+  assert.equal(opened, 1)
+
+  unread = 120
+  eventListener()
+  assert.equal(tray.tooltip, 'Ops Desktop · 99+ 条未读运维事件')
+  assert.ok(menuItem(tray, '查看 99+ 条未读运维事件'))
+
+  unread = 0
+  assert.equal(controller.refreshUnreadState(), 0)
+  assert.equal(tray.tooltip, 'Ops Desktop')
+  assert.ok(menuItem(tray, '查看运维事件'))
+
+  controller.destroy()
+  assert.equal(unsubscribed, 1)
+})
+
+test('Windows 托盘未读文案规范化异常计数', () => {
+  assert.equal(unreadCountLabel(-1), '0')
+  assert.equal(unreadCountLabel(1.9), '1')
+  assert.equal(unreadCountLabel(100), '99+')
+  assert.equal(trayToolTip(undefined), 'Ops Desktop')
 })
