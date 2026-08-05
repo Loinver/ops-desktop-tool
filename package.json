@@ -24,7 +24,10 @@
     "electron:build:win": "vite build && electron-builder --win",
     "electron:build:linux": "vite build && electron-builder --linux",
     "verify": "pnpm format:check && pnpm lint && pnpm test && pnpm test:e2e",
-    "test:e2e": "node --test tests/e2e/*.test.cjs"
+    "test:e2e": "node --test tests/e2e/*.test.cjs",
+    "electron:build:mac:arm64": "vite build && electron-builder --mac --arm64",
+    "electron:build:mac:x64": "vite build && electron-builder --mac --x64",
+    "electron:build:mac:release": "vite build && electron-builder --mac --arm64 --x64 --config.forceCodeSigning=true"
   },
   "keywords": [
     "electron",
@@ -37,7 +40,7 @@
   "license": "MIT",
   "packageManager": "pnpm@11.5.2",
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22.12.0"
   },
   "build": {
     "appId": "com.ops-desktop-tool",
@@ -73,7 +76,12 @@
         "dmg",
         "zip"
       ],
-      "icon": "build/icons/ops-desktop-rounded.png"
+      "icon": "build/icons/ops-desktop-rounded.png",
+      "artifactName": "${productName}-${version}-${arch}.${ext}",
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.inherit.plist",
+      "notarize": true
     },
     "win": {
       "target": [
@@ -96,8 +104,8 @@
     "@vitejs/plugin-vue": "^5.1.2",
     "@vue/test-utils": "^2.4.11",
     "concurrently": "^10.0.3",
-    "electron": "^31.7.7",
-    "electron-builder": "^25.1.8",
+    "electron": "^43.2.0",
+    "electron-builder": "^26.15.3",
     "eslint": "^9.39.5",
     "eslint-plugin-vue": "^9.33.0",
     "jsdom": "^30.0.1",

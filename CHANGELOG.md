@@ -2,8 +2,13 @@
 
 ## [Unreleased]
 ### Added
+- macOS arm64/x64 双架构构建、Hardened Runtime 权限与签名公证验证流程
 - Windows 系统托盘后台运行，可从托盘恢复窗口、退出应用或配置开机隐藏启动
 - Windows 通知 AppUserModelID，提升通知中心识别稳定性
+
+### Changed
+- Electron 升级至 43.2.0、electron-builder 升级至 26.15.3，CI 构建环境升级至 Node.js 24
+- macOS 正式发布统一到主 CI 流程，仅上传签名、公证并通过 Gatekeeper 校验的产物
 
 ### Fixed
 - Windows 端口进程结束改用 `taskkill /T`，强制结束时使用 `/F`，避免遗留子进程

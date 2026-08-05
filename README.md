@@ -20,7 +20,7 @@
 
 ## 环境要求
 
-- Node.js `>= 18`
+- Node.js `>= 22.12`（CI 使用 Node.js 24）
 - pnpm（项目声明版本为 `11.5.2`）
 - 模型可靠性功能需要系统可执行文件 `sqlite3`
 - ZIP 远程部署要求目标服务器支持 SSH 命令，并安装 `unzip`
@@ -88,6 +88,8 @@ pnpm electron:build
 
 # 指定平台
 pnpm electron:build:mac
+pnpm electron:build:mac:arm64
+pnpm electron:build:mac:x64
 pnpm electron:build:win
 pnpm electron:build:linux
 ```
@@ -193,11 +195,24 @@ MCP 服务通过 stdio 提供严格只读的 `get_release_history`、`get_model_
 
 使用 `npm version patch/minor/major` 或手动修改 `package.json` 中的版本，然后重新打包。
 
+### macOS 签名与公证
+
+macOS Release 会分别生成 `arm64` 和 `x64` 的 DMG/ZIP，并在上传前完成 Developer ID 签名、Hardened Runtime、公证和 Gatekeeper 校验。GitHub 仓库需要配置以下 Actions Secrets：
+
+- `CSC_LINK`：Developer ID Application 证书的 Base64、文件 URL 或私有下载地址
+- `CSC_KEY_PASSWORD`：证书导出密码
+- `APPLE_ID`：用于公证的 Apple ID
+- `APPLE_APP_SPECIFIC_PASSWORD`：Apple ID 专用密码
+- `APPLE_TEAM_ID`：Apple Developer Team ID
+
+发布 GitHub Release 后，CI 只会上传通过 `codesign`、`spctl` 和 `stapler` 验证的 macOS 产物；任一凭证缺失或验证失败都会阻止发布。
+
 ### 发布前检查清单
 
 - [ ] `pnpm verify`（Prettier、lint、单元/Renderer 测试与 Electron E2E）全部通过
 - [ ] `pnpm check` 运行成功
-- [ ] 构建输出在 `release/` 目录中完整（含 .dmg / .exe / .AppImage）
+- [ ] 构建输出在 `release/` 目录中完整（macOS 同时包含 arm64/x64 的 .dmg 与 .zip）
+- [ ] macOS Release 已通过 `codesign`、`spctl` 与 `stapler` 验证
 - [ ] `CHANGELOG.md` 已更新
 
 ### 安装与使用
