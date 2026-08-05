@@ -70,6 +70,12 @@ function assertWindowsPackagedSmokeResult(result, { expectCcSwitch = false } = {
   if (result.windowsTaskbarOverlayReady !== true) {
     throw new Error('Packaged app did not create and apply a Windows taskbar overlay icon')
   }
+  if (result.windowsNotificationSupported !== true) {
+    throw new Error('Packaged app did not confirm Windows notification support')
+  }
+  if (result.windowsNotificationReady !== true) {
+    throw new Error('Packaged app did not create and show a Windows notification')
+  }
   if (expectCcSwitch && result.ccSwitchChecked !== true) {
     throw new Error('Packaged app did not confirm CC Switch discovery')
   }

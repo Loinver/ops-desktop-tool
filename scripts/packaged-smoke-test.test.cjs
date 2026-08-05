@@ -7,6 +7,7 @@ const {
   assertCcSwitchRendererResult,
   readCcSwitchExpectation,
   runPackagedRendererSmokeAssertions,
+  runPackagedWindowsNotificationSmokeAssertion,
   writePackagedSmokeResult
 } = require('../src/main/packaged-smoke-test')
 
@@ -94,6 +95,43 @@ test('打包 smoke test 从页面上下文通过 preload API 读取 Provider', a
 
   assert.match(script, /window\.opsApi\.listModelProviders/)
   assert.deepEqual(result, { ccSwitchChecked: true, providerId: expectation.providerId })
+})
+
+test('打包 smoke test 会在 Windows 创建并展示静默系统通知', () => {
+  const calls = []
+  class MockNotification {
+    static isSupported() {
+      calls.push('isSupported')
+      return true
+    }
+
+    constructor(options) {
+      calls.push(options)
+    }
+
+    show() {
+      calls.push('show')
+    }
+  }
+
+  assert.deepEqual(
+    runPackagedWindowsNotificationSmokeAssertion({
+      Notification: MockNotification,
+      platform: 'win32'
+    }),
+    { windowsNotificationSupported: true, windowsNotificationReady: true }
+  )
+  assert.equal(calls[0], 'isSupported')
+  assert.equal(calls[1].silent, true)
+  assert.match(calls[1].title, /Windows 通知 smoke test/)
+  assert.equal(calls[2], 'show')
+  assert.deepEqual(
+    runPackagedWindowsNotificationSmokeAssertion({
+      Notification: MockNotification,
+      platform: 'darwin'
+    }),
+    { windowsNotificationSupported: false, windowsNotificationReady: false }
+  )
 })
 
 test('打包 smoke test 将主进程断言结果写入调用方指定路径', () => {

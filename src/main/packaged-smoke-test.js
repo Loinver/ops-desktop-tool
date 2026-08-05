@@ -91,6 +91,31 @@ async function runPackagedRendererSmokeAssertions(webContents, env = process.env
   return { ccSwitchChecked: true, providerId: provider.id }
 }
 
+function runPackagedWindowsNotificationSmokeAssertion({
+  Notification,
+  platform = process.platform
+} = {}) {
+  if (platform !== 'win32')
+    return { windowsNotificationSupported: false, windowsNotificationReady: false }
+  if (!Notification || typeof Notification.isSupported !== 'function') {
+    throw new Error('Electron Notification.isSupported 不可用')
+  }
+  if (!Notification.isSupported()) {
+    throw new Error('Windows 系统通知不可用')
+  }
+
+  const notification = new Notification({
+    title: 'Ops Desktop Windows 通知 smoke test',
+    body: '验证 Windows 系统通知可以创建并显示。',
+    silent: true
+  })
+  if (!notification || typeof notification.show !== 'function') {
+    throw new Error('Electron Notification.show 不可用')
+  }
+  notification.show()
+  return { windowsNotificationSupported: true, windowsNotificationReady: true }
+}
+
 function writePackagedSmokeResult(result, env = process.env, fileSystem = fs) {
   const resultPath = String(env[SMOKE_RESULT_PATH_ENV] || '').trim()
   if (!resultPath) return false
@@ -104,5 +129,6 @@ module.exports = {
   assertCcSwitchRendererResult,
   readCcSwitchExpectation,
   runPackagedRendererSmokeAssertions,
+  runPackagedWindowsNotificationSmokeAssertion,
   writePackagedSmokeResult
 }

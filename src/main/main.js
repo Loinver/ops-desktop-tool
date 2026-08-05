@@ -1,5 +1,5 @@
 const path = require('node:path')
-const { app, ipcMain, nativeImage, shell, Tray, Menu } = require('electron')
+const { app, ipcMain, nativeImage, shell, Tray, Menu, Notification } = require('electron')
 const { createWindow, getMainWindow } = require('./window')
 const { registerPortsHandlers, stopNodeServiceMonitor } = require('./ipc/ports')
 const { registerSystemHandlers } = require('./ipc/system')
@@ -27,6 +27,7 @@ const { IPC_CHANNELS } = require('../shared/ipc-channels')
 const logger = require('./utils/logger')
 const {
   runPackagedRendererSmokeAssertions,
+  runPackagedWindowsNotificationSmokeAssertion,
   writePackagedSmokeResult
 } = require('./packaged-smoke-test')
 
@@ -209,6 +210,7 @@ if (isMcpMode) {
               throw new Error('Windows 任务栏控制器未初始化')
             }
             Object.assign(result, windowsTaskbarController.runSmokeCheck(mainWindow))
+            Object.assign(result, runPackagedWindowsNotificationSmokeAssertion({ Notification }))
           }
           writePackagedSmokeResult(result)
           logger.info('打包应用 smoke test 通过', result)

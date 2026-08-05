@@ -105,6 +105,8 @@ test('Windows smoke test 使用正确架构目录、隔离数据目录并等待�
   assert.match(smokeScript, /OPS_DESKTOP_SMOKE_RESULT_PATH/)
   assert.match(smokeScript, /windowsTaskbarSupported/)
   assert.match(smokeScript, /windowsTaskbarOverlayReady/)
+  assert.match(smokeScript, /windowsNotificationSupported/)
+  assert.match(smokeScript, /windowsNotificationReady/)
   assert.match(smokeScript, /APPDATA/)
   assert.match(smokeScript, /LOCALAPPDATA/)
   assert.match(smokeScript, /USERPROFILE/)
@@ -145,7 +147,9 @@ test('Windows smoke test 读取并校验打包应用的任务栏与 CC Switch �
     ccSwitchChecked: true,
     providerId: fixtureProvider.providerId,
     windowsTaskbarSupported: true,
-    windowsTaskbarOverlayReady: true
+    windowsTaskbarOverlayReady: true,
+    windowsNotificationSupported: true,
+    windowsNotificationReady: true
   }
 
   try {
@@ -159,6 +163,14 @@ test('Windows smoke test 读取并校验打包应用的任务栏与 CC Switch �
           windowsTaskbarOverlayReady: false
         }),
       /overlay icon/
+    )
+    assert.throws(
+      () =>
+        assertWindowsPackagedSmokeResult({
+          ...result,
+          windowsNotificationReady: false
+        }),
+      /Windows notification/
     )
   } finally {
     fs.rmSync(directory, { recursive: true, force: true })
