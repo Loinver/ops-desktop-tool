@@ -70,11 +70,11 @@ test('Windows CI 在原生 x64 和 ARM64 runner 构建、启动并上传各自�
 })
 
 test('Windows installer smoke test 使用架构化安装包并保护现有安装', () => {
-  assert.equal(renderWindowsArtifactName('x64'), 'Ops Desktop-1.0.2-windows-x64.exe')
-  assert.equal(renderWindowsArtifactName('arm64'), 'Ops Desktop-1.0.2-windows-arm64.exe')
+  assert.equal(renderWindowsArtifactName('x64'), 'Ops Desktop-1.0.3-windows-x64.exe')
+  assert.equal(renderWindowsArtifactName('arm64'), 'Ops Desktop-1.0.3-windows-arm64.exe')
   assert.equal(
     packagedInstallerPath('arm64'),
-    path.join(root, 'release', 'Ops Desktop-1.0.2-windows-arm64.exe')
+    path.join(root, 'release', 'Ops Desktop-1.0.3-windows-arm64.exe')
   )
   assert.equal(
     installedExecutablePath({ LOCALAPPDATA: 'C:\\Users\\runner\\AppData\\Local' }),
