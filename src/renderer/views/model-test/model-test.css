@@ -7,12 +7,8 @@
 
 /* 与 header 的 btn-ghost 同字号/同高度，避免统计 tag 偏小、基线不齐 */
 .model-test-page .chip {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  box-sizing: border-box;
-  min-height: 34px;
+  min-height: 36px;
+  padding: 0 12px;
   padding: 0 12px;
   border: 1px solid transparent;
   border-radius: 999px;
@@ -48,67 +44,8 @@
 }
 
 .model-test-page button.chip {
-  margin: 0;
-  cursor: pointer;
-  appearance: none;
-  -webkit-appearance: none;
-}
-
-.model-test-page button.chip:hover {
-  filter: brightness(0.97);
-}
-
-.model-test-page button.chip.fail.active {
-  border-color: var(--danger);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--danger) 30%, transparent);
-}
-
-.model-test-page button.chip.ok.active {
-  border-color: var(--success);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--success) 30%, transparent);
-}
-
-.model-test-page button.chip.gateway.active {
-  border-color: var(--text-secondary);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--text-secondary) 25%, transparent);
-}
-
-.model-test-page button.chip.idle.active {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 25%, transparent);
-}
-
-.model-test-page .chip.quiet {
-  background: var(--border-light);
-  color: var(--text-secondary);
-  font-weight: 500;
-  cursor: default;
-}
-
-.model-test-page .chip-sub {
-  font-style: normal;
-  font-weight: 500;
-  opacity: 0.85;
-}
-
-.model-test-page .chip.scope.clickable:hover {
-  border-color: color-mix(in srgb, var(--primary) 40%, transparent);
-}
-
-.model-test-page .btn-ghost.scope-active {
-  border-color: color-mix(in srgb, var(--primary) 40%, var(--border));
-  background: var(--primary-light);
-  color: var(--primary);
-  font-weight: 600;
-}
-
-.model-test-page .btn-ghost {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  box-sizing: border-box;
-  min-height: 34px;
+  min-height: 36px;
+  padding: 0 12px;
   padding: 0 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -148,14 +85,10 @@
   color: var(--danger);
 }
 
-.model-test-page .btn-ghost.small {
-  min-height: 28px;
-  padding: 0 10px;
-  font-size: 12px;
-}
+
 
 .model-test-page .btn-link {
-  min-height: 28px;
+  min-height: 36px;
   border: none;
   background: none;
   color: var(--primary);
@@ -489,7 +422,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 28px;
+  min-height: 36px;
   padding: 0 10px;
   border: 1px solid var(--border);
   border-radius: 999px;
@@ -900,7 +833,7 @@
 
 .model-test-page .provider-meta-copy {
   display: inline-flex;
-  min-height: 28px;
+  min-height: 36px;
   align-items: center;
   gap: 5px;
   max-width: 100%;
@@ -1116,7 +1049,7 @@
   cursor: pointer;
   align-items: flex-start;
   gap: 4px;
-  min-height: 28px;
+  min-height: 36px;
   padding: 4px 6px;
   border-radius: 4px;
   transition:
