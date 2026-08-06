@@ -1,5 +1,8 @@
 <template>
-  <div class="page model-test-page">
+  <div
+    class="page model-test-page"
+    :style="{ '--control-stack-offset': controlStackHeight + 'px' }"
+  >
     <ModelTestHeader
       :scope-configured="scopeConfigured"
       :model-filter-configured="modelListSettingsConfigured"
@@ -32,7 +35,7 @@
         </button>
       </div>
 
-      <div class="control-stack">
+      <div ref="controlStackRef" class="control-stack">
         <ModelTestProgress
           :error-message="errorMessage"
           :preparing="preparing"
@@ -159,7 +162,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useModelTestPage } from './composables/useModelTestPage.js'
 import ModelTestHeader from './components/ModelTestHeader.vue'
 import ModelTestProgress from './components/ModelTestProgress.vue'
@@ -171,6 +174,33 @@ import ModelListSettingsDialog from './components/ModelListSettingsDialog.vue'
 import './model-test.css'
 
 defineOptions({ name: 'ModelTest' })
+
+// 吸顶工具栏高度会在运行/准备时变化，右栏「可用中转」需跟随其下沿吸顶，
+// 避免滚动时被 z-index 更高的 control-stack 遮住顶部。
+const controlStackRef = ref(null)
+const controlStackHeight = ref(0)
+let controlStackObserver = null
+
+function updateControlStackHeight() {
+  const el = controlStackRef.value
+  if (!el) return
+  // 向上取整，避免子像素高度导致右栏仍露出一条被遮住的边缘。
+  controlStackHeight.value = Math.ceil(el.getBoundingClientRect().height)
+}
+
+onMounted(() => {
+  const el = controlStackRef.value
+  if (!el) return
+  updateControlStackHeight()
+  if (typeof ResizeObserver === 'undefined') return
+  controlStackObserver = new ResizeObserver(updateControlStackHeight)
+  controlStackObserver.observe(el)
+})
+
+onUnmounted(() => {
+  controlStackObserver?.disconnect()
+  controlStackObserver = null
+})
 
 const {
   loading,
