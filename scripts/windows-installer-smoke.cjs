@@ -12,6 +12,8 @@ const uninstallTimeoutMs = 60_000
 const allowInstallArgument = '--allow-install'
 const {
   createCcSwitchFixture,
+  createModelAvailabilityFixture,
+  modelTestReply,
   requestedArchitecture,
   runPackagedExecutableSmoke
 } = require('./windows-packaged-app-smoke.cjs')
@@ -140,6 +142,7 @@ async function run() {
 
   const smokeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ops-desktop-installer-smoke-'))
   let fixture = null
+  let modelFixture = null
   let installStarted = false
   try {
     console.log(`Installing packaged app silently: ${installerPath}`)
@@ -155,20 +158,43 @@ async function run() {
       throw new Error(`Installed Windows uninstaller was not found: ${uninstallerPath}`)
     }
 
-    fixture = await createCcSwitchFixture(path.join(smokeRoot, 'windows-profile'))
+    modelFixture = await createModelAvailabilityFixture()
+    fixture = await createCcSwitchFixture(path.join(smokeRoot, 'windows-profile'), {
+      baseUrl: modelFixture.baseUrl,
+      endpoint: modelFixture.baseUrl,
+      modelTest: { reply: modelTestReply }
+    })
     await runPackagedExecutableSmoke({
       executablePath,
       smokeRoot: path.join(smokeRoot, 'app-run'),
       fixture
     })
+    if (modelFixture.requests.length < 2) {
+      throw new Error(
+        'Installed app did not complete both model test and monitoring requests to the local fixture'
+      )
+    }
 
     fixture.close()
     fixture = null
+    await modelFixture.close()
+    modelFixture = null
     await uninstallInstalledApp()
     installStarted = false
-    console.log('Windows installer, installed app smoke test, and uninstaller all succeeded')
+    console.log(
+      'Windows installer, installed app CC Switch/model smoke test, and uninstaller all succeeded'
+    )
   } finally {
-    fixture?.close()
+    try {
+      fixture?.close()
+    } catch (error) {
+      console.warn(`Failed to close CC Switch fixture: ${error.message}`)
+    }
+    try {
+      await modelFixture?.close()
+    } catch (error) {
+      console.warn(`Failed to close model availability fixture: ${error.message}`)
+    }
     if (installStarted && fs.existsSync(uninstallerPath)) {
       try {
         await uninstallInstalledApp()

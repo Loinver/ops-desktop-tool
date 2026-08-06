@@ -1,4 +1,5 @@
 const fs = require('node:fs')
+const http = require('node:http')
 const os = require('node:os')
 const path = require('node:path')
 const { spawn } = require('node:child_process')
@@ -12,6 +13,7 @@ const timeoutMs = 45_000
 const ccSwitchFixtureArgument = '--ccswitch-fixture'
 const ccSwitchAppId = 'com.ccswitch.desktop'
 const smokeResultFileName = 'smoke-result.json'
+const modelTestReply = 'windows-smoke-model-available'
 const fixtureProvider = Object.freeze({
   providerId: 'windows-smoke-provider',
   name: 'Windows Smoke Gateway',
@@ -58,7 +60,10 @@ function readPackagedSmokeResult(resultPath) {
   }
 }
 
-function assertWindowsPackagedSmokeResult(result, { expectCcSwitch = false } = {}) {
+function assertWindowsPackagedSmokeResult(
+  result,
+  { expectCcSwitch = false, expectModelTest = false, expectModelMonitor = false } = {}
+) {
   if (result?.ok !== true) {
     throw new Error(
       `Packaged app reported a failed smoke test: ${result?.message || 'unknown error'}`
@@ -84,10 +89,101 @@ function assertWindowsPackagedSmokeResult(result, { expectCcSwitch = false } = {
       `Packaged app returned an unexpected CC Switch provider: ${result.providerId || 'missing'}`
     )
   }
+  if (expectModelTest && result.modelTestChecked !== true) {
+    throw new Error('Packaged app did not confirm model availability testing')
+  }
+  if (expectModelTest && result.modelTestProviderId !== fixtureProvider.providerId) {
+    throw new Error(
+      `Packaged app returned an unexpected model-test provider: ${result.modelTestProviderId || 'missing'}`
+    )
+  }
+  if (expectModelMonitor && result.modelMonitorChecked !== true) {
+    throw new Error('Packaged app did not confirm model monitoring')
+  }
+  if (expectModelMonitor && result.modelMonitorProviderId !== fixtureProvider.providerId) {
+    throw new Error(
+      `Packaged app returned an unexpected model-monitor provider: ${result.modelMonitorProviderId || 'missing'}`
+    )
+  }
   return result
 }
 
-async function createCcSwitchFixture(profileRoot) {
+function readRequestBody(request) {
+  return new Promise((resolve, reject) => {
+    let body = ''
+    request.setEncoding('utf8')
+    request.on('data', (chunk) => {
+      body += chunk
+    })
+    request.once('end', () => resolve(body))
+    request.once('error', reject)
+  })
+}
+
+async function createModelAvailabilityFixture() {
+  const requests = []
+  const server = http.createServer(async (request, response) => {
+    try {
+      if (request.method !== 'POST' || request.url !== '/v1/responses') {
+        response.writeHead(404, { 'content-type': 'application/json' })
+        response.end(JSON.stringify({ error: { message: 'not found' } }))
+        return
+      }
+
+      const body = JSON.parse((await readRequestBody(request)) || '{}')
+      if (request.headers.authorization !== `Bearer ${fixtureProvider.secret}`) {
+        response.writeHead(401, { 'content-type': 'application/json' })
+        response.end(JSON.stringify({ error: { message: 'unauthorized' } }))
+        return
+      }
+      if (body.model !== fixtureProvider.model) {
+        response.writeHead(400, { 'content-type': 'application/json' })
+        response.end(JSON.stringify({ error: { message: 'unexpected model' } }))
+        return
+      }
+
+      requests.push({ method: request.method, url: request.url, body })
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end(
+        JSON.stringify({
+          output: [{ content: [{ type: 'output_text', text: modelTestReply }] }]
+        })
+      )
+    } catch (error) {
+      response.writeHead(500, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({ error: { message: error.message } }))
+    }
+  })
+
+  await new Promise((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', () => {
+      server.removeListener('error', reject)
+      resolve()
+    })
+  })
+  const address = server.address()
+  if (!address || typeof address === 'string') {
+    server.close()
+    throw new Error('Model availability fixture did not receive a TCP port')
+  }
+
+  return {
+    baseUrl: `http://127.0.0.1:${address.port}/v1`,
+    requests,
+    close: () =>
+      new Promise((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()))
+      })
+  }
+}
+
+async function createCcSwitchFixture(profileRoot, { baseUrl, endpoint, modelTest } = {}) {
+  const provider = {
+    ...fixtureProvider,
+    baseUrl: baseUrl || fixtureProvider.baseUrl,
+    endpoint: endpoint || baseUrl || fixtureProvider.endpoint
+  }
   const appDataPath = path.join(profileRoot, 'AppData', 'Roaming')
   const localAppDataPath = path.join(profileRoot, 'AppData', 'Local')
   const databaseDirectory = path.join(appDataPath, ccSwitchAppId)
@@ -97,14 +193,14 @@ async function createCcSwitchFixture(profileRoot) {
 
   const database = new DatabaseSync(dbPath)
   const settings = JSON.stringify({
-    auth: { OPENAI_API_KEY: fixtureProvider.secret },
+    auth: { OPENAI_API_KEY: provider.secret },
     config: [
-      `base_url = "${fixtureProvider.baseUrl}"`,
-      `wire_api = "${fixtureProvider.wireApi}"`,
-      `model = "${fixtureProvider.model}"`
+      `base_url = "${provider.baseUrl}"`,
+      `wire_api = "${provider.wireApi}"`,
+      `model = "${provider.model}"`
     ].join('\n'),
     modelCatalog: {
-      models: [{ model: fixtureProvider.model, displayName: 'GPT Windows Smoke' }]
+      models: [{ model: provider.model, displayName: 'GPT Windows Smoke' }]
     }
   })
 
@@ -135,9 +231,9 @@ async function createCcSwitchFixture(profileRoot) {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?);`
     )
     .run(
-      fixtureProvider.providerId,
-      fixtureProvider.appType,
-      fixtureProvider.name,
+      provider.providerId,
+      provider.appType,
+      provider.name,
       settings,
       'https://windows-smoke.example.com',
       1,
@@ -146,14 +242,34 @@ async function createCcSwitchFixture(profileRoot) {
     )
   database
     .prepare('INSERT INTO provider_endpoints (provider_id, app_type, url) VALUES (?, ?, ?);')
-    .run(fixtureProvider.providerId, fixtureProvider.appType, `${fixtureProvider.endpoint}/`)
+    .run(provider.providerId, provider.appType, `${provider.endpoint}/`)
 
   let closed = false
   return {
     appDataPath,
     localAppDataPath,
     profileRoot,
-    expectation: { ...fixtureProvider, dbPath },
+    expectation: { ...provider, dbPath },
+    modelTestExpectation: modelTest
+      ? {
+          providerId: provider.providerId,
+          model: provider.model,
+          baseUrl: provider.baseUrl,
+          endpoint: provider.baseUrl,
+          httpStatus: 200,
+          reply: modelTest.reply || modelTestReply
+        }
+      : null,
+    modelMonitorExpectation: modelTest
+      ? {
+          providerId: provider.providerId,
+          providerName: provider.name,
+          appType: provider.appType,
+          model: provider.model,
+          endpoint: provider.baseUrl,
+          httpStatus: 200
+        }
+      : null,
     close: () => {
       if (closed) return
       closed = true
@@ -182,6 +298,16 @@ async function runPackagedExecutableSmoke({ executablePath, smokeRoot, fixture =
       LOCALAPPDATA: fixture.localAppDataPath,
       OPS_DESKTOP_SMOKE_CCSWITCH_EXPECTED: JSON.stringify(fixture.expectation)
     })
+    if (fixture.modelTestExpectation) {
+      childEnvironment.OPS_DESKTOP_SMOKE_MODEL_TEST_EXPECTED = JSON.stringify(
+        fixture.modelTestExpectation
+      )
+    }
+    if (fixture.modelMonitorExpectation) {
+      childEnvironment.OPS_DESKTOP_SMOKE_MODEL_MONITOR_EXPECTED = JSON.stringify(
+        fixture.modelMonitorExpectation
+      )
+    }
   }
 
   let output = ''
@@ -236,7 +362,9 @@ async function runPackagedExecutableSmoke({ executablePath, smokeRoot, fixture =
     }
 
     const smokeResult = assertWindowsPackagedSmokeResult(readPackagedSmokeResult(smokeResultPath), {
-      expectCcSwitch: Boolean(fixture)
+      expectCcSwitch: Boolean(fixture),
+      expectModelTest: Boolean(fixture?.modelTestExpectation),
+      expectModelMonitor: Boolean(fixture?.modelMonitorExpectation)
     })
     console.log(`Packaged smoke result: ${JSON.stringify(smokeResult)}`)
     return smokeResult
@@ -256,24 +384,44 @@ async function run() {
 
   const smokeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ops-desktop-smoke-'))
   let fixture = null
+  let modelFixture = null
 
   try {
-    fixture = shouldCreateCcSwitchFixture()
-      ? await createCcSwitchFixture(path.join(smokeRoot, 'windows-profile'))
-      : null
+    if (shouldCreateCcSwitchFixture()) {
+      modelFixture = await createModelAvailabilityFixture()
+      fixture = await createCcSwitchFixture(path.join(smokeRoot, 'windows-profile'), {
+        baseUrl: modelFixture.baseUrl,
+        endpoint: modelFixture.baseUrl,
+        modelTest: { reply: modelTestReply }
+      })
+    }
     await runPackagedExecutableSmoke({
       executablePath,
       smokeRoot: path.join(smokeRoot, 'app-run'),
       fixture
     })
+    if (modelFixture && modelFixture.requests.length < 2) {
+      throw new Error(
+        'Packaged app did not complete both model test and monitoring requests to the local fixture'
+      )
+    }
 
     console.log(
       fixture
-        ? 'Packaged app loaded its renderer and discovered the CC Switch fixture successfully'
+        ? 'Packaged app loaded its renderer, discovered CC Switch, and completed model availability testing'
         : 'Packaged app loaded its renderer and exited successfully'
     )
   } finally {
-    fixture?.close()
+    try {
+      fixture?.close()
+    } catch (error) {
+      console.warn(`Failed to close CC Switch fixture: ${error.message}`)
+    }
+    try {
+      await modelFixture?.close()
+    } catch (error) {
+      console.warn(`Failed to close model availability fixture: ${error.message}`)
+    }
     try {
       fs.rmSync(smokeRoot, {
         recursive: true,
@@ -297,7 +445,9 @@ if (require.main === module) {
 module.exports = {
   assertWindowsPackagedSmokeResult,
   createCcSwitchFixture,
+  createModelAvailabilityFixture,
   fixtureProvider,
+  modelTestReply,
   packagedExecutablePath,
   readPackagedSmokeResult,
   requestedArchitecture,

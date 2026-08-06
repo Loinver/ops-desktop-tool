@@ -13,7 +13,9 @@ const installerSmokeScript = fs.readFileSync(installerSmokeScriptPath, 'utf8')
 const {
   assertWindowsPackagedSmokeResult,
   createCcSwitchFixture,
+  createModelAvailabilityFixture,
   fixtureProvider,
+  modelTestReply,
   packagedExecutablePath,
   readPackagedSmokeResult,
   shouldCreateCcSwitchFixture,
@@ -92,6 +94,8 @@ test('Windows installer smoke test 使用架构化安装包并保护现有安装
   assert.match(installerSmokeScript, /Refusing to replace an existing Ops Desktop installation/)
   assert.match(installerSmokeScript, /Windows installer.*\['\/S'\]/s)
   assert.match(installerSmokeScript, /Windows uninstaller.*\['\/S'\]/s)
+  assert.match(installerSmokeScript, /createModelAvailabilityFixture/)
+  assert.match(installerSmokeScript, /model test and monitoring requests to the local fixture/)
 })
 
 test('Windows smoke test 使用正确架构目录、隔离数据目录并等待渲染进程主动退出', () => {
@@ -106,6 +110,9 @@ test('Windows smoke test 使用正确架构目录、隔离数据目录并等待�
   assert.match(smokeScript, /--user-data-dir=/)
   assert.match(smokeScript, /OPS_DESKTOP_SMOKE_TEST/)
   assert.match(smokeScript, /OPS_DESKTOP_SMOKE_CCSWITCH_EXPECTED/)
+  assert.match(smokeScript, /OPS_DESKTOP_SMOKE_MODEL_TEST_EXPECTED/)
+  assert.match(smokeScript, /OPS_DESKTOP_SMOKE_MODEL_MONITOR_EXPECTED/)
+  assert.match(smokeScript, /createModelAvailabilityFixture/)
   assert.match(smokeScript, /OPS_DESKTOP_SMOKE_RESULT_PATH/)
   assert.match(smokeScript, /windowsTaskbarSupported/)
   assert.match(smokeScript, /windowsTaskbarOverlayReady/)
@@ -143,6 +150,27 @@ test('Windows smoke test 可创建真实 SQLite WAL 模式的 CC Switch fixture'
   }
 })
 
+test('Windows smoke test 的本地模型服务 fixture 验证 OpenAI Responses 请求', async () => {
+  const fixture = await createModelAvailabilityFixture()
+  try {
+    const response = await fetch(`${fixture.baseUrl}/responses`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${fixtureProvider.secret}`
+      },
+      body: JSON.stringify({ model: fixtureProvider.model, input: 'smoke' })
+    })
+    assert.equal(response.status, 200)
+    const body = await response.json()
+    assert.equal(body.output[0].content[0].text, modelTestReply)
+    assert.equal(fixture.requests.length, 1)
+    assert.equal(fixture.requests[0].url, '/v1/responses')
+  } finally {
+    await fixture.close()
+  }
+})
+
 test('Windows smoke test 读取并校验打包应用的任务栏与 CC Switch 结果', () => {
   const directory = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'windows-smoke-result-'))
   const resultPath = path.join(directory, 'result.json')
@@ -153,13 +181,24 @@ test('Windows smoke test 读取并校验打包应用的任务栏与 CC Switch �
     windowsTaskbarSupported: true,
     windowsTaskbarOverlayReady: true,
     windowsNotificationSupported: true,
-    windowsNotificationReady: true
+    windowsNotificationReady: true,
+    modelTestChecked: true,
+    modelTestProviderId: fixtureProvider.providerId,
+    modelMonitorChecked: true,
+    modelMonitorProviderId: fixtureProvider.providerId
   }
 
   try {
     fs.writeFileSync(resultPath, JSON.stringify(result))
     assert.deepEqual(readPackagedSmokeResult(resultPath), result)
-    assert.deepEqual(assertWindowsPackagedSmokeResult(result, { expectCcSwitch: true }), result)
+    assert.deepEqual(
+      assertWindowsPackagedSmokeResult(result, {
+        expectCcSwitch: true,
+        expectModelTest: true,
+        expectModelMonitor: true
+      }),
+      result
+    )
     assert.throws(
       () =>
         assertWindowsPackagedSmokeResult({
@@ -175,6 +214,22 @@ test('Windows smoke test 读取并校验打包应用的任务栏与 CC Switch �
           windowsNotificationReady: false
         }),
       /Windows notification/
+    )
+    assert.throws(
+      () =>
+        assertWindowsPackagedSmokeResult(
+          { ...result, modelTestChecked: false },
+          { expectModelTest: true }
+        ),
+      /model availability/
+    )
+    assert.throws(
+      () =>
+        assertWindowsPackagedSmokeResult(
+          { ...result, modelMonitorChecked: false },
+          { expectModelMonitor: true }
+        ),
+      /model monitoring/
     )
   } finally {
     fs.rmSync(directory, { recursive: true, force: true })
