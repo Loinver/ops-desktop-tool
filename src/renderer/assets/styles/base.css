@@ -774,3 +774,39 @@ textarea:focus {
     flex-direction: column;
   }
 }
+
+
+
+/* 全局按钮样式：统一所有按钮大小，使用 --header-control-height 等 token */
+.btn-ghost,
+.btn-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
+  height: var(--header-control-height);
+  padding: 0 var(--button-padding-x);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card-bg);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: var(--header-control-font-size);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.btn-ghost:hover:not(:disabled),
+.btn-link:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.btn-ghost.primary,
+.btn-ghost.danger,
+.btn-ghost.scope-active,
+.btn-link.primary,
+.btn-link.danger {
+  /* 模型测试页特殊变体，由 model-test.css 覆盖颜色/背景 */
