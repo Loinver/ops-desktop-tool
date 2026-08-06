@@ -106,16 +106,18 @@ function readProfilePassword(profile) {
   }).value
 }
 
-function safeProfile(profile) {
-  let password = ''
-  try {
-    password = readProfilePassword(profile)
-  } catch {}
-  const { passwordEncrypted, password: _legacyPassword, ...rest } = profile
+function safeProfile(profile = {}) {
+  const { passwordEncrypted, password: legacyPassword, ...rest } = profile
+  const legacyValue = String(legacyPassword || '')
+  const hasEncryptedPassword = Boolean(passwordEncrypted)
+  const hasPassword = hasEncryptedPassword || Boolean(legacyValue)
+
+  // 列表、仪表盘等只需要凭证是否已保存，不能为了生成掩码而触发 macOS 钥匙串解密。
+  // 真正建立 SFTP 连接时才由 getActiveReleaseProfile({ includePassword: true }) 读取明文。
   return {
     ...rest,
-    hasPassword: Boolean(password || passwordEncrypted),
-    passwordMasked: password ? maskSecret(password) : '••••••••'
+    hasPassword,
+    passwordMasked: hasEncryptedPassword ? '••••••••' : maskSecret(legacyValue)
   }
 }
 
@@ -244,5 +246,5 @@ module.exports = {
   loadReleaseHistory,
   appendReleaseHistory,
   markReleaseRolledBack,
-  __testables: { filterReleaseHistoryByProfile, normalizeHealthCheck }
+  __testables: { filterReleaseHistoryByProfile, normalizeHealthCheck, safeProfile }
 }
