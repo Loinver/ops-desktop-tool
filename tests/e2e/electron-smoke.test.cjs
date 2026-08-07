@@ -1,6 +1,5 @@
 const assert = require('node:assert/strict')
 const { spawn } = require('node:child_process')
-const { once } = require('node:events')
 const fs = require('node:fs/promises')
 const http = require('node:http')
 const os = require('node:os')
@@ -9,53 +8,173 @@ const { after, before, test } = require('node:test')
 const { _electron: electron } = require('playwright')
 
 const projectRoot = path.resolve(__dirname, '../..')
+const rendererDistPath = path.join(projectRoot, 'dist', 'renderer')
 const viteBin = path.join(path.dirname(require.resolve('vite')), 'bin/vite.js')
 const electronExecutable = require('electron')
 const mainEntry = path.join(projectRoot, 'src/main/main.js')
-const port = 4173
+const MIME_TYPES = Object.freeze({
+  '.css': 'text/css; charset=utf-8',
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'application/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.map': 'application/json; charset=utf-8',
+  '.mjs': 'application/javascript; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+  '.wasm': 'application/wasm'
+})
 
-let viteProcess
 let electronApp
+let rendererServer
+let rendererServerUrl
 let testUserDataPath
 let rendererPage
 const rendererDiagnostics = []
+const instrumentedPages = new WeakSet()
 
-function request(url) {
+function appendOutput(output, chunk, limit = 20_000) {
+  return `${output}${chunk}`.slice(-limit)
+}
+
+function buildRenderer() {
   return new Promise((resolve, reject) => {
-    const req = http.get(url, (response) => {
-      response.resume()
-      resolve(response.statusCode || 0)
+    const viteProcess = spawn(process.execPath, [viteBin, 'build'], {
+      cwd: projectRoot,
+      env: { ...process.env, BROWSER: 'none' },
+      stdio: ['ignore', 'pipe', 'pipe']
     })
-    req.setTimeout(1000, () => req.destroy(new Error(`Timed out requesting ${url}`)))
-    req.on('error', reject)
+    let output = ''
+    viteProcess.stdout.on('data', (chunk) => {
+      output = appendOutput(output, chunk)
+    })
+    viteProcess.stderr.on('data', (chunk) => {
+      output = appendOutput(output, chunk)
+    })
+    viteProcess.once('error', reject)
+    viteProcess.once('exit', (code, signal) => {
+      if (code === 0) {
+        resolve()
+        return
+      }
+      reject(
+        new Error(
+          `Vite production build for Electron E2E failed (code: ${code}, signal: ${signal || 'none'}).\n${output}`
+        )
+      )
+    })
   })
 }
 
-async function waitForVite(url, timeoutMs = 30_000) {
-  const deadline = Date.now() + timeoutMs
-  let lastError
-  while (Date.now() < deadline) {
-    try {
-      const status = await request(url)
-      if (status >= 200 && status < 500) return
-    } catch (error) {
-      lastError = error
-    }
-    await new Promise((resolve) => setTimeout(resolve, 250))
-  }
-  throw new Error(`Vite dev server did not become ready: ${lastError?.message || url}`)
+function resolveRendererAsset(requestUrl) {
+  const pathname = decodeURIComponent(new URL(requestUrl || '/', 'http://127.0.0.1').pathname)
+  const relativePath = pathname === '/' ? 'index.html' : pathname.replace(/^\/+/, '')
+  const assetPath = path.resolve(rendererDistPath, relativePath)
+  const relation = path.relative(rendererDistPath, assetPath)
+  if (relation.startsWith('..') || path.isAbsolute(relation)) return null
+  return assetPath
 }
 
-async function stopProcess(process) {
-  if (!process || process.exitCode !== null) return
-  process.kill('SIGTERM')
-  await Promise.race([once(process, 'exit'), new Promise((resolve) => setTimeout(resolve, 5000))])
-  if (process.exitCode === null) process.kill('SIGKILL')
+async function startRendererServer() {
+  const server = http.createServer(async (request, response) => {
+    if (!['GET', 'HEAD'].includes(request.method || '')) {
+      response.writeHead(405, { Allow: 'GET, HEAD' }).end()
+      return
+    }
+
+    let assetPath
+    try {
+      assetPath = resolveRendererAsset(request.url)
+    } catch {
+      response.writeHead(400).end()
+      return
+    }
+    if (!assetPath) {
+      response.writeHead(403).end()
+      return
+    }
+
+    try {
+      const data = await fs.readFile(assetPath)
+      response.writeHead(200, {
+        'Cache-Control': 'no-store',
+        'Content-Type': MIME_TYPES[path.extname(assetPath)] || 'application/octet-stream'
+      })
+      response.end(request.method === 'HEAD' ? undefined : data)
+    } catch (error) {
+      if (error?.code === 'ENOENT' || error?.code === 'EISDIR') {
+        response.writeHead(404).end()
+        return
+      }
+      response.writeHead(500).end()
+    }
+  })
+
+  await new Promise((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', () => {
+      server.off('error', reject)
+      resolve()
+    })
+  })
+
+  const address = server.address()
+  if (!address || typeof address === 'string') {
+    await new Promise((resolve) => server.close(resolve))
+    throw new Error('Electron E2E renderer server did not receive a TCP port')
+  }
+
+  rendererServer = server
+  rendererServerUrl = `http://127.0.0.1:${address.port}`
+}
+
+async function stopRendererServer() {
+  if (!rendererServer) return
+  await new Promise((resolve) => rendererServer.close(resolve))
+  rendererServer = null
 }
 
 function recordRendererDiagnostic(message) {
   rendererDiagnostics.push(message)
   if (rendererDiagnostics.length > 40) rendererDiagnostics.shift()
+}
+
+function attachRendererDiagnostics(page) {
+  if (instrumentedPages.has(page)) return
+  instrumentedPages.add(page)
+  page.on('console', (message) => {
+    if (message.type() === 'error' || message.type() === 'warning') {
+      recordRendererDiagnostic(`[console:${message.type()}] ${message.text()}`)
+    }
+  })
+  page.on('pageerror', (error) => {
+    recordRendererDiagnostic(`[pageerror] ${error.message}`)
+  })
+  page.on('requestfailed', (request) => {
+    recordRendererDiagnostic(
+      `[requestfailed] ${request.url()} (${request.failure()?.errorText || 'unknown error'})`
+    )
+  })
+}
+
+function attachElectronProcessDiagnostics(app) {
+  const electronProcess = app.process()
+  for (const [streamName, stream] of [
+    ['stdout', electronProcess.stdout],
+    ['stderr', electronProcess.stderr]
+  ]) {
+    stream?.on('data', (chunk) => {
+      const text = String(chunk).trim()
+      if (text) recordRendererDiagnostic(`[electron:${streamName}] ${text.slice(0, 1500)}`)
+    })
+  }
+}
+
+function assertNoFatalRendererDiagnostics(diagnosticsStart, context) {
+  const failures = rendererDiagnostics
+    .slice(diagnosticsStart)
+    .filter((message) => message.startsWith('[pageerror]') || message.startsWith('[requestfailed]'))
+  assert.deepEqual(failures, [], `${context} emitted renderer failures:\n${failures.join('\n')}`)
 }
 
 async function waitForAppShell(page) {
@@ -86,17 +205,13 @@ async function waitForAppShell(page) {
 
 before(async () => {
   testUserDataPath = await fs.mkdtemp(path.join(os.tmpdir(), 'ops-desktop-e2e-'))
-  viteProcess = spawn(
-    process.execPath,
-    [viteBin, '--host', '127.0.0.1', '--port', String(port), '--strictPort'],
-    {
-      cwd: projectRoot,
-      env: { ...process.env, BROWSER: 'none' },
-      stdio: ['ignore', 'pipe', 'pipe']
-    }
-  )
 
-  await waitForVite(`http://127.0.0.1:${port}/`)
+  // A fresh CI checkout has no Vite optimize-deps cache. Serving the dev server
+  // as soon as its index responds can leave Electron waiting on a cold module
+  // graph, with #app still empty. Build once and serve prebuilt renderer assets
+  // instead, so this smoke test measures the desktop shell rather than Vite warmup.
+  await buildRenderer()
+  await startRendererServer()
 
   electronApp = await electron.launch({
     executablePath: electronExecutable,
@@ -105,40 +220,55 @@ before(async () => {
       ...process.env,
       OPEN_DEVTOOLS: 'false',
       OPS_DESKTOP_E2E: 'true',
-      VITE_DEV_SERVER_URL: `http://127.0.0.1:${port}`
+      VITE_DEV_SERVER_URL: rendererServerUrl
     }
   })
+  attachElectronProcessDiagnostics(electronApp)
+  electronApp.on('window', attachRendererDiagnostics)
   rendererPage = await electronApp.firstWindow()
-  rendererPage.on('console', (message) => {
-    if (message.type() === 'error' || message.type() === 'warning') {
-      recordRendererDiagnostic(`[console:${message.type()}] ${message.text()}`)
-    }
-  })
-  rendererPage.on('pageerror', (error) => {
-    recordRendererDiagnostic(`[pageerror] ${error.message}`)
-  })
+  attachRendererDiagnostics(rendererPage)
 })
 
 after(async () => {
-  await electronApp?.close()
-  await stopProcess(viteProcess)
-  if (testUserDataPath) {
-    await fs.rm(testUserDataPath, { recursive: true, force: true })
+  let cleanupError
+  try {
+    await electronApp?.close()
+  } catch (error) {
+    cleanupError = error
   }
+
+  try {
+    await stopRendererServer()
+  } catch (error) {
+    cleanupError ||= error
+  }
+
+  try {
+    if (testUserDataPath) {
+      await fs.rm(testUserDataPath, { recursive: true, force: true })
+    }
+  } catch (error) {
+    cleanupError ||= error
+  }
+
+  if (cleanupError) throw cleanupError
 })
 
 test('starts the desktop shell and renders the operations dashboard', async () => {
   const page = rendererPage || (await electronApp.firstWindow())
+  const diagnosticsStart = rendererDiagnostics.length
   await waitForAppShell(page)
   await assert.doesNotReject(() => page.waitForSelector('.page-title'))
 
   assert.equal(await page.title(), '运维仪表盘 - Ops Desktop')
   assert.equal(await page.locator('.page-title').textContent(), '运维仪表盘')
   assert.equal(await page.locator('[aria-label="系统发布"]').count(), 1)
+  assertNoFatalRendererDiagnostics(diagnosticsStart, 'Desktop shell startup')
 })
 
 test('navigates through the sidebar without a renderer error', async () => {
   const page = await electronApp.firstWindow()
+  const diagnosticsStart = rendererDiagnostics.length
 
   await page.locator('[aria-label="系统发布"]').click()
   await page.waitForURL(/#\/system-release$/)
@@ -157,6 +287,7 @@ test('navigates through the sidebar without a renderer error', async () => {
   await page.waitForFunction(
     () => document.querySelector('.page-title')?.textContent === '本地数据管理'
   )
+  assertNoFatalRendererDiagnostics(diagnosticsStart, 'Sidebar navigation')
 })
 
 test('通知设置保持紧凑按钮和 checkbox 垂直对齐', async () => {
