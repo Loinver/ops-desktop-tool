@@ -691,7 +691,12 @@ const taskRows = computed(() => {
       tone: nodeStatusTone(),
       enabled: nodeWatches.value.length > 0,
       toggleable: false,
-      lastRunAt: Math.max(0, ...nodeWatches.value.map((item) => Number(item.lastCheckedAt) || 0)),
+      lastRunAt: Math.max(
+        0,
+        ...nodeWatches.value.map((item) =>
+          Math.max(Number(item.lastSeenAt) || 0, Number(item.updatedAt) || 0)
+        )
+      ),
       nextRunAt: 0,
       runLabel: '立即检查',
       configRoute: '/node-services'

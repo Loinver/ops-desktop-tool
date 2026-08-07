@@ -106,7 +106,8 @@ function createApi(overrides = {}) {
           port: 3000,
           enabled: true,
           lastState: 'online',
-          lastCheckedAt: NOW - 1_000
+          lastSeenAt: NOW - 1_000,
+          updatedAt: NOW - 2_000
         }
       ]
     }),
@@ -285,6 +286,18 @@ describe('OpsTaskCenter closed-loop controls', () => {
       .findAll('.task-table tbody tr')
       .find((row) => row.text().includes('Node 服务关注'))
     expect(nodeRow.text()).toContain('持续关注')
+    expect(nodeRow.text()).toContain(
+      new Intl.DateTimeFormat('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      }).format(new Date(NOW - 1_000))
+    )
+    expect(nodeRow.text()).not.toContain('尚未运行')
 
     await nodeRow.findAll('button')[0].trigger('click')
     await flushPromises()
