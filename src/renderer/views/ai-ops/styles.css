@@ -349,10 +349,35 @@ button:disabled {
 }
 
 .source-notice {
+  align-items: center;
   padding: 10px 11px;
   border: 1px solid color-mix(in srgb, var(--primary) 16%, var(--border));
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--primary-soft) 70%, #fff);
+}
+
+.source-notice :deep(.t-icon) {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  color: var(--primary);
+}
+
+.source-notice > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.source-reliability-link {
+  flex: 0 0 auto;
+  gap: 2px;
+  padding: 4px 6px;
+  white-space: nowrap;
+}
+
+.source-reliability-link :deep(.t-icon) {
+  width: 14px;
+  height: 14px;
 }
 
 .source-empty {

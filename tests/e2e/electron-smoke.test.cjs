@@ -362,6 +362,47 @@ test('外观菜单支持跟随系统并保持顶部控件紧凑', async () => {
   assert.deepEqual(mode, { attribute: 'system', stored: 'system' })
 })
 
+test('模型来源提示图标居中且模型可靠性入口保持轻量', async () => {
+  const page = await electronApp.firstWindow()
+  await page.evaluate(() => {
+    window.location.hash = '#/ai-models'
+  })
+  await page.waitForURL(/#\/ai-models$/)
+
+  const notice = page.locator('.source-notice')
+  const sourceLink = page.locator('.source-reliability-link')
+  await notice.waitFor({ state: 'visible' })
+
+  const metrics = await notice.evaluate((container) => {
+    const icon = container.querySelector('.t-icon')
+    const iconBox = icon?.getBoundingClientRect()
+    const noticeBox = container.getBoundingClientRect()
+    return {
+      centerOffset:
+        iconBox && noticeBox
+          ? Math.abs(iconBox.y + iconBox.height / 2 - (noticeBox.y + noticeBox.height / 2))
+          : Number.POSITIVE_INFINITY,
+      iconHeight: iconBox?.height || 0,
+      iconWidth: iconBox?.width || 0
+    }
+  })
+
+  assert.ok(metrics.iconWidth >= 18)
+  assert.ok(metrics.iconHeight >= 18)
+  assert.ok(metrics.centerOffset <= 1, '来源提示图标应在提示区域中垂直居中')
+  assert.equal((await sourceLink.textContent()).trim(), '前往配置')
+  assert.equal(await sourceLink.getAttribute('title'), '前往模型可靠性')
+  assert.equal(await sourceLink.getAttribute('aria-label'), '前往模型可靠性')
+  assert.equal(
+    await sourceLink.evaluate((button) => button.classList.contains('btn-secondary')),
+    false
+  )
+  assert.ok((await sourceLink.evaluate((button) => button.offsetHeight)) <= 32)
+
+  await sourceLink.click()
+  await page.waitForURL(/#\/model-test$/)
+})
+
 test(
   'macOS 原生外观菜单可切换系统、浅色和深色模式',
   { skip: process.platform !== 'darwin' },

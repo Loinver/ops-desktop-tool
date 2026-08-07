@@ -65,13 +65,23 @@
                   统一从“模型可靠性”读取；仅显示最近一次模型测试通过的模型。接口地址和密钥始终使用最新配置。
                 </p>
               </div>
-              <button class="btn-secondary" type="button" @click="openModelReliability">
-                <t-icon name="jump" /> 前往模型可靠性
+              <button
+                class="btn-text source-reliability-link"
+                type="button"
+                title="前往模型可靠性"
+                aria-label="前往模型可靠性"
+                @click="openModelReliability"
+              >
+                <span>前往配置</span>
+                <t-icon name="chevron-right" aria-hidden="true" />
               </button>
             </div>
             <div class="source-notice">
-              <t-icon name="secured" /> 仅可选择最近一次模型测试通过的模型；支持 OpenAI Chat /
-              Responses、Anthropic Messages 与 Gemini generateContent。
+              <t-icon name="secured" aria-hidden="true" />
+              <span
+                >仅可选择最近一次模型测试通过的模型；支持 OpenAI Chat / Responses、Anthropic
+                Messages 与 Gemini generateContent。</span
+              >
             </div>
             <div v-if="sourceError" class="source-empty" role="status">
               <t-icon name="error-circle" />
