@@ -261,6 +261,26 @@ test('打包 smoke test 会校验保存后的巡检配置和巡检快照', () =>
     ).summary.ok,
     1
   )
+  assert.equal(
+    assertModelMonitorRendererResult(
+      {
+        ok: true,
+        entry: {
+          source: 'scheduled',
+          summary: { total: 1, ok: 1, failed: 0, gateway: 0 },
+          results: [
+            {
+              ...modelMonitorExpectation,
+              status: 'ok',
+              endpoint: 'responses · http://localhost:41000/v1'
+            }
+          ]
+        }
+      },
+      { ...modelMonitorExpectation, endpoint: undefined }
+    ).summary.ok,
+    1
+  )
   assert.throws(
     () =>
       assertModelMonitorRendererResult(

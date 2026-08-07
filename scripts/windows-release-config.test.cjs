@@ -128,7 +128,7 @@ test('Windows smoke test 可创建真实 SQLite WAL 模式的 CC Switch fixture'
   const directory = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'windows-ccswitch-'))
   let fixture = null
   try {
-    fixture = await createCcSwitchFixture(directory)
+    fixture = await createCcSwitchFixture(directory, { modelTest: {} })
     assert.equal(fs.existsSync(fixture.expectation.dbPath), true)
     assert.ok(fs.statSync(`${fixture.expectation.dbPath}-wal`).size > 0)
     assert.equal(shouldCreateCcSwitchFixture(['node', 'script', '--ccswitch-fixture']), true)
@@ -140,6 +140,7 @@ test('Windows smoke test 可创建真实 SQLite WAL 模式的 CC Switch fixture'
     assert.equal(result.providers[0].id, fixtureProvider.providerId)
     assert.equal(result.providers[0].apiKey, fixtureProvider.secret)
     assert.equal(result.providers[0].models[0].model, fixtureProvider.model)
+    assert.equal(Object.hasOwn(fixture.modelMonitorExpectation, 'endpoint'), false)
     assert.deepEqual(result.providers[0].endpoints, [
       fixtureProvider.baseUrl,
       fixtureProvider.endpoint

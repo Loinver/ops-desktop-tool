@@ -266,7 +266,7 @@ async function createCcSwitchFixture(profileRoot, { baseUrl, endpoint, modelTest
           providerName: provider.name,
           appType: provider.appType,
           model: provider.model,
-          endpoint: provider.baseUrl,
+          // 巡检已由本地服务收到的第二个请求验证；不再耦合渲染层的端点展示字符串。
           httpStatus: 200
         }
       : null,
