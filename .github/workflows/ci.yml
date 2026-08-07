@@ -100,39 +100,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build unsigned Mac package for CI
-        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+      - name: Warn about unsigned Mac release
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          echo "::warning::macOS release artifacts are not signed with Apple Developer ID and are not notarized."
+
+      - name: Build Mac package without Developer ID signing
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: pnpm electron:build:mac:${{ matrix.arch }}
-
-      - name: Validate Mac release credentials
-        if: startsWith(github.ref, 'refs/tags/v')
-        env:
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          for name in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
-            if [ -z "${!name:-}" ]; then
-              echo "::error::Missing required macOS release secret: ${name}"
-              exit 1
-            fi
-          done
-
-      - name: Build signed and notarized Mac package
-        if: startsWith(github.ref, 'refs/tags/v')
-        env:
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          pnpm build
-          pnpm exec electron-builder --mac --${{ matrix.arch }} --config.forceCodeSigning=true --publish never
 
       - name: Verify packaged Mac architecture
         run: |
@@ -152,14 +128,6 @@ jobs:
 
       - name: Smoke test packaged Mac app
         run: node scripts/mac-packaged-app-smoke.cjs --arch=${{ matrix.arch }}
-
-      - name: Verify signed and notarized Mac app
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: |
-          APP_PATH="$(find release -maxdepth 3 -type d -name '*.app' -print -quit)"
-          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
-          spctl --assess --type execute --verbose=4 "$APP_PATH"
-          xcrun stapler validate "$APP_PATH"
 
       - name: Upload Mac artifacts
         uses: actions/upload-artifact@v4
@@ -267,6 +235,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          body: |
+            macOS packages in this release are not signed with an Apple Developer ID certificate and are not notarized. macOS may display a security warning when opening them.
           fail_on_unmatched_files: true
           files: |
             release/*.dmg

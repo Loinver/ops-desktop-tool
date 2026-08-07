@@ -1,3 +1,8 @@
+## [1.0.4] - 2026-08-07
+### Changed
+- GitHub Release 改为发布未使用 Apple Developer ID 签名和公证的 macOS arm64/x64 安装包
+- Release 页面会明确提示 macOS 产物未签名，首次打开时可能出现系统安全提示
+
 ## [1.0.3] - 2026-08-06
 ### Fixed
 - 修复 base.css 中重复的全局按钮样式块（重复代码导致的潜在维护问题）
