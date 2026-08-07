@@ -91,7 +91,12 @@
       "icon": "build/icons/ops-desktop-rounded.png",
       "artifactName": "${productName}-${version}-windows-${arch}.${ext}"
     },
-    "npmRebuild": false
+    "npmRebuild": false,
+    "nsis": {
+      "guid": "3559e11b-2b00-5c6a-a3a4-ef9892dcdb41",
+      "oneClick": true,
+      "perMachine": false
+    }
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
