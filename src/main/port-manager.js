@@ -162,6 +162,37 @@ function filterNodeEntries(entries) {
   return entries.filter((entry) => isNodeProcess(entry.command))
 }
 
+function parsePsMetrics(output) {
+  const metrics = new Map()
+  for (const line of String(output || '').split(/\r?\n/)) {
+    const columns = line.trim().split(/\s+/)
+    if (columns.length < 3) continue
+    const pid = Number.parseInt(columns[0], 10)
+    const cpuPercent = Number.parseFloat(columns[1])
+    const rssKb = Number.parseInt(columns[2], 10)
+    if (!Number.isInteger(pid) || pid < 1) continue
+    metrics.set(pid, {
+      cpuPercent: Number.isFinite(cpuPercent) ? Math.max(0, cpuPercent) : 0,
+      memoryBytes: Number.isFinite(rssKb) ? Math.max(0, rssKb) * 1024 : 0
+    })
+  }
+  return metrics
+}
+
+async function enrichProcessMetrics(entries, { platform = os.platform(), runCommand = run } = {}) {
+  const items = Array.isArray(entries) ? entries : []
+  if (platform === 'win32' || items.length === 0) return items
+  const pids = [...new Set(items.map((entry) => Number(entry.pid)).filter((pid) => pid > 0))]
+  if (!pids.length) return items
+  try {
+    const output = await runCommand('ps', ['-o', 'pid=,pcpu=,rss=', '-p', pids.join(',')])
+    const metrics = parsePsMetrics(output)
+    return items.map((entry) => ({ ...entry, ...(metrics.get(entry.pid) || {}) }))
+  } catch {
+    return items
+  }
+}
+
 async function getPortUsage() {
   const platform = os.platform()
 
@@ -198,10 +229,11 @@ async function getPortUsage() {
       entries.push(...parseLsof(udpOutput.value, 'UDP'))
     }
 
+    const nodeEntries = sortEntries(filterNodeEntries(uniqueEntries(entries)))
     return {
       ok: true,
       platform,
-      entries: sortEntries(filterNodeEntries(uniqueEntries(entries))),
+      entries: await enrichProcessMetrics(nodeEntries, { platform }),
       scannedAt: new Date().toISOString()
     }
   } catch (error) {
@@ -332,7 +364,9 @@ module.exports = {
   killByPid,
   parseLsof,
   parseNetstatWindows,
+  parsePsMetrics,
   __testables: {
+    enrichProcessMetrics,
     normalizeSignal,
     terminateProcess
   }

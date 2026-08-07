@@ -15,6 +15,7 @@ const { registerSftpHandlers, closeSftpConnection } = require('./ipc/sftp')
 const { registerGptImageHandlers } = require('./ipc/gpt-image')
 const { registerModelTestHandlers } = require('./ipc/model-test')
 const { registerAiOpsHandlers } = require('./ipc/ai-ops')
+const { registerOpsPlatformHandlers, stopOpsPlatformService } = require('./ipc/ops-platform')
 const { registerDataBackupHandlers } = require('./ipc/data-backup')
 const {
   initializeOpsNotificationService,
@@ -30,6 +31,10 @@ const { installMacApplicationMenu } = require('./mac-application-menu')
 const { createMacDesktopController } = require('./mac-desktop-controller')
 const { IPC_CHANNELS } = require('../shared/ipc-channels')
 const logger = require('./utils/logger')
+const { installIpcHandleSecurity } = require('./utils/ipc-security')
+const { createIpcAuditPolicies } = require('./utils/ipc-audit-policies')
+const { emitOpsDataChange } = require('./utils/ops-data-change')
+const { finishAudit, startAudit } = require('./utils/security-audit')
 const {
   runPackagedRendererSmokeAssertions,
   runPackagedWindowsNotificationSmokeAssertion,
@@ -171,6 +176,7 @@ function registerAllHandlers() {
   registerModelTestHandlers()
   registerAiOpsHandlers()
   registerDataBackupHandlers()
+  registerOpsPlatformHandlers({ getMainWindow })
 }
 
 if (isMcpMode) {
@@ -187,6 +193,35 @@ if (isMcpMode) {
     logger.info('应用启动', { version: app.getVersion(), platform: process.platform })
     // Register the renderer bridge before loading any renderer document. This
     // prevents startup IPC (for example app:info) from racing window creation.
+    const userDataPath = app.getPath('userData')
+    installIpcHandleSecurity({
+      ipcMain,
+      getMainWindow,
+      isPackaged: app.isPackaged,
+      devServerUrl: process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173',
+      rendererEntryPath: path.join(app.getAppPath(), 'dist', 'renderer', 'index.html'),
+      auditPolicies: createIpcAuditPolicies(),
+      audit: {
+        start: (payload) =>
+          startAudit({
+            userDataPath,
+            ...payload,
+            actor: { type: 'renderer', id: 'main-window', source: 'electron-ipc' }
+          }),
+        finish: (context, payload) => {
+          const record = finishAudit({ userDataPath, auditId: context.auditId, ...payload })
+          emitOpsDataChange({
+            kind: 'security-audit-finished',
+            sourceType: 'security-audit',
+            sourceId: record.auditId,
+            status: record.status,
+            updatedAt: Date.parse(record.finishedAt)
+          })
+          return record
+        }
+      },
+      logger
+    })
     registerAllHandlers()
     createWindowsTaskbar()
     const hasWindowsTray = createWindowsTray()
@@ -299,6 +334,7 @@ if (isMcpMode) {
   app.on('will-quit', async () => {
     stopNodeServiceMonitor()
     stopOpsNotificationService()
+    stopOpsPlatformService()
     stopAutoBackupScheduler()
     stopAppUpdateService()
     macDesktopController?.destroy()

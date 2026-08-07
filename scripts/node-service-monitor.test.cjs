@@ -6,9 +6,10 @@ const test = require('node:test')
 
 const {
   checkWatchedNodeServices,
+  listNodeServiceHistory,
   listWatchedNodeServices,
   unwatchNodeService,
-  watchNodeService,
+  watchNodeService
 } = require('../src/main/utils/node-service-monitor')
 const { listOpsEvents } = require('../src/main/utils/ops-automation')
 
@@ -21,7 +22,7 @@ const service = {
   port: 3000,
   pid: 1200,
   command: 'node server.js',
-  address: '*:3000',
+  address: '*:3000'
 }
 
 test('仅关注的 Node 服务离线时创建事件，并在恢复后自动关闭', () => {
@@ -49,7 +50,9 @@ test('仅关注的 Node 服务离线时创建事件，并在恢复后自动关�
     ;[event] = listOpsEvents(userDataPath)
     assert.equal(event.occurrenceCount, 1)
 
-    const recovered = checkWatchedNodeServices(userDataPath, [{ ...service, pid: 1300 }], { now: 400 })
+    const recovered = checkWatchedNodeServices(userDataPath, [{ ...service, pid: 1300 }], {
+      now: 400
+    })
     assert.deepEqual(recovered.changes, [{ id: 'TCP:3000', type: 'recovered' }])
     ;[event] = listOpsEvents(userDataPath)
     assert.equal(event.status, 'resolved')
@@ -77,6 +80,39 @@ test('未关注服务不会产生事件，取消关注会关闭现有异常', ()
     const [event] = listOpsEvents(userDataPath)
     assert.equal(event.status, 'resolved')
     assert.match(event.resolutionNote, /取消关注/)
+  } finally {
+    fs.rmSync(userDataPath, { recursive: true, force: true })
+  }
+})
+
+test('记录有界 Node 服务状态与资源采样历史，并跳过短时间内未变化样本', () => {
+  const userDataPath = createTempDir()
+  try {
+    watchNodeService(userDataPath, service)
+    checkWatchedNodeServices(userDataPath, [{ ...service, cpuPercent: 12.5, memoryBytes: 1024 }], {
+      now: 100
+    })
+    checkWatchedNodeServices(userDataPath, [{ ...service, cpuPercent: 12.5, memoryBytes: 1024 }], {
+      now: 200
+    })
+    checkWatchedNodeServices(userDataPath, [], { now: 300 })
+    checkWatchedNodeServices(
+      userDataPath,
+      [{ ...service, pid: 1300, cpuPercent: 8, memoryBytes: 2048 }],
+      { now: 400 }
+    )
+
+    const history = listNodeServiceHistory(userDataPath, { serviceId: 'TCP:3000' })
+    assert.equal(history.length, 3)
+    assert.deepEqual(
+      history.map((item) => [item.state, item.pid, item.memoryBytes]),
+      [
+        ['online', 1300, 2048],
+        ['offline', 0, 0],
+        ['online', 1200, 1024]
+      ]
+    )
+    assert.equal(listNodeServiceHistory(userDataPath, { since: 350 }).length, 1)
   } finally {
     fs.rmSync(userDataPath, { recursive: true, force: true })
   }

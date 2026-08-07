@@ -15,6 +15,13 @@ export const FUNCTION_MENU_GROUPS = [
         icon: 'dashboard'
       },
       {
+        id: 'ops-task-center',
+        path: '/ops-task-center',
+        name: '统一任务中心',
+        description: '集中管理任务、Runbook、审计、诊断与本机趋势',
+        icon: 'root-list'
+      },
+      {
         id: 'ops-control-center',
         path: '/ops-control-center',
         name: '运维中心',

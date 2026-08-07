@@ -3,6 +3,7 @@ const net = require('node:net')
 const { EventEmitter } = require('node:events')
 const path = require('node:path')
 const { readJsonFile, writeJsonFile } = require('./json-store')
+const { emitOpsDataChange } = require('./ops-data-change')
 
 const EVENT_STATE_VERSION = 3
 const MAX_EVENTS = 500
@@ -20,6 +21,15 @@ function onOpsEventChange(listener) {
 
 function emitOpsEventChange(kind, item, previous = null) {
   opsEventEmitter.emit('change', { kind, item, previous })
+  emitOpsDataChange({
+    kind,
+    sourceType: item?.sourceType,
+    sourceId: item?.sourceId,
+    eventId: item?.id,
+    severity: item?.severity,
+    status: item?.status,
+    updatedAt: item?.updatedAt
+  })
 }
 
 function value(input, max = 500) {
@@ -236,6 +246,7 @@ function updateOpsEvent(userDataPath, id, status, note = '') {
   const state = loadEventState(userDataPath)
   const item = state.items.find((entry) => entry.id === id)
   if (!item) throw new Error('运维事件不存在')
+  const previous = normalizeStoredEvent(item)
   const nextStatus = normalizeEventStatus(status)
   const updatedAt = Date.now()
   item.status = nextStatus
@@ -262,7 +273,15 @@ function updateOpsEvent(userDataPath, id, status, note = '') {
     updatedAt
   )
   saveEventState(userDataPath, state)
-  return normalizeStoredEvent(item)
+  const normalized = normalizeStoredEvent(item)
+  const kind =
+    nextStatus === 'acknowledged'
+      ? 'acknowledged'
+      : nextStatus === 'resolved'
+        ? 'resolved'
+        : 'reopened'
+  emitOpsEventChange(kind, normalized, previous)
+  return normalized
 }
 function recoverOpsEvent(userDataPath, fingerprint, input = {}) {
   const state = loadEventState(userDataPath)
@@ -419,6 +438,13 @@ function saveAutomationTask(userDataPath, input) {
   if (index >= 0) state.tasks.splice(index, 1, task)
   else state.tasks.unshift(task)
   saveAutomationState(userDataPath, state)
+  emitOpsDataChange({
+    kind: index >= 0 ? 'automation-updated' : 'automation-created',
+    sourceType: 'automation',
+    sourceId: task.id,
+    status: task.enabled ? 'enabled' : 'disabled',
+    updatedAt: Date.now()
+  })
   return task
 }
 function deleteAutomationTask(userDataPath, id) {
@@ -428,6 +454,13 @@ function deleteAutomationTask(userDataPath, id) {
   if (!task) throw new Error('自动化任务不存在')
   state.tasks = next
   saveAutomationState(userDataPath, state)
+  emitOpsDataChange({
+    kind: 'automation-deleted',
+    sourceType: 'automation',
+    sourceId: id,
+    status: 'deleted',
+    updatedAt: Date.now()
+  })
   recoverOpsEvent(userDataPath, `automation:${id}`, {
     message: `巡检任务“${task.title}”已删除，关联事件自动关闭`,
     relatedId: id
@@ -501,6 +534,13 @@ async function runAutomationTask(userDataPath, id) {
   task.lastResult = entry
   task.runs = [entry, ...(task.runs || [])].slice(0, MAX_RUNS_PER_TASK)
   saveAutomationState(userDataPath, state)
+  emitOpsDataChange({
+    kind: 'automation-run',
+    sourceType: 'automation',
+    sourceId: task.id,
+    status: entry.ok ? 'ok' : 'failed',
+    updatedAt: completedAt
+  })
   const fingerprint = `automation:${task.id}`
   if (!entry.ok) {
     addOpsEvent(userDataPath, {

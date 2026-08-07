@@ -16,6 +16,12 @@ const routes = [
         meta: { title: '运维仪表盘' }
       },
       {
+        path: 'ops-task-center',
+        name: 'OpsTaskCenter',
+        component: () => import('../views/ops-task-center/index.vue'),
+        meta: { title: '统一任务中心' }
+      },
+      {
         path: 'ops-control-center',
         name: 'OpsControlCenter',
         component: () => import('../views/ops-control-center/index.vue'),

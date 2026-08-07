@@ -110,6 +110,15 @@ const IPC_CHANNELS = {
   MODEL_TEST_MONITOR_SAVE: 'modelTest:saveMonitorSettings',
   MODEL_TEST_MONITOR_RUN: 'modelTest:runInspection',
   OPS_DASHBOARD_GET: 'ops:getDashboard',
+  OPS_DATA_CHANGED: 'ops:dataChanged',
+  OPS_AUDIT_GET: 'ops:getAuditRecords',
+  OPS_RUNBOOK_PLAN: 'ops:planRunbook',
+  OPS_RUNBOOK_EXECUTE: 'ops:executeRunbook',
+  OPS_RUNBOOK_HISTORY_GET: 'ops:getRunbookHistory',
+  OPS_DIAGNOSTICS_PREVIEW: 'ops:previewDiagnostics',
+  OPS_DIAGNOSTICS_EXPORT: 'ops:exportDiagnostics',
+  OPS_INSIGHTS_GET: 'ops:getInsights',
+  OPS_INSIGHTS_SETTINGS_SAVE: 'ops:saveInsightsSettings',
 
   // AI 运维中心
   AI_OPS_GET_STATE: 'aiOps:getState',

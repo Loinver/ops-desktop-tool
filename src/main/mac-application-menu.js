@@ -1,6 +1,7 @@
 const fs = require('node:fs')
 const path = require('node:path')
 const { IPC_CHANNELS } = require('../shared/ipc-channels')
+const { assertTrustedIpcSender } = require('./utils/ipc-security')
 
 const THEME_MODES = Object.freeze(['system', 'light', 'dark'])
 const APPEARANCE_MENU_ITEM_IDS = Object.freeze({
@@ -190,8 +191,17 @@ function installMacApplicationMenu({ app, Menu, shell, getMainWindow, showMainWi
   buildAndInstallMenu()
 
   const syncThemeMode = (event, mode) => {
-    const window = getMainWindow()
-    if (!window || window.isDestroyed() || event.sender !== window.webContents) return
+    try {
+      assertTrustedIpcSender(event, {
+        getMainWindow,
+        isPackaged: app.isPackaged,
+        devServerUrl: process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173',
+        rendererEntryPath: path.join(app.getAppPath(), 'dist', 'renderer', 'index.html')
+      })
+    } catch (error) {
+      logger?.warn?.('忽略不受信任的主题同步请求', { message: error?.message })
+      return
+    }
     if (!isThemeMode(mode) || currentThemeMode === mode) return
     currentThemeMode = mode
     buildAndInstallMenu()

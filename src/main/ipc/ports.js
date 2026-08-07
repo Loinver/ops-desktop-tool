@@ -1,6 +1,7 @@
 const { app, ipcMain } = require('electron')
 const { IPC_CHANNELS } = require('../../shared/ipc-channels')
 const { getPortUsage, findPortUsage, killByPort, killByPid } = require('../port-manager')
+const { emitOpsDataChange } = require('../utils/ops-data-change')
 const {
   checkWatchedNodeServices,
   listWatchedNodeServices,
@@ -22,6 +23,12 @@ async function runNodeServiceMonitorCheck() {
     const result = await getPortUsage()
     if (!result.ok) return result
     const monitor = checkWatchedNodeServices(userDataPath(), result.entries)
+    emitOpsDataChange({
+      kind: 'node-monitor-checked',
+      sourceType: 'node-service',
+      status: 'ok',
+      updatedAt: monitor.checkedAt
+    })
     return { ok: true, ...monitor, entries: result.entries }
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : 'Node 服务关注检查失败' }
@@ -67,14 +74,30 @@ function registerPortsHandlers() {
   })
   ipcMain.handle(IPC_CHANNELS.NODE_MONITOR_WATCH, async (_event, payload) => {
     try {
-      return { ok: true, item: watchNodeService(userDataPath(), payload) }
+      const item = watchNodeService(userDataPath(), payload)
+      emitOpsDataChange({
+        kind: 'node-monitor-watched',
+        sourceType: 'node-service',
+        sourceId: item.id,
+        status: item.lastState,
+        updatedAt: item.updatedAt
+      })
+      return { ok: true, item }
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : '关注服务失败' }
     }
   })
   ipcMain.handle(IPC_CHANNELS.NODE_MONITOR_UNWATCH, async (_event, payload) => {
     try {
-      return { ok: true, item: unwatchNodeService(userDataPath(), payload) }
+      const item = unwatchNodeService(userDataPath(), payload)
+      emitOpsDataChange({
+        kind: 'node-monitor-unwatched',
+        sourceType: 'node-service',
+        sourceId: item?.id || payload?.id,
+        status: 'unwatched',
+        updatedAt: Date.now()
+      })
+      return { ok: true, item }
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : '取消关注服务失败' }
     }

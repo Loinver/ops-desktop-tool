@@ -18,6 +18,7 @@ const {
   saveAutomationTask,
   updateOpsEvent,
 } = require('../src/main/utils/ops-automation')
+const { onOpsDataChange } = require('../src/main/utils/ops-data-change')
 
 function createTempDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'ops-automation-test-'))
@@ -202,6 +203,70 @@ test('标记事件已读会广播变更，供 Dock 等桌面入口同步未读�
     assert.equal(changes[0].kind, 'read')
     assert.equal(changes[0].item.id, item.id)
     assert.ok(changes[0].item.readAt > 0)
+  } finally {
+    stopListening()
+    fs.rmSync(userDataPath, { recursive: true, force: true })
+  }
+})
+
+test('人工确认、解决和重新打开事件都会广播前后状态', () => {
+  const userDataPath = createTempDir()
+  const changes = []
+  const stopListening = onOpsEventChange((change) => changes.push(change))
+  try {
+    const item = addOpsEvent(userDataPath, {
+      fingerprint: 'system:manual-event-update',
+      sourceType: 'system',
+      severity: 'warning',
+      title: '人工状态更新测试'
+    })
+    changes.length = 0
+
+    updateOpsEvent(userDataPath, item.id, 'acknowledged', '开始处理')
+    updateOpsEvent(userDataPath, item.id, 'resolved', '处理完成')
+    updateOpsEvent(userDataPath, item.id, 'open', '需要继续观察')
+
+    assert.deepEqual(
+      changes.map((change) => change.kind),
+      ['acknowledged', 'resolved', 'reopened']
+    )
+    assert.equal(changes[0].previous.status, 'open')
+    assert.equal(changes[0].item.status, 'acknowledged')
+    assert.equal(changes[1].previous.status, 'acknowledged')
+    assert.equal(changes[1].item.status, 'resolved')
+    assert.equal(changes[2].previous.status, 'resolved')
+    assert.equal(changes[2].item.status, 'open')
+  } finally {
+    stopListening()
+    fs.rmSync(userDataPath, { recursive: true, force: true })
+  }
+})
+
+test('自动化任务配置变化会进入统一实时数据信号', () => {
+  const userDataPath = createTempDir()
+  const changes = []
+  const stopListening = onOpsDataChange((change) => changes.push(change))
+  try {
+    const task = saveAutomationTask(userDataPath, {
+      title: '统一实时信号测试',
+      type: 'http-health',
+      target: 'https://example.test/health',
+      expectedStatus: 200,
+      intervalMinutes: 5,
+      timeoutMs: 1000
+    })
+
+    assert.equal(changes.length, 1)
+    assert.deepEqual(changes[0], {
+      kind: 'automation-created',
+      sourceType: 'automation',
+      sourceId: task.id,
+      eventId: '',
+      severity: '',
+      status: 'enabled',
+      updatedAt: changes[0].updatedAt
+    })
+    assert.ok(changes[0].updatedAt > 0)
   } finally {
     stopListening()
     fs.rmSync(userDataPath, { recursive: true, force: true })

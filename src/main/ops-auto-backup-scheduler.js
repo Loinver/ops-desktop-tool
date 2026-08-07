@@ -1,5 +1,6 @@
 const { app, safeStorage } = require('electron')
 const logger = require('./utils/logger')
+const { emitOpsDataChange } = require('./utils/ops-data-change')
 const { decryptSecret, encryptSecret } = require('./utils/secure-secret')
 const {
   AUTO_BACKUP_INTERVALS,
@@ -31,9 +32,14 @@ function recordAutoBackupRunFailure(error) {
   let settings
   try {
     settings = recordAutoBackupFailure({ userDataPath: runtime.userDataPath, error })
-  } catch {
-    return
-  }
+  } catch {}
+  emitOpsDataChange({
+    kind: 'auto-backup-failed',
+    sourceType: 'data-backup',
+    sourceId: 'auto-backup',
+    status: 'failed',
+    updatedAt: Date.now()
+  })
   if (!settings?.enabled) return
   try {
     recordAutoBackupExecutionFailure({ userDataPath: runtime.userDataPath })
@@ -59,6 +65,13 @@ function scheduleAutoBackup() {
           now: result.entry?.createdAt
         })
       } catch {}
+      emitOpsDataChange({
+        kind: 'auto-backup-completed',
+        sourceType: 'data-backup',
+        sourceId: result.entry?.id || 'auto-backup',
+        status: 'ok',
+        updatedAt: result.entry?.createdAt
+      })
     } catch (error) {
       logger.error('执行自动数据备份失败', { message: error?.message, stack: error?.stack })
       recordAutoBackupRunFailure(error)
@@ -83,6 +96,13 @@ function saveAutoBackupSchedule(input) {
     encryptPassword: (value) => encryptSecret(safeStorage, value)
   })
   scheduleAutoBackup()
+  emitOpsDataChange({
+    kind: 'auto-backup-settings-saved',
+    sourceType: 'data-backup',
+    sourceId: 'auto-backup',
+    status: settings.enabled ? 'enabled' : 'disabled',
+    updatedAt: Date.now()
+  })
   return settings
 }
 
@@ -100,6 +120,13 @@ function runAutoBackupNow() {
         now: result.entry?.createdAt
       })
     } catch {}
+    emitOpsDataChange({
+      kind: 'auto-backup-completed',
+      sourceType: 'data-backup',
+      sourceId: result.entry?.id || 'auto-backup',
+      status: 'ok',
+      updatedAt: result.entry?.createdAt
+    })
     return result
   } catch (error) {
     recordAutoBackupRunFailure(error)

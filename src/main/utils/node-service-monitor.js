@@ -4,9 +4,16 @@ const { addOpsEvent, recoverOpsEvent } = require('./ops-automation')
 
 const STATE_VERSION = 1
 const MAX_WATCHES = 100
+const MAX_HISTORY_ITEMS = 10000
+const MAX_HISTORY_PER_SERVICE = 576
+const HISTORY_SAMPLE_INTERVAL_MS = 5 * 60_000
 
 function monitorPath(userDataPath) {
   return path.join(userDataPath, 'node-service-monitor.json')
+}
+
+function historyPath(userDataPath) {
+  return path.join(userDataPath, 'node-service-history.json')
 }
 
 function text(input, max = 300) {
@@ -85,6 +92,110 @@ function saveNodeServiceMonitorState(userDataPath, state) {
 
 function listWatchedNodeServices(userDataPath) {
   return loadNodeServiceMonitorState(userDataPath).items
+}
+
+function normalizeHistoryEntry(input = {}) {
+  const protocol = normalizeProtocol(input.protocol)
+  const port = normalizePort(input.port)
+  const serviceId = watchId(protocol, port)
+  return {
+    id: text(input.id, 120) || `${serviceId}:${Number(input.checkedAt) || Date.now()}`,
+    serviceId,
+    protocol,
+    port,
+    state: ['online', 'offline', 'unknown'].includes(input.state) ? input.state : 'unknown',
+    pid: Math.max(0, Number(input.pid) || 0),
+    cpuPercent: Math.max(0, Number(input.cpuPercent) || 0),
+    memoryBytes: Math.max(0, Number(input.memoryBytes) || 0),
+    commandLabel: text(input.commandLabel || input.command, 300),
+    checkedAt: Number(input.checkedAt) || Date.now()
+  }
+}
+
+function loadNodeServiceHistory(userDataPath) {
+  const stored = readJsonFile(historyPath(userDataPath), { version: STATE_VERSION, items: [] })
+  const items = []
+  for (const raw of Array.isArray(stored?.items) ? stored.items : []) {
+    try {
+      items.push(normalizeHistoryEntry(raw))
+    } catch {}
+  }
+  return {
+    version: STATE_VERSION,
+    items: items.sort((a, b) => b.checkedAt - a.checkedAt).slice(0, MAX_HISTORY_ITEMS)
+  }
+}
+
+function saveNodeServiceHistory(userDataPath, items) {
+  const counts = new Map()
+  const normalized = []
+  for (const raw of Array.isArray(items) ? items : []) {
+    let item
+    try {
+      item = normalizeHistoryEntry(raw)
+    } catch {
+      continue
+    }
+    const count = counts.get(item.serviceId) || 0
+    if (count >= MAX_HISTORY_PER_SERVICE) continue
+    counts.set(item.serviceId, count + 1)
+    normalized.push(item)
+    if (normalized.length >= MAX_HISTORY_ITEMS) break
+  }
+  if (!writeJsonFile(historyPath(userDataPath), { version: STATE_VERSION, items: normalized })) {
+    throw new Error('保存 Node 服务历史失败')
+  }
+  return normalized
+}
+
+function listNodeServiceHistory(userDataPath, options = {}) {
+  const serviceId = text(options.serviceId, 120)
+  const since = Math.max(0, Number(options.since) || 0)
+  const limit = Math.min(2000, Math.max(1, Number(options.limit) || 500))
+  return loadNodeServiceHistory(userDataPath)
+    .items.filter(
+      (item) => (!serviceId || item.serviceId === serviceId) && (!since || item.checkedAt >= since)
+    )
+    .slice(0, limit)
+}
+
+function recordNodeServiceSamples(userDataPath, watches, entries, checkedAt) {
+  const history = loadNodeServiceHistory(userDataPath).items
+  const latestByService = new Map()
+  for (const item of history) {
+    if (!latestByService.has(item.serviceId)) latestByService.set(item.serviceId, item)
+  }
+  const activeEntries = Array.isArray(entries) ? entries : []
+  const next = []
+  for (const watch of Array.isArray(watches) ? watches : []) {
+    if (!watch.enabled) continue
+    const matched = activeEntries.find(
+      (entry) =>
+        text(entry.protocol, 10).toUpperCase() === watch.protocol &&
+        Number(entry.port) === watch.port
+    )
+    const sample = normalizeHistoryEntry({
+      protocol: watch.protocol,
+      port: watch.port,
+      state: matched ? 'online' : 'offline',
+      pid: matched?.pid || 0,
+      cpuPercent: matched?.cpuPercent || 0,
+      memoryBytes: matched?.memoryBytes || 0,
+      commandLabel: matched?.command || watch.commandLabel,
+      checkedAt
+    })
+    const latest = latestByService.get(sample.serviceId)
+    const changed =
+      !latest ||
+      latest.state !== sample.state ||
+      latest.pid !== sample.pid ||
+      latest.cpuPercent !== sample.cpuPercent ||
+      latest.memoryBytes !== sample.memoryBytes
+    if (!changed && sample.checkedAt - latest.checkedAt < HISTORY_SAMPLE_INTERVAL_MS) continue
+    next.push(sample)
+  }
+  if (!next.length) return history
+  return saveNodeServiceHistory(userDataPath, [...next, ...history])
 }
 
 function watchNodeService(userDataPath, input = {}) {
@@ -211,14 +322,21 @@ function checkWatchedNodeServices(userDataPath, entries = [], options = {}) {
   }
 
   saveNodeServiceMonitorState(userDataPath, state)
+  try {
+    recordNodeServiceSamples(userDataPath, state.items, activeEntries, now)
+  } catch {}
   return { items: state.items, changes, checkedAt: now }
 }
 
 module.exports = {
   checkWatchedNodeServices,
   eventFingerprint,
+  listNodeServiceHistory,
   listWatchedNodeServices,
+  loadNodeServiceHistory,
   loadNodeServiceMonitorState,
+  recordNodeServiceSamples,
+  saveNodeServiceHistory,
   saveNodeServiceMonitorState,
   unwatchNodeService,
   watchNodeService

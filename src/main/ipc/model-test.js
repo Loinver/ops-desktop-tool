@@ -24,7 +24,15 @@ const {
 const { loadReleaseHistory, getActiveReleaseProfile } = require('../utils/release-store')
 const { getAutoBackupHealth, readAutoBackupSettings } = require('../utils/app-data-backup')
 const { buildOpsDashboardData } = require('../utils/ops-dashboard')
-const { addOpsEvent, recoverOpsEvent } = require('../utils/ops-automation')
+const { emitOpsDataChange } = require('../utils/ops-data-change')
+const {
+  addOpsEvent,
+  eventSummary,
+  listAutomationTasks,
+  listOpsEvents,
+  recoverOpsEvent
+} = require('../utils/ops-automation')
+const { listWatchedNodeServices } = require('../utils/node-service-monitor')
 
 const DEFAULT_TIMEOUT_MS = 30_000
 /**
@@ -1059,6 +1067,13 @@ function saveModelTestSnapshot(snapshot = {}) {
   if (!writeJsonFile(modelHistoryPath(), history.slice(0, MAX_MODEL_TEST_HISTORY))) {
     throw new Error('保存模型测试历史失败')
   }
+  emitOpsDataChange({
+    kind: 'model-inspection-saved',
+    sourceType: 'model-monitor',
+    sourceId: entry.id,
+    status: summary.failed + summary.gateway > 0 ? 'failed' : 'ok',
+    updatedAt: entry.finishedAt
+  })
   return entry
 }
 
@@ -1069,7 +1084,14 @@ function loadMonitorSettings() {
 function saveMonitorSettings(settings = {}) {
   const next = updateMonitorSettings(loadMonitorSettings(), settings)
   if (!writeJsonFile(monitorSettingsPath(), next)) throw new Error('保存巡检设置失败')
-  return loadMonitorSettings()
+  const saved = loadMonitorSettings()
+  emitOpsDataChange({
+    kind: 'model-monitor-settings-saved',
+    sourceType: 'model-monitor',
+    status: saved.enabled ? 'enabled' : 'disabled',
+    updatedAt: Date.now()
+  })
+  return saved
 }
 
 async function refreshProviderCache() {
@@ -1228,17 +1250,35 @@ function startMonitorTimer() {
   monitorTimer.unref?.()
 }
 
-function dashboardData() {
-  const activeProfile = getActiveReleaseProfile()
-  return buildOpsDashboardData({
-    modelHistory: loadModelTestHistory(),
+function dashboardData({
+  getUserDataPath = () => app.getPath('userData'),
+  getActiveProfile = getActiveReleaseProfile,
+  loadModelHistory = loadModelTestHistory,
+  loadReleaseRecords = loadReleaseHistory,
+  loadMonitor = loadMonitorSettings,
+  getBackupHealth = getAutoBackupHealth,
+  getBackupSettings = readAutoBackupSettings,
+  listEvents = listOpsEvents,
+  getEventTotals = eventSummary,
+  listTasks = listAutomationTasks,
+  listNodeServices = listWatchedNodeServices,
+  buildDashboard = buildOpsDashboardData
+} = {}) {
+  const userDataPath = getUserDataPath()
+  const activeProfile = getActiveProfile()
+  return buildDashboard({
+    modelHistory: loadModelHistory(),
     // 首页发布指标必须与系统发布页一样，严格限定在当前活动环境。
-    releaseHistory: loadReleaseHistory({ profileId: activeProfile?.id }),
-    monitor: loadMonitorSettings(),
+    releaseHistory: loadReleaseRecords({ profileId: activeProfile?.id }),
+    monitor: loadMonitor(),
     backup: {
-      health: getAutoBackupHealth(app.getPath('userData')),
-      settings: readAutoBackupSettings(app.getPath('userData'))
-    }
+      health: getBackupHealth(userDataPath),
+      settings: getBackupSettings(userDataPath)
+    },
+    events: listEvents(userDataPath, { limit: 500 }),
+    eventTotals: getEventTotals(userDataPath),
+    automationTasks: listTasks(userDataPath),
+    nodeServices: listNodeServices(userDataPath)
   })
 }
 
@@ -1365,12 +1405,14 @@ function registerModelTestHandlers() {
 
 module.exports = {
   registerModelTestHandlers,
+  runScheduledInspection,
   __testables: {
     requestOnce,
     requestWithRetry,
     delay,
     testModel,
     cancelledModelResult,
-    filterProviderModels
+    filterProviderModels,
+    dashboardData
   }
 }
