@@ -235,6 +235,10 @@ jobs:
         shell: bash
         run: |
           cd release
+          for file in "Ops Desktop-"*; do
+            [ -e "$file" ] || continue
+            mv -- "$file" "Ops.Desktop-${file#Ops Desktop-}"
+          done
           sha256sum -- *.dmg *.zip *.exe > SHA256SUMS.txt
 
       - name: Publish release artifacts

@@ -154,6 +154,22 @@ test('requires the exact versioned product installer when a release version is s
       ),
     /未找到.*安装包/
   )
+
+  assert.equal(
+    selectReleaseAsset(
+      releaseWithAssets([asset('Ops.Desktop-2.0.0-arm64.dmg'), asset('SHA256SUMS.txt')]),
+      { platform: 'darwin', arch: 'arm64', version: '2.0.0' }
+    ).asset.name,
+    'Ops.Desktop-2.0.0-arm64.dmg'
+  )
+
+  assert.equal(
+    selectReleaseAsset(
+      releaseWithAssets([asset('Ops.Desktop-2.0.0-windows-x64.exe'), asset('SHA256SUMS.txt')]),
+      { platform: 'win32', arch: 'x64', version: '2.0.0' }
+    ).asset.name,
+    'Ops.Desktop-2.0.0-windows-x64.exe'
+  )
 })
 
 test('only exposes trusted GitHub release URLs', () => {
@@ -175,12 +191,24 @@ test('parses sha256sum lines with filenames containing spaces', () => {
     findExpectedChecksum(new Map([['ops desktop-arm64.dmg', HASH_A]]), 'Ops Desktop-arm64.dmg'),
     HASH_A
   )
+  assert.equal(findExpectedChecksum(map, 'Ops.Desktop-arm64.dmg'), HASH_A)
 })
 
 test('rejects invalid hashes and conflicting duplicate checksum entries', () => {
   assert.throws(() => parseSha256Sums(`not-a-hash  app.dmg`), /非法 hash/)
   assert.throws(() => parseSha256Sums(`${HASH_A}  app.dmg\n${HASH_B}  app.dmg`), /校验值冲突/)
   assert.throws(() => findExpectedChecksum(new Map(), 'missing.dmg'), /缺少文件/)
+  assert.throws(
+    () =>
+      findExpectedChecksum(
+        new Map([
+          ['Ops Desktop-arm64.dmg', HASH_A],
+          ['Ops.Desktop-arm64.dmg', HASH_B]
+        ]),
+        'Ops.Desktop-arm64.dmg'
+      ),
+    /别名或大小写冲突/
+  )
 })
 
 test('returns a public release summary without asset URLs or tokens', () => {

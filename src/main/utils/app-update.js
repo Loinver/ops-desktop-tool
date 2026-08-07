@@ -3,6 +3,7 @@ const SEMVER_PATTERN =
 const SHA256_PATTERN = /^[0-9a-f]{64}$/i
 const SUPPORTED_PLATFORMS = new Set(['darwin', 'win32'])
 const SUPPORTED_ARCHITECTURES = new Set(['x64', 'arm64'])
+const RELEASE_PRODUCT_NAMES = Object.freeze(['Ops Desktop', 'Ops.Desktop'])
 
 function normalizeVersion(value) {
   if (typeof value !== 'string') throw new Error('版本号必须是字符串')
@@ -133,18 +134,21 @@ function selectReleaseAsset(release, options = {}) {
   const candidates = assets.map(getSafeAssetCandidate).filter(Boolean)
 
   const expectedVersion = options.version ? normalizeVersion(options.version) : null
-  const expectedName = expectedVersion
-    ? platform === 'darwin'
-      ? `Ops Desktop-${expectedVersion}-${arch}.dmg`
-      : `Ops Desktop-${expectedVersion}-windows-${arch}.exe`
-    : null
+  const expectedNames = expectedVersion
+    ? RELEASE_PRODUCT_NAMES.map((productName) =>
+        platform === 'darwin'
+          ? `${productName}-${expectedVersion}-${arch}.dmg`
+          : `${productName}-${expectedVersion}-windows-${arch}.exe`
+      )
+    : []
   const exactPattern =
     platform === 'darwin'
-      ? new RegExp(`^Ops Desktop(?:-.+)?-${arch}\\.dmg$`, 'i')
-      : new RegExp(`^Ops Desktop(?:-.+)?-windows-${arch}\\.exe$`, 'i')
+      ? new RegExp(`^Ops(?: Desktop|\\.Desktop)(?:-.+)?-${arch}\\.dmg$`, 'i')
+      : new RegExp(`^Ops(?: Desktop|\\.Desktop)(?:-.+)?-windows-${arch}\\.exe$`, 'i')
 
-  const exactMatch = expectedName
-    ? candidates.find((candidate) => candidate.name.toLowerCase() === expectedName.toLowerCase())
+  const normalizedExpectedNames = new Set(expectedNames.map((name) => name.toLowerCase()))
+  const exactMatch = expectedNames.length
+    ? candidates.find((candidate) => normalizedExpectedNames.has(candidate.name.toLowerCase()))
     : candidates.find((candidate) => exactPattern.test(candidate.name))
   const selected = exactMatch
 
@@ -202,12 +206,16 @@ function normalizeChecksum(value) {
 function findExpectedChecksum(map, assetName) {
   if (!(map instanceof Map)) throw new Error('校验值必须是 Map')
   const safeName = sanitizeAssetName(assetName)
-
-  if (map.has(safeName)) return normalizeChecksum(map.get(safeName))
+  const aliases = new Set([safeName.toLowerCase()])
+  if (/^Ops\.Desktop-/i.test(safeName)) {
+    aliases.add(safeName.replace(/^Ops\.Desktop-/i, 'Ops Desktop-').toLowerCase())
+  } else if (/^Ops Desktop-/i.test(safeName)) {
+    aliases.add(safeName.replace(/^Ops Desktop-/i, 'Ops.Desktop-').toLowerCase())
+  }
 
   const matches = []
   for (const [filename, value] of map.entries()) {
-    if (typeof filename === 'string' && filename.toLowerCase() === safeName.toLowerCase()) {
+    if (typeof filename === 'string' && aliases.has(filename.toLowerCase())) {
       matches.push(normalizeChecksum(value))
     }
   }
@@ -215,7 +223,7 @@ function findExpectedChecksum(map, assetName) {
   if (matches.length === 0) throw new Error(`SHA256SUMS 中缺少文件 ${safeName} 的校验值`)
   const uniqueChecksums = [...new Set(matches)]
   if (uniqueChecksums.length > 1) {
-    throw new Error(`SHA256SUMS 中存在文件名大小写冲突: ${safeName}`)
+    throw new Error(`SHA256SUMS 中存在文件名别名或大小写冲突: ${safeName}`)
   }
   return uniqueChecksums[0]
 }
