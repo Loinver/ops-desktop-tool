@@ -262,7 +262,7 @@ Vite 只构建 Renderer 到 `dist/renderer`，Electron Main 和 Shared 源文件
 - Renderer Vitest 测试
 - 端口解析与 Renderer IPC API 边界回归脚本
 
-`pnpm test:e2e` 使用 Playwright 的 Electron 驱动启动临时桌面进程，验证默认工作台与关键路由。Linux CI 使用 `xvfb-run` 提供虚拟显示环境。
+`pnpm test:e2e` 使用 Playwright 的 Electron 驱动启动临时桌面进程，验证默认工作台与关键路由。GitHub Actions 的 Ubuntu 测试 Runner 使用 `xvfb-run` 提供虚拟显示环境；该任务只执行质量检查，不产出 Linux 安装包。
 
 当前重点覆盖：
 

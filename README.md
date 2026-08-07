@@ -83,18 +83,16 @@ pnpm mcp
 # 构建渲染进程到 dist/renderer
 pnpm build
 
-# 当前平台安装包
-pnpm electron:build
-
-# 指定平台
+# 构建指定平台安装包
 pnpm electron:build:mac
 pnpm electron:build:mac:arm64
 pnpm electron:build:mac:x64
 pnpm electron:build:win
 pnpm electron:build:win:x64
 pnpm electron:build:win:arm64
-pnpm electron:build:linux
 ```
+
+所有打包命令都会显式使用 `--publish never`，因此普通构建只生成本地安装包；GitHub Release 资产由 CI 最后的发布步骤统一上传。
 
 Windows CI 会分别在原生 x64 与 ARM64 Runner 上生成 NSIS 安装包和 ZIP，并验证解压版与安装版均可启动、读取 CC Switch SQLite/WAL 配置、创建任务栏未读角标以及调用 Windows 系统通知。安装生命周期 smoke 会静默安装、运行、卸载，并确认安装目录已清理。
 
@@ -229,7 +227,7 @@ Windows CI 也会在构建完成后直接启动 `win-unpacked/Ops Desktop.exe`�
 
 ### 安装与使用
 
-1. 下载对应平台的 `.dmg`（macOS）、`.exe`（Windows）或 `.AppImage`（Linux）
+1. 下载对应平台的 `.dmg`（macOS）或 `.exe`（Windows）
 2. 运行安装程序或将应用拖入「应用程序」文件夹
 3. 首次运行时配置 AI Provider（OpenAI 兼容）和 SFTP（可选）
 
@@ -240,10 +238,3 @@ Windows CI 也会在构建完成后直接启动 `win-unpacked/Ops Desktop.exe`�
 ### Windows
 
 运行 `.exe` 安装程序，或解压 `.zip` 后直接运行。
-
-### Linux
-
-```bash
-chmod +x 'Ops Desktop-*.AppImage'
-./'Ops Desktop-*.AppImage'
-```

@@ -19,17 +19,15 @@
     "format": "prettier --write \"src/**/*.{js,vue}\" \"*.{js,mjs,json}\"",
     "format:check": "prettier --check \"src/**/*.{js,vue}\" \"*.{js,mjs,json}\"",
     "test:sftp": "node --test scripts/sftp-deploy-safety.test.cjs",
-    "electron:build": "vite build && electron-builder",
-    "electron:build:mac": "vite build && electron-builder --mac",
-    "electron:build:win": "vite build && electron-builder --win",
-    "electron:build:linux": "vite build && electron-builder --linux",
-    "electron:build:win:arm64": "vite build && electron-builder --win --arm64",
-    "electron:build:win:x64": "vite build && electron-builder --win --x64",
+    "electron:build:mac": "vite build && electron-builder --mac --publish never",
+    "electron:build:win": "vite build && electron-builder --win --publish never",
+    "electron:build:win:arm64": "vite build && electron-builder --win --arm64 --publish never",
+    "electron:build:win:x64": "vite build && electron-builder --win --x64 --publish never",
     "verify": "pnpm format:check && pnpm lint && pnpm test && pnpm test:e2e",
     "test:e2e": "node --test tests/e2e/*.test.cjs",
-    "electron:build:mac:arm64": "vite build && electron-builder --mac --arm64",
-    "electron:build:mac:x64": "vite build && electron-builder --mac --x64",
-    "electron:build:mac:release": "vite build && electron-builder --mac --arm64 --x64 --config.forceCodeSigning=true"
+    "electron:build:mac:arm64": "vite build && electron-builder --mac --arm64 --publish never",
+    "electron:build:mac:x64": "vite build && electron-builder --mac --x64 --publish never",
+    "electron:build:mac:release": "vite build && electron-builder --mac --arm64 --x64 --config.forceCodeSigning=true --publish never"
   },
   "keywords": [
     "electron",
@@ -92,13 +90,6 @@
       ],
       "icon": "build/icons/ops-desktop-rounded.png",
       "artifactName": "${productName}-${version}-windows-${arch}.${ext}"
-    },
-    "linux": {
-      "target": [
-        "AppImage",
-        "deb"
-      ],
-      "icon": "build/icons/ops-desktop-rounded.png"
     },
     "npmRebuild": false
   },
