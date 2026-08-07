@@ -199,11 +199,18 @@ MCP 服务通过 stdio 提供严格只读的 `get_release_history`、`get_model_
 
 ### 版本管理
 
-使用 `npm version patch/minor/major` 或手动修改 `package.json` 中的版本，然后重新打包。
+先使用 `npm version patch/minor/major` 或手动修改 `package.json` 中的版本，再创建与版本完全一致的 `v*` tag。例如版本为 `1.0.3` 时，推送 `v1.0.3`：
+
+```bash
+git tag v1.0.3
+git push origin v1.0.3
+```
+
+推送匹配 `package.json` 版本的 `v*` tag 会触发完整 CI，并自动创建或更新对应的 GitHub Release，上传现有的 macOS `.dmg`/`.zip` 和 Windows `.exe`/`.zip` 产物。`main` push 和针对 `main` 的 PR 只构建与验证，不发布 Release；tag 与 `package.json` 版本不一致时，CI 会直接失败。
 
 ### macOS 签名与公证
 
-macOS Release 会分别生成 `arm64` 和 `x64` 的 DMG/ZIP，并在上传前完成 Developer ID 签名、Hardened Runtime、公证和 Gatekeeper 校验。GitHub 仓库需要配置以下 Actions Secrets：
+v* tag 发布会分别生成 `arm64` 和 `x64` 的 DMG/ZIP，并在上传前完成 Developer ID 签名、Hardened Runtime、公证和 Gatekeeper 校验。要启用 macOS 正式发布，GitHub 仓库必须配置以下 Actions Secrets：
 
 - `CSC_LINK`：Developer ID Application 证书的 Base64、文件 URL 或私有下载地址
 - `CSC_KEY_PASSWORD`：证书导出密码
@@ -211,7 +218,7 @@ macOS Release 会分别生成 `arm64` 和 `x64` 的 DMG/ZIP，并在上传前完
 - `APPLE_APP_SPECIFIC_PASSWORD`：Apple ID 专用密码
 - `APPLE_TEAM_ID`：Apple Developer Team ID
 
-发布 GitHub Release 后，CI 只会上传通过 `codesign`、`spctl` 和 `stapler` 验证的 macOS 产物；任一凭证缺失或验证失败都会阻止发布。
+只有 v* tag push 会执行 macOS 凭证校验、签名、公证和 `codesign`、`spctl`、`stapler` 验证；任一凭证缺失或验证失败都会阻止发布。main/PR 使用 unsigned 构建，仅用于 CI 验证。
 
 CI 分别使用 `macos-15`（Apple Silicon）和 `macos-15-intel`（Intel）Runner 构建，并在每个架构上直接启动打包后的 `.app`，确认主进程与渲染页面能够正常加载后才上传产物。
 

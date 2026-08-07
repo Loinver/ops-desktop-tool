@@ -38,7 +38,9 @@ test('macOS build scripts expose arm64, x64 and signed release targets', () => {
 })
 
 test('release workflow signs, notarizes and verifies both Mac architectures', () => {
-  assert.match(workflow, /types: \[published\]/)
+  assert.match(workflow, /tags:\n      - "v\*"/)
+  assert.doesNotMatch(workflow, /types: \[published\]/)
+  assert.match(workflow, /if: startsWith\(github\.ref, 'refs\/tags\/v'\)/)
   assert.match(workflow, /node-version: '24'/)
   assert.doesNotMatch(workflow, /node-version: '20'/)
   assert.match(workflow, /os: macos-15/)

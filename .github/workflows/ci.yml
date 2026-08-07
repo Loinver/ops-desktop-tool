@@ -7,8 +7,6 @@ on:
       - "v*"
   pull_request:
     branches: [main]
-  release:
-    types: [published]
 
 jobs:
   test:
@@ -26,6 +24,15 @@ jobs:
         with:
           node-version: '24'
           cache: 'pnpm'
+
+      - name: Validate release tag version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          expected_tag="v$(node -p "require('./package.json').version")"
+          if [ "$GITHUB_REF_NAME" != "$expected_tag" ]; then
+            echo "::error::Release tag $GITHUB_REF_NAME must exactly match package.json version tag $expected_tag"
+            exit 1
+          fi
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -94,13 +101,13 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build unsigned Mac package for CI
-        if: github.event_name != 'release'
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: pnpm electron:build:mac:${{ matrix.arch }}
 
       - name: Validate Mac release credentials
-        if: github.event_name == 'release'
+        if: startsWith(github.ref, 'refs/tags/v')
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
@@ -116,7 +123,7 @@ jobs:
           done
 
       - name: Build signed and notarized Mac package
-        if: github.event_name == 'release'
+        if: startsWith(github.ref, 'refs/tags/v')
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
@@ -147,7 +154,7 @@ jobs:
         run: node scripts/mac-packaged-app-smoke.cjs --arch=${{ matrix.arch }}
 
       - name: Verify signed and notarized Mac app
-        if: github.event_name == 'release'
+        if: startsWith(github.ref, 'refs/tags/v')
         run: |
           APP_PATH="$(find release -maxdepth 3 -type d -name '*.app' -print -quit)"
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
@@ -240,7 +247,7 @@ jobs:
     permissions:
       contents: write
     needs: [mac-build, win-build]
-    if: github.event_name == 'release'
+    if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - name: Download Mac artifacts
         uses: actions/download-artifact@v4
@@ -259,7 +266,7 @@ jobs:
       - name: Publish release artifacts
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.release.tag_name }}
+          tag_name: ${{ github.ref_name }}
           fail_on_unmatched_files: true
           files: |
             release/*.dmg
