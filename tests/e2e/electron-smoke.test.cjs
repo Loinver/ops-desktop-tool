@@ -17,6 +17,8 @@ const port = 4173
 let viteProcess
 let electronApp
 let testUserDataPath
+let rendererPage
+const rendererDiagnostics = []
 
 function request(url) {
   return new Promise((resolve, reject) => {
@@ -51,6 +53,37 @@ async function stopProcess(process) {
   if (process.exitCode === null) process.kill('SIGKILL')
 }
 
+function recordRendererDiagnostic(message) {
+  rendererDiagnostics.push(message)
+  if (rendererDiagnostics.length > 40) rendererDiagnostics.shift()
+}
+
+async function waitForAppShell(page) {
+  try {
+    await page.locator('.app-layout').waitFor({ state: 'visible', timeout: 45_000 })
+  } catch (error) {
+    let documentState = 'Unable to inspect renderer document'
+    try {
+      documentState = JSON.stringify(
+        await page.evaluate(() => ({
+          url: window.location.href,
+          readyState: document.readyState,
+          appErrorFallback: Boolean(document.querySelector('.app-error-fallback')),
+          appText: document.querySelector('#app')?.textContent?.trim().slice(0, 1000) || ''
+        }))
+      )
+    } catch (inspectError) {
+      documentState = `Unable to inspect renderer document: ${inspectError.message}`
+    }
+
+    throw new Error(
+      `Desktop shell did not render. Renderer state: ${documentState}\n` +
+        `Renderer diagnostics:\n${rendererDiagnostics.join('\n') || '(none captured)'}`,
+      { cause: error }
+    )
+  }
+}
+
 before(async () => {
   testUserDataPath = await fs.mkdtemp(path.join(os.tmpdir(), 'ops-desktop-e2e-'))
   viteProcess = spawn(
@@ -75,6 +108,15 @@ before(async () => {
       VITE_DEV_SERVER_URL: `http://127.0.0.1:${port}`
     }
   })
+  rendererPage = await electronApp.firstWindow()
+  rendererPage.on('console', (message) => {
+    if (message.type() === 'error' || message.type() === 'warning') {
+      recordRendererDiagnostic(`[console:${message.type()}] ${message.text()}`)
+    }
+  })
+  rendererPage.on('pageerror', (error) => {
+    recordRendererDiagnostic(`[pageerror] ${error.message}`)
+  })
 })
 
 after(async () => {
@@ -86,8 +128,8 @@ after(async () => {
 })
 
 test('starts the desktop shell and renders the operations dashboard', async () => {
-  const page = await electronApp.firstWindow()
-  await page.waitForSelector('.app-layout')
+  const page = rendererPage || (await electronApp.firstWindow())
+  await waitForAppShell(page)
   await assert.doesNotReject(() => page.waitForSelector('.page-title'))
 
   assert.equal(await page.title(), '运维仪表盘 - Ops Desktop')

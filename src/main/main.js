@@ -170,6 +170,9 @@ if (isMcpMode) {
     // safeStorage 在 app ready 后才保证可用，因此 IPC 处理器也在此时注册。
     logger.initLogger({ userDataPath: app.getPath('userData') })
     logger.info('应用启动', { version: app.getVersion(), platform: process.platform })
+    // Register the renderer bridge before loading any renderer document. This
+    // prevents startup IPC (for example app:info) from racing window creation.
+    registerAllHandlers()
     createWindowsTaskbar()
     const hasWindowsTray = createWindowsTray()
     const mainWindow = createManagedWindow({ showOnReady: !startHidden || !hasWindowsTray })
@@ -245,7 +248,6 @@ if (isMcpMode) {
       showWindow: showMainWindow
     })
     initializeAutoBackupScheduler({ userDataPath: app.getPath('userData') })
-    registerAllHandlers()
 
     app.on('activate', () => {
       showMainWindow()

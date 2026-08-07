@@ -41,15 +41,8 @@ async function applyRuntimePlatform() {
   }
 }
 
-async function bootstrap() {
-  try {
-    await loadLocalIconSprite()
-  } catch (error) {
-    console.error(error)
-  }
-
+function bootstrap() {
   initTheme()
-  await applyRuntimePlatform()
 
   try {
     const nativeMenuDisposers = []
@@ -97,6 +90,12 @@ async function bootstrap() {
   })
 
   app.mount('#app')
+
+  // The icon sprite is almost 1 MB and expands to a large hidden SVG tree.
+  // It is purely presentational, so never make the app shell wait for it: a
+  // slow local file/dev-server response must not leave the desktop window blank.
+  void loadLocalIconSprite().catch((error) => console.error(error))
+  void applyRuntimePlatform()
 }
 
-void bootstrap()
+bootstrap()
