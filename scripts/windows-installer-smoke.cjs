@@ -39,25 +39,46 @@ function packagedInstallerPath(architecture) {
 function installedAppDirectory(env = process.env) {
   const localAppData = String(env.LOCALAPPDATA || '').trim()
   if (!localAppData) throw new Error('LOCALAPPDATA is unavailable')
-  return path.join(localAppData, 'Programs', productName)
+  return path.win32.join(localAppData, 'Programs', productName)
 }
 
 function installedExecutablePath(env = process.env) {
-  return path.join(installedAppDirectory(env), `${productName}.exe`)
+  return path.win32.join(installedAppDirectory(env), `${productName}.exe`)
 }
 
 function installedUninstallerPath(env = process.env) {
-  return path.join(installedAppDirectory(env), `Uninstall ${productName}.exe`)
+  return path.win32.join(installedAppDirectory(env), `Uninstall ${productName}.exe`)
 }
 
-async function runProcess(executablePath, args, { label, timeoutMs, env = process.env } = {}) {
+function installedExecutablePathAt(installationDirectory) {
+  return path.win32.join(installationDirectory, `${productName}.exe`)
+}
+
+function installedUninstallerPathAt(installationDirectory) {
+  return path.win32.join(installationDirectory, `Uninstall ${productName}.exe`)
+}
+
+function installerArguments(installationDirectory) {
+  if (!path.win32.isAbsolute(installationDirectory)) {
+    throw new Error(`Windows installation directory must be absolute: ${installationDirectory}`)
+  }
+  // NSIS requires /D to be its final argument. It isolates smoke tests from prior user installs.
+  return ['/S', `/D=${installationDirectory}`]
+}
+
+async function runProcess(
+  executablePath,
+  args,
+  { label, timeoutMs, env = process.env, windowsVerbatimArguments = false } = {}
+) {
   let output = ''
   let timedOut = false
   const child = spawn(executablePath, args, {
     cwd: root,
     env,
     stdio: ['ignore', 'pipe', 'pipe'],
-    windowsHide: true
+    windowsHide: true,
+    windowsVerbatimArguments
   })
 
   child.stdout.on('data', (chunk) => {
@@ -105,9 +126,11 @@ async function waitForRemoval(targetPath, timeoutMs = 15_000) {
   return !fs.existsSync(targetPath)
 }
 
-async function uninstallInstalledApp(env = process.env) {
-  const executablePath = installedExecutablePath(env)
-  const uninstallerPath = installedUninstallerPath(env)
+async function uninstallInstalledApp({
+  env = process.env,
+  executablePath = installedExecutablePath(env),
+  uninstallerPath = installedUninstallerPath(env)
+} = {}) {
   if (!fs.existsSync(uninstallerPath)) return false
 
   await runProcess(uninstallerPath, ['/S'], {
@@ -131,25 +154,25 @@ async function run() {
 
   const architecture = requestedArchitecture()
   const installerPath = packagedInstallerPath(architecture)
-  const executablePath = installedExecutablePath()
-  const uninstallerPath = installedUninstallerPath()
   if (!fs.existsSync(installerPath)) {
     throw new Error(`Packaged Windows installer was not found: ${installerPath}`)
   }
-  if (fs.existsSync(executablePath) || fs.existsSync(uninstallerPath)) {
-    throw new Error(`Refusing to replace an existing Ops Desktop installation: ${executablePath}`)
-  }
 
   const smokeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ops-desktop-installer-smoke-'))
+  const installationDirectory = path.join(smokeRoot, 'installed-app')
+  const executablePath = installedExecutablePathAt(installationDirectory)
+  const uninstallerPath = installedUninstallerPathAt(installationDirectory)
   let fixture = null
   let modelFixture = null
   let installStarted = false
   try {
     console.log(`Installing packaged app silently: ${installerPath}`)
     installStarted = true
-    await runProcess(installerPath, ['/S'], {
+    await runProcess(installerPath, installerArguments(installationDirectory), {
       label: 'Windows installer',
-      timeoutMs: installerTimeoutMs
+      timeoutMs: installerTimeoutMs,
+      // NSIS consumes the unquoted final /D path (including spaces) as its install directory.
+      windowsVerbatimArguments: true
     })
     if (!fs.existsSync(executablePath)) {
       throw new Error(`Installed Windows executable was not found: ${executablePath}`)
@@ -179,7 +202,7 @@ async function run() {
     fixture = null
     await modelFixture.close()
     modelFixture = null
-    await uninstallInstalledApp()
+    await uninstallInstalledApp({ executablePath, uninstallerPath })
     installStarted = false
     console.log(
       'Windows installer, installed app CC Switch/model smoke test, and uninstaller all succeeded'
@@ -197,7 +220,7 @@ async function run() {
     }
     if (installStarted && fs.existsSync(uninstallerPath)) {
       try {
-        await uninstallInstalledApp()
+        await uninstallInstalledApp({ executablePath, uninstallerPath })
       } catch (error) {
         console.warn(`Failed to clean up smoke-test installation: ${error.message}`)
       }
@@ -220,7 +243,10 @@ if (require.main === module) {
 module.exports = {
   installedAppDirectory,
   installedExecutablePath,
+  installedExecutablePathAt,
   installedUninstallerPath,
+  installedUninstallerPathAt,
+  installerArguments,
   packagedInstallerPath,
   renderWindowsArtifactName,
   run,

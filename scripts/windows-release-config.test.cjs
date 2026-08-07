@@ -23,7 +23,10 @@ const {
 } = require(smokeScriptPath)
 const {
   installedExecutablePath,
+  installedExecutablePathAt,
   installedUninstallerPath,
+  installedUninstallerPathAt,
+  installerArguments,
   packagedInstallerPath,
   renderWindowsArtifactName,
   shouldAllowInstallerSmoke
@@ -69,7 +72,7 @@ test('Windows CI 在原生 x64 和 ARM64 runner 构建、启动并上传各自�
   assert.match(workflow, /release\/\*\.zip/)
 })
 
-test('Windows installer smoke test 使用架构化安装包并保护现有安装', () => {
+test('Windows installer smoke test 使用架构化安装包与隔离安装目录', () => {
   assert.equal(renderWindowsArtifactName('x64'), 'Ops Desktop-1.0.3-windows-x64.exe')
   assert.equal(renderWindowsArtifactName('arm64'), 'Ops Desktop-1.0.3-windows-arm64.exe')
   assert.equal(
@@ -78,22 +81,47 @@ test('Windows installer smoke test 使用架构化安装包并保护现有安装
   )
   assert.equal(
     installedExecutablePath({ LOCALAPPDATA: 'C:\\Users\\runner\\AppData\\Local' }),
-    path.join('C:\\Users\\runner\\AppData\\Local', 'Programs', 'Ops Desktop', 'Ops Desktop.exe')
+    path.win32.join(
+      'C:\\Users\\runner\\AppData\\Local',
+      'Programs',
+      'Ops Desktop',
+      'Ops Desktop.exe'
+    )
   )
   assert.equal(
     installedUninstallerPath({ LOCALAPPDATA: 'C:\\Users\\runner\\AppData\\Local' }),
-    path.join(
+    path.win32.join(
       'C:\\Users\\runner\\AppData\\Local',
       'Programs',
       'Ops Desktop',
       'Uninstall Ops Desktop.exe'
     )
   )
+  const installationDirectory = path.win32.join(
+    'C:\\Users\\Jane Doe\\AppData\\Local',
+    'Temp',
+    'ops-desktop-installer-smoke-123',
+    'installed-app'
+  )
+  assert.equal(
+    installedExecutablePathAt(installationDirectory),
+    path.win32.join(installationDirectory, 'Ops Desktop.exe')
+  )
+  assert.equal(
+    installedUninstallerPathAt(installationDirectory),
+    path.win32.join(installationDirectory, 'Uninstall Ops Desktop.exe')
+  )
+  assert.deepEqual(installerArguments(installationDirectory), ['/S', `/D=${installationDirectory}`])
+  assert.throws(() => installerArguments('installed-app'), /must be absolute/)
   assert.equal(shouldAllowInstallerSmoke(['node', 'script', '--allow-install']), true)
   assert.equal(shouldAllowInstallerSmoke(['node', 'script']), false)
-  assert.match(installerSmokeScript, /Refusing to replace an existing Ops Desktop installation/)
-  assert.match(installerSmokeScript, /Windows installer.*\['\/S'\]/s)
-  assert.match(installerSmokeScript, /Windows uninstaller.*\['\/S'\]/s)
+  assert.match(
+    installerSmokeScript,
+    /const installationDirectory = path\.join\(smokeRoot, 'installed-app'\)/
+  )
+  assert.match(installerSmokeScript, /installerArguments\(installationDirectory\)/)
+  assert.match(installerSmokeScript, /windowsVerbatimArguments: true/)
+  assert.match(installerSmokeScript, /runProcess\(uninstallerPath, \['\/S'\]/)
   assert.match(installerSmokeScript, /createModelAvailabilityFixture/)
   assert.match(installerSmokeScript, /model test and monitoring requests to the local fixture/)
 })
