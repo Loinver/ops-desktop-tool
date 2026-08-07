@@ -65,6 +65,10 @@ function buildMacMenuTemplate({
       label: appName,
       submenu: [
         { role: 'about' },
+        {
+          label: '检查更新…',
+          click: () => navigate('/app-update')
+        },
         { type: 'separator' },
         {
           label: '设置…',

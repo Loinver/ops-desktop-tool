@@ -4,6 +4,11 @@ const { createWindow, getMainWindow } = require('./window')
 const { registerPortsHandlers, stopNodeServiceMonitor } = require('./ipc/ports')
 const { registerSystemHandlers } = require('./ipc/system')
 const { registerAppHandlers } = require('./ipc/app')
+const {
+  initializeAppUpdateService,
+  registerAppUpdateHandlers,
+  stopAppUpdateService
+} = require('./ipc/app-update')
 const { registerQuickLaunchHandlers } = require('./ipc/quicklaunch')
 const { registerClipboardHandlers } = require('./ipc/clipboard')
 const { registerSftpHandlers, closeSftpConnection } = require('./ipc/sftp')
@@ -149,6 +154,7 @@ function registerAllHandlers() {
   registerPortsHandlers()
   registerSystemHandlers()
   registerAppHandlers()
+  registerAppUpdateHandlers()
   registerQuickLaunchHandlers()
   registerClipboardHandlers()
   registerSftpHandlers()
@@ -248,6 +254,11 @@ if (isMcpMode) {
       showWindow: showMainWindow
     })
     initializeAutoBackupScheduler({ userDataPath: app.getPath('userData') })
+    initializeAppUpdateService({
+      userDataPath: app.getPath('userData'),
+      openUpdatePage: () => navigateMainWindow('/app-update'),
+      logger
+    })
 
     app.on('activate', () => {
       showMainWindow()
@@ -269,6 +280,7 @@ if (isMcpMode) {
     stopNodeServiceMonitor()
     stopOpsNotificationService()
     stopAutoBackupScheduler()
+    stopAppUpdateService()
     macDesktopController?.destroy()
     macDesktopController = null
     trayController?.destroy()

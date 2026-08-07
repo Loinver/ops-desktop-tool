@@ -231,6 +231,12 @@ jobs:
           path: release
           merge-multiple: true
 
+      - name: Generate update checksums
+        shell: bash
+        run: |
+          cd release
+          sha256sum -- *.dmg *.zip *.exe > SHA256SUMS.txt
+
       - name: Publish release artifacts
         uses: softprops/action-gh-release@v2
         with:
@@ -238,8 +244,10 @@ jobs:
           generate_release_notes: true
           body: |
             macOS packages in this release are not signed with an Apple Developer ID certificate and are not notarized. macOS may display a security warning when opening them.
+            SHA256SUMS.txt is included for the in-app GitHub Release updater.
           fail_on_unmatched_files: true
           files: |
             release/*.dmg
             release/*.zip
             release/*.exe
+            release/SHA256SUMS.txt

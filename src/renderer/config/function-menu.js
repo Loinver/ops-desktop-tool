@@ -126,6 +126,13 @@ export const FUNCTION_MENU_GROUPS = [
         icon: 'chart-area'
       },
       {
+        id: 'app-update',
+        path: '/app-update',
+        name: '应用更新',
+        description: '从 GitHub Releases 检查、下载并安装桌面端更新',
+        icon: 'refresh'
+      },
+      {
         id: 'data-management',
         path: '/data-management',
         name: '本地数据管理',

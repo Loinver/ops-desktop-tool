@@ -108,6 +108,12 @@ const routes = [
         meta: { title: '系统信息' }
       },
       {
+        path: 'app-update',
+        name: 'AppUpdate',
+        component: () => import('../views/app-update/index.vue'),
+        meta: { title: '应用更新' }
+      },
+      {
         path: 'data-management',
         name: 'DataManagement',
         component: () => import('../views/data-management/index.vue'),
