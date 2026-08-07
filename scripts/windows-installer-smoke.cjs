@@ -11,6 +11,7 @@ const installerTimeoutMs = 300_000
 const uninstallTimeoutMs = 120_000
 const installationReadyTimeoutMs = 180_000
 const removalTimeoutMs = 60_000
+const registrationRemovalTimeoutMs = 120_000
 const processTerminationTimeoutMs = 10_000
 const allowInstallArgument = '--allow-install'
 const registryRoots = ['HKCU', 'HKLM']
@@ -385,6 +386,22 @@ async function waitForRemoval(targetPath, timeoutMs = removalTimeoutMs, pollInte
   return !fs.existsSync(targetPath)
 }
 
+async function waitForInstallerRegistrationsRemoved(
+  timeoutMs = registrationRemovalTimeoutMs,
+  pollIntervalMs = 250,
+  findRegistrations = findExistingWindowsInstallerRegistrations
+) {
+  const deadline = Date.now() + Math.max(0, timeoutMs)
+  while (true) {
+    const registrations = findRegistrations()
+    if (registrations.length === 0) return []
+
+    const remainingMs = deadline - Date.now()
+    if (remainingMs <= 0) return registrations
+    await new Promise((resolve) => setTimeout(resolve, Math.min(pollIntervalMs, remainingMs)))
+  }
+}
+
 async function uninstallInstalledApp({
   env = process.env,
   executablePath = installedExecutablePath(env),
@@ -405,6 +422,21 @@ async function uninstallInstalledApp({
     throw new Error(`Installation directory still exists after uninstall: ${installationDirectory}`)
   }
   return true
+}
+
+async function uninstallAndWaitForRegistrationRemoval({
+  env = process.env,
+  executablePath = installedExecutablePath(env),
+  uninstallerPath = installedUninstallerPath(env),
+  uninstall = uninstallInstalledApp,
+  waitForRegistrationsRemoved = waitForInstallerRegistrationsRemoved
+} = {}) {
+  const uninstalled = await uninstall({ env, executablePath, uninstallerPath })
+  if (!uninstalled) return { uninstalled: false, remainingRegistrations: [] }
+  return {
+    uninstalled: true,
+    remainingRegistrations: await waitForRegistrationsRemoved()
+  }
 }
 
 function describeExistingRegistration(registration) {
@@ -516,8 +548,17 @@ async function run() {
     fixture = null
     await modelFixture.close()
     modelFixture = null
-    await uninstallInstalledApp({ executablePath, uninstallerPath })
-    const remainingRegistrations = findExistingWindowsInstallerRegistrations()
+    // NSIS runs the real uninstall work from a temporary child process. The original
+    // uninstaller can exit after removing the install directory but before that child
+    // removes shortcuts and registry keys, so wait for the registered lifecycle to settle.
+    const { uninstalled, remainingRegistrations } = await uninstallAndWaitForRegistrationRemoval({
+      executablePath,
+      uninstallerPath
+    })
+    if (!uninstalled) {
+      throw new Error(`Windows uninstaller was not found after app smoke test: ${uninstallerPath}`)
+    }
+    installStarted = false
     if (remainingRegistrations.length > 0) {
       throw new Error(
         `Windows uninstaller left installer registry keys behind: ${remainingRegistrations
@@ -525,7 +566,6 @@ async function run() {
           .join('; ')}`
       )
     }
-    installStarted = false
     console.log(
       'Windows installer, installed app CC Switch/model smoke test, and uninstaller all succeeded'
     )
@@ -543,7 +583,17 @@ async function run() {
     if (installStarted) {
       try {
         if (await waitForFilesReady([uninstallerPath], 15_000)) {
-          await uninstallInstalledApp({ executablePath, uninstallerPath })
+          const { remainingRegistrations } = await uninstallAndWaitForRegistrationRemoval({
+            executablePath,
+            uninstallerPath
+          })
+          if (remainingRegistrations.length > 0) {
+            console.warn(
+              `Windows cleanup left installer registry keys behind: ${remainingRegistrations
+                .map(describeExistingRegistration)
+                .join('; ')}`
+            )
+          }
         } else {
           const detectedRegistrations = findExistingWindowsInstallerRegistrations()
           const registryDetail = detectedRegistrations.map(describeExistingRegistration).join('; ')
@@ -591,8 +641,10 @@ module.exports = {
   runProcess,
   shouldAllowInstallerSmoke,
   terminateProcessTree,
+  uninstallAndWaitForRegistrationRemoval,
   uninstallInstalledApp,
   waitForFilesReady,
+  waitForInstallerRegistrationsRemoved,
   waitForPath,
   waitForProcessExit,
   waitForRemoval,

@@ -38,7 +38,9 @@ const {
   runProcess,
   shouldAllowInstallerSmoke,
   terminateProcessTree,
+  uninstallAndWaitForRegistrationRemoval,
   waitForFilesReady,
+  waitForInstallerRegistrationsRemoved,
   waitForPath,
   waitForProcessExit,
   waitForRemoval,
@@ -59,6 +61,7 @@ test('Windows 构建生成安装包和可直接启动的解压目录', () => {
   assert.equal(packageJson.build.nsis.guid, '3559e11b-2b00-5c6a-a3a4-ef9892dcdb41')
   assert.equal(packageJson.build.nsis.oneClick, true)
   assert.equal(packageJson.build.nsis.perMachine, false)
+  assert.equal(packageJson.devDependencies['electron-builder'], '^26.15.7')
   assert.equal(fs.existsSync(smokeScriptPath), true)
   assert.equal(fs.existsSync(installerSmokeScriptPath), true)
 })
@@ -295,6 +298,54 @@ test('Windows installer smoke test 的进程与路径等待辅助函数可在本
     assert.equal(await waitForPath(appearingPath, 200, 5), true)
     assert.equal(await waitForFilesReady([appearingPath], 200, 5, 2), true)
     assert.equal(await waitForRemoval(disappearingPath, 200, 5), true)
+
+    let registrationPolls = 0
+    assert.deepEqual(
+      await waitForInstallerRegistrationsRemoved(200, 5, () => {
+        registrationPolls += 1
+        return registrationPolls < 3 ? [{ key: 'HKCU\\Software\\fixture' }] : []
+      }),
+      []
+    )
+    assert.equal(registrationPolls, 3)
+    const remainingRegistrations = [{ key: 'HKCU\\Software\\fixture' }]
+    assert.deepEqual(
+      await waitForInstallerRegistrationsRemoved(15, 1_000, () => remainingRegistrations),
+      remainingRegistrations
+    )
+
+    const lifecycleOrder = []
+    const lifecycleResult = await uninstallAndWaitForRegistrationRemoval({
+      executablePath: 'C:\\fixture\\Ops Desktop.exe',
+      uninstallerPath: 'C:\\fixture\\Uninstall Ops Desktop.exe',
+      uninstall: async ({ executablePath, uninstallerPath }) => {
+        lifecycleOrder.push('uninstall')
+        assert.equal(executablePath, 'C:\\fixture\\Ops Desktop.exe')
+        assert.equal(uninstallerPath, 'C:\\fixture\\Uninstall Ops Desktop.exe')
+        return true
+      },
+      waitForRegistrationsRemoved: async () => {
+        lifecycleOrder.push('registrations')
+        return []
+      }
+    })
+    assert.deepEqual(lifecycleOrder, ['uninstall', 'registrations'])
+    assert.deepEqual(lifecycleResult, { uninstalled: true, remainingRegistrations: [] })
+
+    let skippedRegistrationWait = true
+    assert.deepEqual(
+      await uninstallAndWaitForRegistrationRemoval({
+        executablePath: 'C:\\fixture\\Ops Desktop.exe',
+        uninstallerPath: 'C:\\fixture\\Uninstall Ops Desktop.exe',
+        uninstall: async () => false,
+        waitForRegistrationsRemoved: async () => {
+          skippedRegistrationWait = false
+          return []
+        }
+      }),
+      { uninstalled: false, remainingRegistrations: [] }
+    )
+    assert.equal(skippedRegistrationWait, true)
 
     const waitStartedAt = Date.now()
     assert.equal(await waitForPath(path.join(directory, 'missing'), 20, 1_000), false)
