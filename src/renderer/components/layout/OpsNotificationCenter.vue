@@ -593,8 +593,17 @@ function handleNativeNotificationSettingsOpen() {
 }
 
 function handleDocumentClick(event) {
-  if (root.value && event.target instanceof Node && !root.value.contains(event.target))
-    open.value = false
+  const container = root.value
+  if (!container) return
+
+  // Clicking a control can synchronously replace it (for example, the settings
+  // button swaps the notification-list actions). Use the event path captured
+  // before that DOM change so this interaction is not mistaken for an outside click.
+  const clickedInside =
+    event.composedPath?.().includes(container) ||
+    (event.target instanceof Node && container.contains(event.target))
+
+  if (!clickedInside) open.value = false
 }
 
 function handleKeydown(event) {
