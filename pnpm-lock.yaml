@@ -54,6 +54,9 @@ importers:
       prettier:
         specifier: ^3.9.6
         version: 3.9.6
+      tdesign-icons-vue-next:
+        specifier: ~0.4.4
+        version: 0.4.4(vue@3.5.35(typescript@5.9.3))
       tdesign-vue-next:
         specifier: ^1.20.1
         version: 1.20.1(vue@3.5.35(typescript@5.9.3))

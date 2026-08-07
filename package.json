@@ -115,6 +115,7 @@
     "pinia": "^3.0.4",
     "playwright": "^1.62.1",
     "prettier": "^3.9.6",
+    "tdesign-icons-vue-next": "~0.4.4",
     "tdesign-vue-next": "^1.20.1",
     "vite": "^5.4.0",
     "vitest": "^2.1.9",
