@@ -180,10 +180,18 @@
                 </small>
               </span>
             </div>
-            <div v-else-if="desktopIntegration.traySupported" class="desktop-integration-summary">
+            <div v-if="desktopIntegration.traySupported" class="desktop-integration-summary">
               <span>
-                <strong>系统托盘后台运行</strong>
-                <small>关闭窗口后继续运行，可从托盘菜单恢复窗口或退出应用。</small>
+                <strong>{{
+                  desktopIntegration.platform === 'darwin' ? '状态栏保留' : '系统托盘后台运行'
+                }}</strong>
+                <small>
+                  {{
+                    desktopIntegration.platform === 'darwin'
+                      ? '关闭窗口后应用继续运行，可从 macOS 状态栏恢复窗口、查看事件或退出应用。'
+                      : '关闭窗口后继续运行，可从托盘菜单恢复窗口或退出应用。'
+                  }}
+                </small>
               </span>
             </div>
             <div class="desktop-integration-summary">

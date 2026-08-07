@@ -131,19 +131,20 @@
               </p>
             </div>
             <div class="event-filters" aria-label="事件筛选">
-              <select v-model="eventFilter" aria-label="事件状态">
-                <option value="active">活跃事件</option>
-                <option value="open">待处理</option>
-                <option value="acknowledged">已确认</option>
-                <option value="resolved">已解决</option>
-                <option value="">全部状态</option>
-              </select>
-              <select v-model="sourceFilter" aria-label="事件来源">
-                <option value="">全部来源</option>
-                <option v-for="source in eventSources" :key="source" :value="source">
-                  {{ sourceName(source) }}
-                </option>
-              </select>
+              <TSelect
+                v-model="eventFilter"
+                class="event-filter-select"
+                size="medium"
+                :options="eventFilterOptions"
+                :input-props="{ 'aria-label': '事件状态' }"
+              />
+              <TSelect
+                v-model="sourceFilter"
+                class="event-filter-select"
+                size="medium"
+                :options="eventSourceOptions"
+                :input-props="{ 'aria-label': '事件来源' }"
+              />
             </div>
           </div>
 
@@ -350,6 +351,7 @@
 import { opsApi } from '../../api/opsApi.js'
 import { computed, nextTick, onActivated, onMounted, ref, watch } from 'vue'
 import MessagePlugin from 'tdesign-vue-next/es/message/plugin.mjs'
+import { Select as TSelect } from 'tdesign-vue-next/es/select/index.mjs'
 import { useRoute, useRouter } from 'vue-router'
 import { useConfirm } from '../../composables/useConfirm'
 
@@ -376,6 +378,13 @@ const copilotPrompt = ref('')
 const copilotUseAi = ref(true)
 const copilotResult = ref(null)
 const taskForm = ref(newTask())
+const eventFilterOptions = Object.freeze([
+  { label: '活跃事件', value: 'active' },
+  { label: '待处理', value: 'open' },
+  { label: '已确认', value: 'acknowledged' },
+  { label: '已解决', value: 'resolved' },
+  { label: '全部状态', value: '' }
+])
 
 const activeProvider = computed(() =>
   aiState.value.providers?.providers?.find(
@@ -393,6 +402,10 @@ const enabledTaskCount = computed(() => tasks.value.filter((item) => item.enable
 const eventSources = computed(() =>
   [...new Set(events.value.map((item) => item.sourceType || item.category).filter(Boolean))].sort()
 )
+const eventSourceOptions = computed(() => [
+  { label: '全部来源', value: '' },
+  ...eventSources.value.map((source) => ({ label: sourceName(source), value: source }))
+])
 const filteredEvents = computed(() =>
   events.value.filter((item) => {
     const matchesStatus =
@@ -781,11 +794,15 @@ onActivated(() => {
 }
 .event-filters {
   display: flex;
+  align-items: center;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
 }
-.event-filters select,
+.event-filters .event-filter-select {
+  width: 132px;
+  flex: 0 0 132px;
+}
 .task-form input:not([type='checkbox']),
 .task-form select {
   height: 36px;
@@ -1043,9 +1060,10 @@ onActivated(() => {
     width: 100%;
     justify-content: stretch;
   }
-  .event-filters select {
+  .event-filters .event-filter-select {
     min-width: 0;
-    flex: 1;
+    width: auto;
+    flex: 1 1 0;
   }
   .event-actions,
   .task-actions {

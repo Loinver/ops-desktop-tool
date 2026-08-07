@@ -127,6 +127,18 @@
   min-width: 0;
 }
 
+.model-picker :deep(.t-select),
+.field > :deep(.t-select) {
+  width: 100%;
+  min-width: 0;
+}
+
+.model-picker :deep(.t-input),
+.field > :deep(.t-select .t-input) {
+  min-height: 38px;
+  border-radius: var(--radius-sm);
+}
+
 .model-refresh {
   height: 38px;
   white-space: nowrap;
@@ -144,6 +156,50 @@
   font-size: 11px;
   font-weight: 400;
   line-height: 1.5;
+}
+
+.source-mode-field {
+  margin-bottom: 4px;
+}
+
+.source-mode-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 4px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+  background: #f8fafc;
+}
+
+.source-mode-switch button {
+  min-width: 0;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.source-mode-switch button:hover {
+  color: var(--primary);
+  background: #fff;
+}
+
+.source-mode-switch button.active {
+  color: var(--primary);
+  border-color: color-mix(in srgb, var(--primary) 28%, var(--border));
+  background: #fff;
+  box-shadow: var(--shadow-xs);
 }
 
 .field input:focus,

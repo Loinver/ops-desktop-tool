@@ -5,8 +5,10 @@ const {
   MAC_NOTIFICATION_SETTINGS_URL,
   WINDOWS_NOTIFICATION_SETTINGS_URL,
   buildMacDockMenuTemplate,
+  buildMacStatusBarMenuTemplate,
   createMacDesktopController,
-  dockBadgeLabel
+  dockBadgeLabel,
+  statusBarUnreadLabel
 } = require('../src/main/mac-desktop-controller')
 
 function createIpcMain() {
@@ -48,6 +50,32 @@ test('macOS Dock 菜单提供窗口、运维页面和通知设置入口', () => 
   assert.deepEqual(actions, ['show', '/ops-dashboard', '/ops-control-center', 'notifications'])
 })
 
+test('macOS 状态栏菜单提供未读事件、页面入口和显式退出', () => {
+  const actions = []
+  const template = buildMacStatusBarMenuTemplate({
+    unreadCount: 108,
+    showMainWindow: () => actions.push('show'),
+    navigate: (route) => actions.push(route),
+    openNotificationSettings: () => actions.push('notifications'),
+    quit: () => actions.push('quit')
+  })
+
+  assert.equal(statusBarUnreadLabel(0), '查看运维事件')
+  assert.equal(statusBarUnreadLabel(108), '查看 99+ 条未读运维事件')
+  menuItem(template, '打开 Ops Desktop').click()
+  menuItem(template, '查看 99+ 条未读运维事件').click()
+  menuItem(template, '运维仪表盘').click()
+  menuItem(template, '通知设置').click()
+  menuItem(template, '退出应用').click()
+  assert.deepEqual(actions, [
+    'show',
+    '/ops-control-center',
+    '/ops-dashboard',
+    'notifications',
+    'quit'
+  ])
+})
+
 test('macOS 控制器同步 Dock 角标、登录启动和通知设置 IPC', async () => {
   const badges = []
   const externalUrls = []
@@ -57,6 +85,26 @@ test('macOS 控制器同步 Dock 角标、登录启动和通知设置 IPC', asyn
   let openAtLogin = false
   let eventListener = null
   let listenerStopped = false
+  let statusBarItem = null
+  class FakeTray {
+    constructor(icon) {
+      this.icon = icon
+      this.listeners = new Map()
+      statusBarItem = this
+    }
+    on(event, listener) {
+      this.listeners.set(event, listener)
+    }
+    setContextMenu(menu) {
+      this.menu = menu
+    }
+    setToolTip(value) {
+      this.tooltip = value
+    }
+    destroy() {
+      this.destroyed = true
+    }
+  }
   const window = {
     isDestroyed: () => false,
     webContents: {
@@ -81,6 +129,8 @@ test('macOS 控制器同步 Dock 角标、登录启动和通知设置 IPC', asyn
   const controller = createMacDesktopController({
     app,
     Menu: { buildFromTemplate: (template) => template },
+    Tray: FakeTray,
+    statusBarIcon: { template: true },
     shell: {
       openExternal: async (url) => {
         externalUrls.push(url)
@@ -103,12 +153,23 @@ test('macOS 控制器同步 Dock 角标、登录启动和通知设置 IPC', asyn
   const initial = controller.initialize()
   assert.equal(initial.supported, true)
   assert.equal(initial.unreadCount, 3)
+  assert.equal(initial.traySupported, true)
   assert.equal(badges.at(-1), '3')
   assert.ok(app.dock.menu)
+  assert.equal(statusBarItem.tooltip, 'Ops Desktop · 3 条未读运维事件')
+  assert.ok(statusBarItem.menu)
 
   unread = 120
   eventListener()
   assert.equal(badges.at(-1), '99+')
+  assert.equal(statusBarItem.tooltip, 'Ops Desktop · 120 条未读运维事件')
+  assert.equal(
+    menuItem(statusBarItem.menu, '查看 99+ 条未读运维事件').label,
+    '查看 99+ 条未读运维事件'
+  )
+
+  statusBarItem.listeners.get('click')()
+  assert.deepEqual(sent.at(-1), ['show'])
 
   menuItem(app.dock.menu, '运维仪表盘').click()
   menuItem(app.dock.menu, '通知设置').click()
@@ -135,6 +196,91 @@ test('macOS 控制器同步 Dock 角标、登录启动和通知设置 IPC', asyn
   controller.destroy()
   assert.equal(listenerStopped, true)
   assert.equal(badges.at(-1), '')
+  assert.equal(statusBarItem.destroyed, true)
+})
+
+test('macOS 最后窗口关闭后可从状态栏重建窗口并显式退出', () => {
+  const sent = []
+  let currentWindow = null
+  let createdWindowCount = 0
+  let quitCount = 0
+  let listenerStopped = false
+  let statusBarItem = null
+
+  class FakeTray {
+    constructor() {
+      this.listeners = new Map()
+      statusBarItem = this
+    }
+    on(event, listener) {
+      this.listeners.set(event, listener)
+    }
+    setContextMenu(menu) {
+      this.menu = menu
+    }
+    setToolTip() {}
+    destroy() {
+      this.destroyed = true
+    }
+  }
+
+  function createWindow() {
+    createdWindowCount += 1
+    return {
+      isDestroyed: () => false,
+      webContents: {
+        isDestroyed: () => false,
+        isLoadingMainFrame: () => false,
+        send: (channel, payload) => sent.push([channel, payload])
+      }
+    }
+  }
+
+  const controller = createMacDesktopController({
+    app: {
+      isPackaged: true,
+      quit: () => {
+        quitCount += 1
+      },
+      dock: { setBadge() {}, setMenu() {} },
+      getLoginItemSettings: () => ({ openAtLogin: false }),
+      setLoginItemSettings() {}
+    },
+    Menu: { buildFromTemplate: (template) => template },
+    Tray: FakeTray,
+    statusBarIcon: { template: true },
+    shell: { openExternal: async () => {} },
+    ipcMain: createIpcMain(),
+    userDataPath: '/tmp/ops-mac-status-lifecycle-test',
+    getMainWindow: () => currentWindow,
+    showMainWindow: () => {
+      if (!currentWindow) currentWindow = createWindow()
+      return currentWindow
+    },
+    platform: 'darwin',
+    summarizeEvents: () => ({ unread: 0 }),
+    subscribeToEvents: () => () => {
+      listenerStopped = true
+    }
+  })
+
+  controller.initialize()
+  assert.equal(currentWindow, null)
+
+  statusBarItem.listeners.get('click')()
+  assert.equal(createdWindowCount, 1)
+
+  currentWindow = null
+  menuItem(statusBarItem.menu, '运维中心').click()
+  assert.equal(createdWindowCount, 2)
+  assert.deepEqual(sent, [[IPC_CHANNELS.APP_NAVIGATE, '/ops-control-center']])
+
+  menuItem(statusBarItem.menu, '退出应用').click()
+  assert.equal(quitCount, 1)
+
+  controller.destroy()
+  assert.equal(listenerStopped, true)
+  assert.equal(statusBarItem.destroyed, true)
 })
 
 test('Windows 集成复用隐藏启动参数并可打开系统通知设置', async () => {

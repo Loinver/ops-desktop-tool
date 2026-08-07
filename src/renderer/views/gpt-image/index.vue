@@ -103,9 +103,7 @@
               :disabled="generating"
             />
           </div>
-          <span class="composer-hint">{{
-            config.hasApiKey ? 'Enter 发送' : '请先设置 API Key'
-          }}</span>
+          <span class="composer-hint">{{ configReady ? 'Enter 发送' : configReadyHint }}</span>
           <button class="btn-send" type="submit" :disabled="generating || !draft.trim()">
             <t-icon name="send" />
             <span>{{ generating ? '生成中' : '发送' }}</span>
@@ -139,56 +137,124 @@
           </div>
 
           <div class="settings-grid">
-            <label class="field wide">
-              <span>Base URL</span>
-              <input
-                v-model.trim="settingsConfig.baseUrl"
-                type="text"
-                placeholder="https://api.openai.com/v1"
-              />
-            </label>
-
-            <label class="field wide">
-              <span>API Key</span>
-              <input
-                v-model.trim="settingsConfig.apiKey"
-                type="password"
-                :placeholder="
-                  config.hasApiKey ? `${config.apiKeyMasked}（留空表示不修改）` : 'sk-...'
-                "
-                autocomplete="off"
-                @input="clearApiKey = false"
-              />
-              <small v-if="config.hasApiKey" class="field-help"
-                >API Key 已由系统安全存储加密保存。</small
-              >
-            </label>
-
-            <label v-if="config.hasApiKey" class="toggle-row checkbox-row wide">
-              <input v-model="clearApiKey" type="checkbox" />
-              <span>清除已保存的 API Key</span>
-            </label>
-
-            <label class="field wide">
-              <span>Model</span>
-              <div class="model-picker">
-                <select v-model="settingsConfig.model" :disabled="modelLoading">
-                  <option v-for="model in selectableModels" :key="model" :value="model">
-                    {{ model }}
-                  </option>
-                </select>
+            <div class="field wide source-mode-field">
+              <span>配置来源</span>
+              <div class="source-mode-switch" role="group" aria-label="图像模型配置来源">
                 <button
                   type="button"
-                  class="btn-ghost model-refresh"
-                  :disabled="modelLoading"
-                  @click="loadModels"
+                  :class="{ active: settingsConfig.sourceMode === 'model-reliability' }"
+                  @click="setSourceMode('model-reliability')"
                 >
-                  <t-icon name="refresh" :class="{ spinning: modelLoading }" />
-                  <span>{{ modelLoading ? '获取中' : '刷新模型' }}</span>
+                  <t-icon name="check-circle" />
+                  模型可靠性
+                </button>
+                <button
+                  type="button"
+                  :class="{ active: settingsConfig.sourceMode === 'manual' }"
+                  @click="setSourceMode('manual')"
+                >
+                  <t-icon name="edit" />
+                  手动配置
                 </button>
               </div>
-              <em v-if="modelError" class="field-error">{{ modelError }}</em>
-            </label>
+              <small class="field-help">
+                模型可靠性只列出最近一次测试通过的 OpenAI 兼容模型，密钥不会进入渲染进程。
+              </small>
+            </div>
+
+            <template v-if="settingsConfig.sourceMode === 'model-reliability'">
+              <label class="field wide">
+                <span>Provider</span>
+                <div class="model-picker">
+                  <TSelect
+                    v-model="selectedReliabilitySourceKey"
+                    :options="reliabilityProviderOptions"
+                    :loading="sourceLoading"
+                    :disabled="sourceLoading || reliabilityProviderOptions.length === 0"
+                    placeholder="选择模型可靠性 Provider"
+                  />
+                  <button
+                    type="button"
+                    class="btn-ghost model-refresh"
+                    :disabled="sourceLoading"
+                    @click="loadProviderSources(true)"
+                  >
+                    <t-icon name="refresh" :class="{ spinning: sourceLoading }" />
+                    <span>{{ sourceLoading ? '读取中' : '刷新来源' }}</span>
+                  </button>
+                </div>
+                <em v-if="sourceError" class="field-error">{{ sourceError }}</em>
+                <small
+                  v-else-if="!sourceLoading && !reliabilityProviderOptions.length"
+                  class="field-help"
+                >
+                  暂无通过测试的 OpenAI 兼容模型，请先前往“模型可靠性”完成测试。
+                </small>
+              </label>
+
+              <label class="field wide">
+                <span>已通过模型</span>
+                <TSelect
+                  v-model="settingsConfig.model"
+                  :options="reliabilityModelOptions"
+                  :disabled="!selectedReliabilitySource || reliabilityModelOptions.length === 0"
+                  placeholder="选择最近测试通过的模型"
+                />
+              </label>
+            </template>
+
+            <template v-else>
+              <label class="field wide">
+                <span>Base URL</span>
+                <input
+                  v-model.trim="settingsConfig.baseUrl"
+                  type="text"
+                  placeholder="https://api.openai.com/v1"
+                />
+              </label>
+
+              <label class="field wide">
+                <span>API Key</span>
+                <input
+                  v-model.trim="settingsConfig.apiKey"
+                  type="password"
+                  :placeholder="
+                    config.hasApiKey ? `${config.apiKeyMasked}（留空表示不修改）` : 'sk-...'
+                  "
+                  autocomplete="off"
+                  @input="clearApiKey = false"
+                />
+                <small v-if="config.hasApiKey" class="field-help"
+                  >API Key 已由系统安全存储加密保存。</small
+                >
+              </label>
+
+              <label v-if="config.hasApiKey" class="toggle-row checkbox-row wide">
+                <input v-model="clearApiKey" type="checkbox" />
+                <span>清除已保存的 API Key</span>
+              </label>
+
+              <label class="field wide">
+                <span>Model</span>
+                <div class="model-picker">
+                  <select v-model="settingsConfig.model" :disabled="modelLoading">
+                    <option v-for="model in selectableModels" :key="model" :value="model">
+                      {{ model }}
+                    </option>
+                  </select>
+                  <button
+                    type="button"
+                    class="btn-ghost model-refresh"
+                    :disabled="modelLoading"
+                    @click="loadModels"
+                  >
+                    <t-icon name="refresh" :class="{ spinning: modelLoading }" />
+                    <span>{{ modelLoading ? '获取中' : '刷新模型' }}</span>
+                  </button>
+                </div>
+                <em v-if="modelError" class="field-error">{{ modelError }}</em>
+              </label>
+            </template>
 
             <label class="field">
               <span>尺寸</span>
@@ -298,11 +364,16 @@
 import { opsApi } from '../../api/opsApi.js'
 import { computed, reactive, ref, nextTick, onMounted } from 'vue'
 import MessagePlugin from 'tdesign-vue-next/es/message/plugin.mjs'
+import { Select as TSelect } from 'tdesign-vue-next/es/select/index.mjs'
 
 const config = reactive({
+  sourceMode: 'manual',
+  sourceProviderId: '',
+  sourceAppType: '',
   baseUrl: 'https://api.openai.com/v1',
   apiKey: '',
   hasApiKey: false,
+  isReady: false,
   apiKeyMasked: '',
   model: 'gpt-image-1',
   size: '1024x1024',
@@ -322,6 +393,9 @@ const downloadingMessageIds = ref(new Set())
 const modelLoading = ref(false)
 const modelOptions = ref([])
 const modelError = ref('')
+const providerSources = ref([])
+const sourceLoading = ref(false)
+const sourceError = ref('')
 const clearApiKey = ref(false)
 const useContext = ref(true)
 const messagesEl = ref(null)
@@ -339,6 +413,56 @@ const selectableModels = computed(() => {
   return [...new Set([...current, ...modelOptions.value])]
 })
 
+function sourceKey(source = {}) {
+  return `${source.appType || ''}::${source.id || ''}`
+}
+
+const reliabilityProviderSources = computed(() =>
+  providerSources.value.filter((source) => source.protocol === 'openai' && source.models?.length)
+)
+const reliabilityProviderOptions = computed(() =>
+  reliabilityProviderSources.value.map((source) => ({
+    label: `${source.name || source.appLabel || '未命名 Provider'} · ${source.protocolLabel || 'OpenAI'}`,
+    value: sourceKey(source)
+  }))
+)
+const selectedReliabilitySource = computed(() =>
+  reliabilityProviderSources.value.find(
+    (source) =>
+      source.id === settingsConfig.sourceProviderId &&
+      source.appType === settingsConfig.sourceAppType
+  )
+)
+const selectedReliabilitySourceKey = computed({
+  get() {
+    return selectedReliabilitySource.value ? sourceKey(selectedReliabilitySource.value) : ''
+  },
+  set(value) {
+    const source = reliabilityProviderSources.value.find((item) => sourceKey(item) === value)
+    settingsConfig.sourceProviderId = source?.id || ''
+    settingsConfig.sourceAppType = source?.appType || ''
+    const models = Array.isArray(source?.models) ? source.models : []
+    if (!models.some((item) => item.model === settingsConfig.model)) {
+      settingsConfig.model = models[0]?.model || ''
+    }
+  }
+})
+const reliabilityModelOptions = computed(() =>
+  (selectedReliabilitySource.value?.models || []).map((model) => ({
+    label: model.label || model.model,
+    value: model.model
+  }))
+)
+const configReady = computed(() => {
+  if (config.sourceMode === 'model-reliability') {
+    return Boolean(config.sourceProviderId && config.sourceAppType && config.model)
+  }
+  return config.hasApiKey
+})
+const configReadyHint = computed(() =>
+  config.sourceMode === 'model-reliability' ? '请先选择已通过模型' : '请先设置 API Key'
+)
+
 function nowTime() {
   return new Date().toLocaleTimeString('zh-CN', {
     hour: '2-digit',
@@ -354,6 +478,9 @@ function createId() {
 // 纯字面量，避免 Electron structured clone 因 Proxy 报错。
 function serializeImageConfig(source = {}) {
   return {
+    sourceMode: source.sourceMode === 'model-reliability' ? 'model-reliability' : 'manual',
+    sourceProviderId: String(source.sourceProviderId || '').trim(),
+    sourceAppType: String(source.sourceAppType || '').trim(),
     baseUrl: String(source.baseUrl || '').trim(),
     apiKey: String(source.apiKey || '').trim(),
     model: String(source.model || '').trim(),
@@ -480,6 +607,17 @@ async function appendHistoryItem(item) {
 }
 
 async function saveConfig() {
+  if (
+    settingsConfig.sourceMode === 'model-reliability' &&
+    (!settingsConfig.sourceProviderId || !settingsConfig.sourceAppType || !settingsConfig.model)
+  ) {
+    MessagePlugin.warning({
+      content: '请选择模型可靠性 Provider 和已通过模型',
+      placement: 'bottom-right'
+    })
+    return
+  }
+
   saving.value = true
   try {
     const nextConfig = {
@@ -533,12 +671,60 @@ async function loadModels() {
   }
 }
 
+function syncReliabilitySelection() {
+  let source = selectedReliabilitySource.value
+  if (!source) source = reliabilityProviderSources.value[0]
+  selectedReliabilitySourceKey.value = source ? sourceKey(source) : ''
+}
+
+async function loadProviderSources(showSuccess = false) {
+  sourceError.value = ''
+  if (typeof opsApi?.listAiProviderSources !== 'function') {
+    sourceError.value = '模型可靠性来源接口未加载，请重启 Electron 应用'
+    return
+  }
+
+  sourceLoading.value = true
+  try {
+    const result = await opsApi.listAiProviderSources()
+    if (!result?.ok) throw new Error(result?.error || '读取模型可靠性 Provider 失败')
+    providerSources.value = result.sources || []
+    if (settingsConfig.sourceMode === 'model-reliability') syncReliabilitySelection()
+    if (showSuccess) {
+      MessagePlugin.success({ content: '模型可靠性来源已更新', placement: 'bottom-right' })
+    }
+  } catch (err) {
+    providerSources.value = []
+    sourceError.value = err?.message || '读取模型可靠性 Provider 失败'
+    MessagePlugin.error({ content: sourceError.value, placement: 'bottom-right' })
+  } finally {
+    sourceLoading.value = false
+  }
+}
+
+function setSourceMode(mode) {
+  settingsConfig.sourceMode = mode === 'model-reliability' ? 'model-reliability' : 'manual'
+  clearApiKey.value = false
+  modelError.value = ''
+  sourceError.value = ''
+  if (settingsConfig.sourceMode === 'model-reliability') {
+    if (providerSources.value.length) syncReliabilitySelection()
+    else void loadProviderSources()
+  }
+}
+
 async function sendMessage() {
   const text = draft.value.trim()
   if (!text || generating.value) return
 
-  if (!config.hasApiKey) {
-    MessagePlugin.warning({ content: '请先在模型设置中填写 API Key', placement: 'bottom-right' })
+  if (!configReady.value) {
+    MessagePlugin.warning({
+      content:
+        config.sourceMode === 'model-reliability'
+          ? '请先在模型设置中选择已通过模型'
+          : '请先在模型设置中填写 API Key',
+      placement: 'bottom-right'
+    })
     openSettings()
     return
   }
@@ -674,7 +860,8 @@ function openSettings() {
   Object.assign(settingsConfig, config, { apiKey: '' })
   clearApiKey.value = false
   showSettings.value = true
-  loadModels()
+  void loadProviderSources()
+  if (settingsConfig.sourceMode === 'manual') void loadModels()
 }
 
 function closeSettings() {

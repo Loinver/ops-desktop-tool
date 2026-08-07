@@ -428,9 +428,12 @@
                 ><input v-model="logForm.useAi" type="checkbox" :disabled="!activeProviderReady" />
                 使用当前 AI Provider 生成总结</label
               >
-              <p v-if="!activeProviderReady" class="inline-hint full">
-                <t-icon name="info-circle" /> 暂无可用 Provider；当前可使用本地规则分析。请先在
-                Provider 页配置、启用并设为默认。
+              <p v-if="!activeProviderReady" class="inline-hint full provider-hint">
+                <t-icon name="info-circle" aria-hidden="true" />
+                <span
+                  >暂无可用 Provider；当前可使用本地规则分析。请先在 Provider
+                  页配置、启用并设为默认。</span
+                >
               </p>
               <label class="full"
                 ><span>日志内容</span

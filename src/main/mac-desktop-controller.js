@@ -23,9 +23,38 @@ function buildMacDockMenuTemplate({ showMainWindow, navigate, openNotificationSe
   ]
 }
 
+function statusBarUnreadLabel(unreadCount) {
+  const count = Math.max(0, Math.floor(Number(unreadCount) || 0))
+  return count > 0 ? `查看 ${count > 99 ? '99+' : count} 条未读运维事件` : '查看运维事件'
+}
+
+function buildMacStatusBarMenuTemplate({
+  unreadCount,
+  showMainWindow,
+  navigate,
+  openNotificationSettings,
+  quit
+}) {
+  return [
+    { label: '打开 Ops Desktop', click: showMainWindow },
+    {
+      label: statusBarUnreadLabel(unreadCount),
+      click: () => navigate('/ops-control-center')
+    },
+    { type: 'separator' },
+    { label: '运维仪表盘', click: () => navigate('/ops-dashboard') },
+    { label: '运维中心', click: () => navigate('/ops-control-center') },
+    { label: '通知设置', click: openNotificationSettings },
+    { type: 'separator' },
+    { label: '退出应用', click: quit }
+  ]
+}
+
 function createMacDesktopController({
   app,
   Menu,
+  Tray,
+  statusBarIcon,
   shell,
   ipcMain,
   userDataPath,
@@ -42,6 +71,7 @@ function createMacDesktopController({
   const supported = isMac || isWindows
   let stopListening = null
   let currentUnreadCount = 0
+  let statusBarItem = null
 
   function sendToRenderer(channel, payload) {
     showMainWindow()
@@ -61,13 +91,45 @@ function createMacDesktopController({
     sendToRenderer(IPC_CHANNELS.OPS_NOTIFICATION_SETTINGS_OPEN)
   }
 
+  function rebuildStatusBarMenu() {
+    if (!statusBarItem) return
+    const template = buildMacStatusBarMenuTemplate({
+      unreadCount: currentUnreadCount,
+      showMainWindow,
+      navigate,
+      openNotificationSettings: openNotificationSettingsPanel,
+      quit: () => app.quit()
+    })
+    statusBarItem.setContextMenu(Menu.buildFromTemplate(template))
+    statusBarItem.setToolTip(
+      currentUnreadCount > 0 ? `Ops Desktop · ${currentUnreadCount} 条未读运维事件` : 'Ops Desktop'
+    )
+  }
+
+  function createStatusBarItem() {
+    if (!isMac || !Tray || !statusBarIcon || statusBarItem) return Boolean(statusBarItem)
+    try {
+      statusBarItem = new Tray(statusBarIcon)
+      statusBarItem.on('click', showMainWindow)
+      rebuildStatusBarMenu()
+      return true
+    } catch (error) {
+      statusBarItem = null
+      logger?.warn('创建 macOS 状态栏图标失败', { message: error?.message })
+      return false
+    }
+  }
+
   function refreshDockBadge() {
-    if (!isMac || typeof app.dock?.setBadge !== 'function') return 0
+    if (!isMac) return 0
     try {
       currentUnreadCount = Math.max(0, Number(summarizeEvents(userDataPath)?.unread) || 0)
-      app.dock.setBadge(dockBadgeLabel(currentUnreadCount))
+      if (typeof app.dock?.setBadge === 'function') {
+        app.dock.setBadge(dockBadgeLabel(currentUnreadCount))
+      }
+      rebuildStatusBarMenu()
     } catch (error) {
-      logger?.warn('更新 macOS Dock 未读角标失败', { message: error?.message })
+      logger?.warn('更新 macOS 桌面未读状态失败', { message: error?.message })
     }
     return currentUnreadCount
   }
@@ -96,7 +158,7 @@ function createMacDesktopController({
       platformLabel: isWindows ? 'Windows' : isMac ? 'macOS' : '',
       packaged: Boolean(app.isPackaged),
       dockBadgeSupported: isMac && typeof app.dock?.setBadge === 'function',
-      traySupported: isWindows,
+      traySupported: isWindows || Boolean(statusBarItem),
       unreadCount: currentUnreadCount,
       loginItemAvailable: loginItem.available,
       openAtLogin: loginItem.openAtLogin,
@@ -157,6 +219,7 @@ function createMacDesktopController({
       app.dock.setMenu(Menu.buildFromTemplate(template))
     }
     if (isMac) {
+      createStatusBarItem()
       refreshDockBadge()
       stopListening = subscribeToEvents(refreshDockBadge)
     }
@@ -167,6 +230,8 @@ function createMacDesktopController({
     stopListening?.()
     stopListening = null
     if (isMac && typeof app.dock?.setBadge === 'function') app.dock.setBadge('')
+    statusBarItem?.destroy()
+    statusBarItem = null
   }
 
   return {
@@ -175,6 +240,7 @@ function createMacDesktopController({
     integrationStatus,
     openSystemNotificationSettings,
     refreshDockBadge,
+    rebuildStatusBarMenu,
     saveLoginItem
   }
 }
@@ -183,6 +249,8 @@ module.exports = {
   MAC_NOTIFICATION_SETTINGS_URL,
   WINDOWS_NOTIFICATION_SETTINGS_URL,
   buildMacDockMenuTemplate,
+  buildMacStatusBarMenuTemplate,
   createMacDesktopController,
-  dockBadgeLabel
+  dockBadgeLabel,
+  statusBarUnreadLabel
 }

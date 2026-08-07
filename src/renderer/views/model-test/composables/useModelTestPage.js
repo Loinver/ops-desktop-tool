@@ -865,6 +865,7 @@ export function useModelTestPage() {
       failed: 0,
       gateway: 0,
       idle: 0,
+      testing: 0,
       total: 0,
       bestMs: 0,
       failedBy: { auth: 0, timeout: 0, network: 0, error: 0 }
@@ -873,7 +874,10 @@ export function useModelTestPage() {
     for (const item of scopedProviderEntries.value) {
       for (const row of item.rows) {
         const status = row.result.status
-        if (status === 'testing') continue
+        if (status === 'testing') {
+          acc.testing += 1
+          continue
+        }
         if (status === 'idle') {
           acc.idle += 1
           continue

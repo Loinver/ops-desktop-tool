@@ -498,6 +498,12 @@ textarea:focus {
   outline-offset: 2px;
 }
 
+input:not([type='checkbox']):not([type='radio']):focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
+}
+
 /* 滚动条 - 更精致 */
 ::-webkit-scrollbar {
   width: 5px;
@@ -774,8 +780,6 @@ textarea:focus {
     flex-direction: column;
   }
 }
-
-
 
 /* 全局按钮样式：统一所有按钮大小，使用 --header-control-height 等 token */
 .btn-ghost,

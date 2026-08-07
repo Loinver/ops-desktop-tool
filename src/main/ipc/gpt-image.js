@@ -4,6 +4,8 @@ const { app, BrowserWindow, dialog, ipcMain, safeStorage } = require('electron')
 const { IPC_CHANNELS } = require('../../shared/ipc-channels')
 const { readJsonFile, writeJsonFile } = require('../utils/json-store')
 const { encryptSecret, maskSecret, readSecretField } = require('../utils/secure-secret')
+const { latestModelTestStatuses } = require('../utils/ai-ops')
+const { loadProviders } = require('../utils/ccswitch')
 const {
   MAX_IMAGE_BYTES,
   buildImageFileName,
@@ -19,6 +21,9 @@ const historyFile = path.join(userDataPath, 'gpt-image-history.json')
 const MAX_HISTORY_ITEMS = 80
 
 const DEFAULT_CONFIG = {
+  sourceMode: 'manual',
+  sourceProviderId: '',
+  sourceAppType: '',
   baseUrl: 'https://api.openai.com/v1',
   apiKey: '',
   model: 'gpt-image-1',
@@ -27,7 +32,11 @@ const DEFAULT_CONFIG = {
 }
 
 function sanitizeConfig(config = {}) {
+  const sourceMode = config.sourceMode === 'model-reliability' ? 'model-reliability' : 'manual'
   return {
+    sourceMode,
+    sourceProviderId: String(config.sourceProviderId || '').trim(),
+    sourceAppType: String(config.sourceAppType || '').trim(),
     baseUrl: String(config.baseUrl || DEFAULT_CONFIG.baseUrl).trim() || DEFAULT_CONFIG.baseUrl,
     apiKey: String(config.apiKey || '').trim(),
     model: String(config.model || DEFAULT_CONFIG.model).trim() || DEFAULT_CONFIG.model,
@@ -47,6 +56,9 @@ function normalizeBaseUrl(baseUrl) {
 function serializeConfigForStorage(config) {
   const normalized = sanitizeConfig(config)
   return {
+    sourceMode: normalized.sourceMode,
+    sourceProviderId: normalized.sourceProviderId,
+    sourceAppType: normalized.sourceAppType,
     baseUrl: normalized.baseUrl,
     apiKeyEncrypted: encryptSecret(safeStorage, normalized.apiKey),
     model: normalized.model,
@@ -83,9 +95,16 @@ function readConfig() {
 function toSafeConfig(config) {
   const normalized = sanitizeConfig(config)
   return {
+    sourceMode: normalized.sourceMode,
+    sourceProviderId: normalized.sourceProviderId,
+    sourceAppType: normalized.sourceAppType,
     baseUrl: normalized.baseUrl,
     apiKey: '',
     hasApiKey: Boolean(normalized.apiKey),
+    isReady:
+      normalized.sourceMode === 'model-reliability'
+        ? Boolean(normalized.sourceProviderId && normalized.sourceAppType && normalized.model)
+        : Boolean(normalized.apiKey),
     apiKeyMasked: maskSecret(normalized.apiKey),
     model: normalized.model,
     size: normalized.size,
@@ -101,6 +120,66 @@ function mergeRequestConfig(config = {}) {
     ...config,
     apiKey: suppliedApiKey || stored.apiKey
   })
+}
+
+function modelId(model) {
+  if (typeof model === 'string') return model.trim()
+  return String(model?.model || model?.key || model?.id || model?.name || '').trim()
+}
+
+function reliabilityModelKey(providerId, appType, model) {
+  return `${String(providerId || '').trim()}::${String(appType || '').trim()}::${String(model || '').trim()}`
+}
+
+async function resolveModelReliabilityConfig(config, options = {}) {
+  const providerLoader = options.providerLoader || loadProviders
+  const statusLoader = options.statusLoader || latestModelTestStatuses
+  const providerResult = await providerLoader()
+  if (!providerResult?.ok) {
+    throw new Error(`无法读取模型可靠性 Provider：${providerResult?.message || '未知错误'}`)
+  }
+
+  const provider = (Array.isArray(providerResult.providers) ? providerResult.providers : []).find(
+    (item) => item.id === config.sourceProviderId && item.appType === config.sourceAppType
+  )
+  if (!provider) throw new Error('所选 Provider 已不在模型可靠性中，请刷新后重新选择')
+  if (provider.protocol !== 'openai') {
+    throw new Error('图像生成仅支持模型可靠性中的 OpenAI 兼容 Provider')
+  }
+  if (!provider.testable || !provider.baseUrl || !provider.apiKey) {
+    throw new Error('所选 Provider 尚未在模型可靠性中完成可用配置')
+  }
+
+  const models = (Array.isArray(provider.models) ? provider.models : [])
+    .map(modelId)
+    .filter(Boolean)
+  if (!models.includes(config.model)) {
+    throw new Error('所选模型不属于当前 Provider，请刷新后重新选择')
+  }
+
+  const statuses = statusLoader(userDataPath)
+  if (
+    statuses.get(
+      reliabilityModelKey(config.sourceProviderId, config.sourceAppType, config.model)
+    ) !== 'ok'
+  ) {
+    throw new Error('所选模型尚未通过最近一次模型测试，请先前往模型可靠性完成测试')
+  }
+
+  return sanitizeConfig({
+    ...config,
+    baseUrl: provider.baseUrl,
+    apiKey: provider.apiKey
+  })
+}
+
+async function resolveRequestConfig(config = {}, options = {}) {
+  const merged = mergeRequestConfig(config)
+  if (merged.sourceMode !== 'model-reliability') return merged
+  if (!merged.sourceProviderId || !merged.sourceAppType || !merged.model) {
+    throw new Error('请选择模型可靠性 Provider 和模型')
+  }
+  return resolveModelReliabilityConfig(merged, options)
 }
 
 function sanitizeHistoryItem(item = {}) {
@@ -290,7 +369,7 @@ function registerGptImageHandlers() {
   ipcMain.handle(IPC_CHANNELS.GPT_IMAGE_MODELS_LIST, async (_event, config = {}) => {
     let requestConfig
     try {
-      requestConfig = mergeRequestConfig(config)
+      requestConfig = await resolveRequestConfig(config)
     } catch (err) {
       return { ok: false, error: err?.message || '读取配置失败' }
     }
@@ -335,7 +414,7 @@ function registerGptImageHandlers() {
   ipcMain.handle(IPC_CHANNELS.GPT_IMAGE_GENERATE, async (_event, payload = {}) => {
     let config
     try {
-      config = mergeRequestConfig(payload.config || {})
+      config = await resolveRequestConfig(payload.config || {})
     } catch (err) {
       return { ok: false, error: err?.message || '读取配置失败' }
     }
@@ -407,4 +486,17 @@ function registerGptImageHandlers() {
   })
 }
 
-module.exports = { registerGptImageHandlers }
+module.exports = {
+  registerGptImageHandlers,
+  __testables: {
+    DEFAULT_CONFIG,
+    sanitizeConfig,
+    serializeConfigForStorage,
+    readConfig,
+    toSafeConfig,
+    modelId,
+    reliabilityModelKey,
+    resolveModelReliabilityConfig,
+    resolveRequestConfig
+  }
+}

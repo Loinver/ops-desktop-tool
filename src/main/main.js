@@ -130,6 +130,15 @@ function createWindowsTray() {
   }
 }
 
+function createMacStatusBarIcon() {
+  if (process.platform !== 'darwin') return null
+  const iconPath = path.join(__dirname, '../../build/icons/statusBarTemplate.png')
+  const icon = nativeImage.createFromPath(iconPath)
+  if (icon.isEmpty()) throw new Error(`状态栏图标无效：${iconPath}`)
+  icon.setTemplateImage(true)
+  return icon
+}
+
 // 单实例锁：防止多实例导致 IPC 重复注册和数据文件竞争写入。
 if (!isMcpMode) {
   const hasLock = app.requestSingleInstanceLock()
@@ -190,9 +199,20 @@ if (isMcpMode) {
       showMainWindow,
       logger
     })
+    let macStatusBarIcon = null
+    try {
+      macStatusBarIcon = createMacStatusBarIcon()
+    } catch (error) {
+      logger.error('读取 macOS 状态栏图标失败', {
+        message: error?.message,
+        stack: error?.stack
+      })
+    }
     macDesktopController = createMacDesktopController({
       app,
       Menu,
+      Tray,
+      statusBarIcon: macStatusBarIcon,
       shell,
       ipcMain,
       userDataPath: app.getPath('userData'),

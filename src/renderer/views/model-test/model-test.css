@@ -1,14 +1,58 @@
 .model-test-page .summary {
   display: inline-flex;
   align-items: center;
+  min-width: 0;
   flex-wrap: wrap;
+  flex: 1 1 auto;
   gap: 8px;
 }
 
-/* 与 header 的 btn-ghost 同字号/同高度，避免统计 tag 偏小、基线不齐 */
+.model-test-page .coverage-progress {
+  display: flex;
+  flex: 1 1 140px;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 132px;
+  max-width: 180px;
+}
+
+.model-test-page .coverage-progress-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.model-test-page .coverage-progress-label strong {
+  color: var(--primary);
+  font-size: 12px;
+}
+
+.model-test-page .coverage-track {
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--border-light);
+}
+
+.model-test-page .coverage-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary-gradient);
+  transition: width var(--transition);
+}
+
+/* 与 header 的 btn-ghost 同字号/同高度，保持统计控件基线一致 */
 .model-test-page .chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-height: 36px;
-  padding: 0 12px;
   padding: 0 12px;
   border: 1px solid transparent;
   border-radius: 999px;
@@ -44,11 +88,8 @@
 }
 
 .model-test-page button.chip {
-  min-height: 36px;
-  padding: 0 12px;
-  padding: 0 14px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: 999px;
   background: var(--bg-elevated);
   color: var(--text-secondary);
   font-family: inherit;
@@ -84,8 +125,6 @@
   border-color: var(--danger);
   color: var(--danger);
 }
-
-
 
 .model-test-page .btn-link {
   min-height: 36px;
@@ -480,9 +519,7 @@
   flex-direction: column;
   gap: 8px;
   width: 212px;
-  max-height: calc(
-    100vh - var(--topbar-height) - var(--control-stack-offset, 0px) - 24px
-  );
+  max-height: calc(100vh - var(--topbar-height) - var(--control-stack-offset, 0px) - 24px);
   flex-shrink: 0;
   padding: 8px;
   border: 1px solid var(--border);

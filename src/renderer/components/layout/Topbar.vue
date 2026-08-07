@@ -150,12 +150,12 @@ const shortcutLabel = computed(() =>
 )
 const themeOptions = Object.freeze([
   { value: 'system', label: '跟随系统', icon: 'desktop' },
-  { value: 'light', label: '浅色', icon: 'sun' },
+  { value: 'light', label: '浅色', icon: 'sunny' },
   { value: 'dark', label: '深色', icon: 'moon' }
 ])
 const themeIcon = computed(() => {
   if (themeMode.value === 'system') return 'desktop'
-  return theme.value === 'dark' ? 'moon' : 'sun'
+  return theme.value === 'dark' ? 'moon' : 'sunny'
 })
 const themeButtonTitle = computed(() => {
   const label = themeOptions.find((option) => option.value === themeMode.value)?.label || '跟随系统'

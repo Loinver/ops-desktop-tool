@@ -1,6 +1,6 @@
 <template>
   <div class="toolbar">
-    <div v-if="summary.total || summary.idle" class="toolbar-overview">
+    <div v-if="summary.total || summary.idle || summary.testing" class="toolbar-overview">
       <div class="summary" aria-label="巡检结果概览">
         <button
           type="button"
@@ -36,7 +36,25 @@
         >
           未测 {{ summary.idle }}
         </button>
-        <span v-if="summary.total" class="chip quiet">已测 {{ summary.total }}</span>
+        <div
+          class="coverage-progress"
+          :aria-label="`测试覆盖率：已测 ${summary.total} / ${coverageTotal(summary)}`"
+        >
+          <div class="coverage-progress-label">
+            <span>已测 {{ summary.total }} / {{ coverageTotal(summary) }}</span>
+            <strong>{{ coveragePercent(summary) }}%</strong>
+          </div>
+          <div
+            class="coverage-track"
+            role="progressbar"
+            aria-label="测试覆盖率"
+            :aria-valuenow="summary.total"
+            :aria-valuemin="0"
+            :aria-valuemax="coverageTotal(summary)"
+          >
+            <span class="coverage-fill" :style="{ width: `${coveragePercent(summary)}%` }"></span>
+          </div>
+        </div>
       </div>
       <div class="toolbar-utilities">
         <button
@@ -195,4 +213,16 @@ defineEmits([
   'clear-filters',
   'clear-results'
 ])
+
+function coverageTotal(summary) {
+  return (
+    (Number(summary?.total) || 0) + (Number(summary?.idle) || 0) + (Number(summary?.testing) || 0)
+  )
+}
+
+function coveragePercent(summary) {
+  const testedCount = Number(summary?.total) || 0
+  const totalCount = coverageTotal(summary)
+  return totalCount ? Math.round((testedCount / totalCount) * 100) : 0
+}
 </script>

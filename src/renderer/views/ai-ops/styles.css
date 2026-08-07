@@ -98,11 +98,14 @@
 }
 
 .tab-btn:focus-visible,
-button:focus-visible,
-input:focus-visible,
-textarea:focus-visible {
+button:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--primary) 62%, #fff);
   outline-offset: 2px;
+}
+
+input:not([type='checkbox']):focus-visible,
+textarea:focus-visible {
+  outline: none;
 }
 
 .tab-panel {
@@ -712,6 +715,22 @@ button:disabled {
   color: var(--text-muted);
   font-size: 12px;
   line-height: 1.5;
+}
+
+.inline-hint.provider-hint {
+  align-items: flex-start;
+}
+
+.provider-hint :deep(.t-icon) {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+}
+
+.provider-hint > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .evaluation-hint {
