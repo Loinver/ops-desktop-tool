@@ -288,7 +288,7 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="item in filteredAuditRecords" :key="item.auditId">
+              <tr v-for="item in visibleAuditRecords" :key="item.auditId">
                 <td>{{ formatDateTime(item.finishedAt || item.startedAt) }}</td>
                 <td>
                   <strong>{{ auditActionLabel(item.action) }}</strong>
@@ -313,6 +313,33 @@
               </tr>
             </tbody>
           </table>
+        </div>
+        <div
+          v-if="filteredAuditRecords.length > AUDIT_PAGE_SIZE"
+          class="audit-pagination"
+          aria-live="polite"
+        >
+          <span class="muted-text">
+            已显示 {{ visibleAuditRecords.length }} / {{ filteredAuditRecords.length }} 条
+          </span>
+          <div class="inline-actions audit-pagination__actions">
+            <button
+              v-if="remainingAuditCount"
+              type="button"
+              class="button compact secondary"
+              @click="showMoreAuditRecords"
+            >
+              加载更多（{{ Math.min(AUDIT_PAGE_SIZE, remainingAuditCount) }}）
+            </button>
+            <button
+              v-if="auditVisibleCount > AUDIT_PAGE_SIZE"
+              type="button"
+              class="button compact secondary"
+              @click="collapseAuditRecords"
+            >
+              收起
+            </button>
+          </div>
         </div>
       </section>
 
@@ -545,12 +572,13 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import MessagePlugin from 'tdesign-vue-next/es/message/plugin.mjs'
 import { useRouter } from 'vue-router'
 import { opsApi } from '../../api/opsApi.js'
 
 const router = useRouter()
+const AUDIT_PAGE_SIZE = 20
 const loading = ref(false)
 const hasLoaded = ref(false)
 const actionKey = ref('')
@@ -584,6 +612,7 @@ const runbookResult = ref(null)
 const runbookBusy = ref(false)
 const auditStatusFilter = ref('')
 const auditCategoryFilter = ref('')
+const auditVisibleCount = ref(AUDIT_PAGE_SIZE)
 const pricingSelection = ref('')
 const pricingDraft = reactive({ inputUsdPerMillion: 0, outputUsdPerMillion: 0 })
 const lastExport = ref(null)
@@ -612,6 +641,16 @@ const filteredAuditRecords = computed(() =>
       (!auditCategoryFilter.value || item.category === auditCategoryFilter.value)
   )
 )
+const visibleAuditRecords = computed(() =>
+  filteredAuditRecords.value.slice(0, auditVisibleCount.value)
+)
+const remainingAuditCount = computed(() =>
+  Math.max(0, filteredAuditRecords.value.length - visibleAuditRecords.value.length)
+)
+
+watch([auditStatusFilter, auditCategoryFilter], () => {
+  auditVisibleCount.value = AUDIT_PAGE_SIZE
+})
 const runbookResultSteps = computed(() => [
   ...(runbookResult.value?.actionResults || []),
   ...(runbookResult.value?.verificationResults || [])
@@ -795,6 +834,17 @@ async function loadEvents() {
     selectedEventId.value = activeEvents.value[0]?.id || ''
     runbookPlan.value = null
   }
+}
+
+function showMoreAuditRecords() {
+  auditVisibleCount.value = Math.min(
+    filteredAuditRecords.value.length,
+    auditVisibleCount.value + AUDIT_PAGE_SIZE
+  )
+}
+
+function collapseAuditRecords() {
+  auditVisibleCount.value = AUDIT_PAGE_SIZE
 }
 
 async function loadAudit() {
@@ -1623,6 +1673,19 @@ select:disabled {
   align-items: center;
 }
 
+.audit-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  border-top: 1px solid var(--border-light);
+  padding-top: var(--spacing-md);
+}
+
+.audit-pagination__actions {
+  margin-top: 0;
+}
+
 .audit-table code {
   display: block;
   max-width: 420px;
@@ -1773,13 +1836,15 @@ select:disabled {
   }
 
   .notice,
-  .audit-heading {
+  .audit-heading,
+  .audit-pagination {
     align-items: stretch;
     flex-direction: column;
   }
 
   .filter-row,
   .filter-row select,
+  .audit-pagination__actions,
   .page-actions .button,
   .pricing-form .button {
     width: 100%;

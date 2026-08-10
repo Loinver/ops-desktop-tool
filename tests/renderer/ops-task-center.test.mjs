@@ -307,6 +307,40 @@ describe('OpsTaskCenter closed-loop controls', () => {
     wrapper.unmount()
   })
 
+  it('paginates growing audit history and resets the window after filtering', async () => {
+    const records = Array.from({ length: 45 }, (_, index) => ({
+      auditId: `audit-${index + 1}`,
+      action: 'process.kill',
+      category: index < 30 ? 'process' : 'data',
+      channel: 'ports:killPid',
+      status: 'succeeded',
+      startedAt: new Date(NOW - index * 1000).toISOString(),
+      finishedAt: new Date(NOW - index * 1000 + 100).toISOString(),
+      durationMs: 100,
+      target: { id: String(index + 1) }
+    }))
+    const { wrapper } = await mountTaskCenter({
+      getOpsAuditRecords: vi.fn().mockResolvedValue({ ok: true, records })
+    })
+
+    expect(wrapper.findAll('.audit-table tbody tr')).toHaveLength(20)
+    expect(wrapper.get('.audit-pagination').text()).toContain('已显示 20 / 45 条')
+
+    await buttonByText(wrapper, '加载更多（20）').trigger('click')
+    expect(wrapper.findAll('.audit-table tbody tr')).toHaveLength(40)
+
+    await wrapper.get('select[aria-label="审计分类筛选"]').setValue('process')
+    await flushPromises()
+    expect(wrapper.findAll('.audit-table tbody tr')).toHaveLength(20)
+    expect(wrapper.get('.audit-pagination').text()).toContain('已显示 20 / 30 条')
+
+    await buttonByText(wrapper, '加载更多（10）').trigger('click')
+    expect(wrapper.findAll('.audit-table tbody tr')).toHaveLength(30)
+    await buttonByText(wrapper, '收起').trigger('click')
+    expect(wrapper.findAll('.audit-table tbody tr')).toHaveLength(20)
+    wrapper.unmount()
+  })
+
   it('requires confirmation before executing a server-generated Runbook', async () => {
     const { api, wrapper } = await mountTaskCenter()
 
