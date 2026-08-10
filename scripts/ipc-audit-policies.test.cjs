@@ -474,6 +474,35 @@ const requiredChannels = [
   }
 ]
 
+const passiveReadChannels = [
+  IPC_CHANNELS.PORTS_LIST,
+  IPC_CHANNELS.PORTS_FIND,
+  IPC_CHANNELS.NODE_MONITOR_GET,
+  IPC_CHANNELS.NODE_MONITOR_CHECK,
+  IPC_CHANNELS.SFTP_CONFIG_GET,
+  IPC_CHANNELS.SFTP_PATHS_GET,
+  IPC_CHANNELS.SFTP_LIST,
+  IPC_CHANNELS.SFTP_COMPARE,
+  IPC_CHANNELS.SFTP_LOCAL_LIST,
+  IPC_CHANNELS.SFTP_PREFLIGHT,
+  IPC_CHANNELS.SFTP_PROFILES_GET,
+  IPC_CHANNELS.SFTP_HISTORY_GET,
+  IPC_CHANNELS.DATA_BACKUP_OVERVIEW,
+  IPC_CHANNELS.DATA_BACKUP_AUTO_GET,
+  IPC_CHANNELS.DATA_BACKUP_HISTORY_GET,
+  IPC_CHANNELS.DATA_BACKUP_AUTO_HEALTH_GET,
+  IPC_CHANNELS.DATA_BACKUP_RESTORE_POINTS_GET,
+  IPC_CHANNELS.QUICKLAUNCH_GET,
+  IPC_CHANNELS.QUICKLAUNCH_PARSE_URLS,
+  IPC_CHANNELS.GPT_IMAGE_CONFIG_GET,
+  IPC_CHANNELS.GPT_IMAGE_MODELS_LIST,
+  IPC_CHANNELS.GPT_IMAGE_HISTORY_GET
+]
+const passiveReadChannelSet = new Set(passiveReadChannels)
+const highRiskRequiredChannels = requiredChannels.filter(
+  ({ channel }) => !passiveReadChannelSet.has(channel)
+)
+
 function assertTargetIsBounded(target, requirement) {
   assert.ok(target && typeof target === 'object' && !Array.isArray(target))
   assert.deepEqual(Object.keys(target).sort(), requirement.targetKeys.slice().sort())
@@ -486,12 +515,20 @@ function assertTargetIsBounded(target, requirement) {
 test('required high-risk IPC channels have explicit audit policies', () => {
   const policies = createIpcAuditPolicies()
 
-  for (const requirement of requiredChannels) {
+  for (const requirement of highRiskRequiredChannels) {
     const policy = policies[requirement.channel]
     assert.ok(policy, `${requirement.name} is missing an audit policy`)
     assert.equal(policy.action, requirement.action, `${requirement.name} action changed`)
     assert.equal(policy.category, requirement.category, `${requirement.name} category changed`)
     assertTargetIsBounded(policy.target(requirement.args), requirement)
+  }
+})
+
+test('passive renderer reads do not create high-risk audit policies', () => {
+  const policies = createIpcAuditPolicies()
+
+  for (const channel of passiveReadChannels) {
+    assert.equal(policies[channel], undefined, `${channel} should not create routine audit noise`)
   }
 })
 

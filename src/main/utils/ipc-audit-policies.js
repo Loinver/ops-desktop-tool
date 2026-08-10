@@ -38,16 +38,6 @@ function integerValue(value, min = 0, max = Number.MAX_SAFE_INTEGER) {
 
 function createIpcAuditPolicies() {
   return {
-    [IPC_CHANNELS.PORTS_LIST]: {
-      action: 'process.list-ports',
-      category: 'process',
-      target: () => ({ operation: 'list-ports' })
-    },
-    [IPC_CHANNELS.PORTS_FIND]: {
-      action: 'process.find-port',
-      category: 'process',
-      target: (args) => ({ port: integerValue(first(args), 1, 65535) })
-    },
     [IPC_CHANNELS.PORTS_KILL_PORT]: {
       action: 'process.kill-port',
       category: 'process',
@@ -55,11 +45,6 @@ function createIpcAuditPolicies() {
         port: integerValue(objectArg(args).port, 1, 65535),
         signal: enumValue(objectArg(args).signal, PROCESS_SIGNALS)
       })
-    },
-    [IPC_CHANNELS.NODE_MONITOR_GET]: {
-      action: 'node-monitor.get',
-      category: 'operations',
-      target: () => ({ operation: 'watched-services-read' })
     },
     [IPC_CHANNELS.PORTS_KILL_PID]: {
       action: 'process.kill-pid',
@@ -85,11 +70,6 @@ function createIpcAuditPolicies() {
         port: integerValue(objectArg(args).port, 1, 65535)
       })
     },
-    [IPC_CHANNELS.NODE_MONITOR_CHECK]: {
-      action: 'node-monitor.check',
-      category: 'operations',
-      target: () => ({ operation: 'service-check' })
-    },
     [IPC_CHANNELS.SFTP_UPLOAD]: {
       action: 'release.upload-file',
       category: 'release',
@@ -108,11 +88,6 @@ function createIpcAuditPolicies() {
       category: 'release',
       target: () => ({ operation: 'remote-delete' })
     },
-    [IPC_CHANNELS.SFTP_CONFIG_GET]: {
-      action: 'release.config-get',
-      category: 'release-config',
-      target: () => ({ operation: 'config-read' })
-    },
     [IPC_CHANNELS.SFTP_CONFIG_SAVE]: {
       action: 'release.config-save',
       category: 'release-config',
@@ -124,11 +99,6 @@ function createIpcAuditPolicies() {
         hasPrivateKey: hasValue(objectArg(args).privateKey)
       })
     },
-    [IPC_CHANNELS.SFTP_PATHS_GET]: {
-      action: 'release.paths-get',
-      category: 'release-config',
-      target: () => ({ operation: 'paths-read' })
-    },
     [IPC_CHANNELS.SFTP_PATHS_SAVE]: {
       action: 'release.paths-save',
       category: 'release-config',
@@ -139,30 +109,10 @@ function createIpcAuditPolicies() {
       category: 'release',
       target: () => ({ operation: 'connection-test' })
     },
-    [IPC_CHANNELS.SFTP_LIST]: {
-      action: 'release.list-remote',
-      category: 'release',
-      target: () => ({ operation: 'remote-list' })
-    },
-    [IPC_CHANNELS.SFTP_COMPARE]: {
-      action: 'release.compare',
-      category: 'release',
-      target: () => ({ operation: 'compare' })
-    },
-    [IPC_CHANNELS.SFTP_LOCAL_LIST]: {
-      action: 'release.list-local',
-      category: 'release',
-      target: () => ({ operation: 'local-list' })
-    },
     [IPC_CHANNELS.SFTP_MKDIR]: {
       action: 'release.mkdir',
       category: 'release',
       target: (args) => ({ hasRemotePath: hasValue(first(args)) })
-    },
-    [IPC_CHANNELS.SFTP_PREFLIGHT]: {
-      action: 'release.preflight',
-      category: 'release',
-      target: () => ({ operation: 'preflight' })
     },
     [IPC_CHANNELS.SFTP_PROFILE_SAVE]: {
       action: 'release.profile-save',
@@ -171,11 +121,6 @@ function createIpcAuditPolicies() {
         hasProfileId: hasValue(objectArg(args).id),
         hasProfileName: hasValue(objectArg(args).name)
       })
-    },
-    [IPC_CHANNELS.SFTP_PROFILES_GET]: {
-      action: 'release.profiles-get',
-      category: 'release-config',
-      target: () => ({ operation: 'profiles-read' })
     },
     [IPC_CHANNELS.SFTP_PROFILE_ACTIVATE]: {
       action: 'release.profile-activate',
@@ -192,20 +137,10 @@ function createIpcAuditPolicies() {
       category: 'release',
       target: (args) => ({ hasReleaseId: hasValue(first(args)) })
     },
-    [IPC_CHANNELS.SFTP_HISTORY_GET]: {
-      action: 'release.history-get',
-      category: 'release',
-      target: () => ({ operation: 'history-read' })
-    },
     [IPC_CHANNELS.DATA_BACKUP_RESTORE]: {
       action: 'backup.restore-import',
       category: 'backup',
       target: () => ({ source: 'import-preview' })
-    },
-    [IPC_CHANNELS.DATA_BACKUP_OVERVIEW]: {
-      action: 'backup.overview',
-      category: 'backup',
-      target: () => ({ operation: 'overview-read' })
     },
     [IPC_CHANNELS.DATA_BACKUP_INSPECT]: {
       action: 'backup.inspect-import',
@@ -219,11 +154,6 @@ function createIpcAuditPolicies() {
         categoryCount: countArray(objectArg(args).categories),
         hasPassword: hasValue(objectArg(args).password)
       })
-    },
-    [IPC_CHANNELS.DATA_BACKUP_AUTO_GET]: {
-      action: 'backup.auto-config-get',
-      category: 'backup',
-      target: () => ({ operation: 'auto-config-read' })
     },
     [IPC_CHANNELS.DATA_BACKUP_AUTO_SAVE]: {
       action: 'backup.auto-config-save',
@@ -241,16 +171,6 @@ function createIpcAuditPolicies() {
       action: 'backup.auto-run',
       category: 'backup',
       target: () => ({ operation: 'auto-run' })
-    },
-    [IPC_CHANNELS.DATA_BACKUP_HISTORY_GET]: {
-      action: 'backup.history-get',
-      category: 'backup',
-      target: () => ({ operation: 'history-read' })
-    },
-    [IPC_CHANNELS.DATA_BACKUP_AUTO_HEALTH_GET]: {
-      action: 'backup.auto-health-get',
-      category: 'backup',
-      target: () => ({ operation: 'auto-health-read' })
     },
     [IPC_CHANNELS.DATA_BACKUP_AUTO_INSPECT]: {
       action: 'backup.inspect-auto',
@@ -277,20 +197,10 @@ function createIpcAuditPolicies() {
       category: 'backup',
       target: (args) => ({ hasBackupId: hasValue(objectArg(args).id) })
     },
-    [IPC_CHANNELS.DATA_BACKUP_RESTORE_POINTS_GET]: {
-      action: 'backup.restore-points-get',
-      category: 'backup',
-      target: () => ({ operation: 'restore-points-read' })
-    },
     [IPC_CHANNELS.APP_UPDATE_INSTALL]: {
       action: 'app-update.install',
       category: 'application',
       target: () => ({ operation: 'install-downloaded-update' })
-    },
-    [IPC_CHANNELS.QUICKLAUNCH_GET]: {
-      action: 'quicklaunch.get',
-      category: 'desktop',
-      target: () => ({ operation: 'items-read' })
     },
     [IPC_CHANNELS.QUICKLAUNCH_SAVE]: {
       action: 'quicklaunch.save',
@@ -316,11 +226,6 @@ function createIpcAuditPolicies() {
       action: 'quicklaunch.import-urls',
       category: 'desktop',
       target: () => ({ operation: 'import-urls' })
-    },
-    [IPC_CHANNELS.QUICKLAUNCH_PARSE_URLS]: {
-      action: 'quicklaunch.parse-urls',
-      category: 'desktop',
-      target: () => ({ operation: 'parse-urls' })
     },
     [IPC_CHANNELS.QUICKLAUNCH_EXPORT_URLS]: {
       action: 'quicklaunch.export-urls',
@@ -354,11 +259,6 @@ function createIpcAuditPolicies() {
               : 'text'
       })
     },
-    [IPC_CHANNELS.GPT_IMAGE_CONFIG_GET]: {
-      action: 'ai-image.config-get',
-      category: 'ai-config',
-      target: () => ({ operation: 'config-read' })
-    },
     [IPC_CHANNELS.GPT_IMAGE_CONFIG_SAVE]: {
       action: 'ai-image.config-save',
       category: 'ai-config',
@@ -370,13 +270,6 @@ function createIpcAuditPolicies() {
         hasBaseUrl: hasValue(objectArg(args).baseUrl),
         hasApiKey: hasValue(objectArg(args).apiKey),
         clearApiKey: objectArg(args).clearApiKey === true
-      })
-    },
-    [IPC_CHANNELS.GPT_IMAGE_MODELS_LIST]: {
-      action: 'ai-image.models-list',
-      category: 'ai-config',
-      target: (args) => ({
-        sourceMode: enumValue(objectArg(args).sourceMode, GPT_IMAGE_SOURCE_MODES)
       })
     },
     [IPC_CHANNELS.GPT_IMAGE_GENERATE]: {
@@ -396,11 +289,6 @@ function createIpcAuditPolicies() {
       action: 'ai-image.save',
       category: 'ai-workflow',
       target: () => ({ operation: 'save-image' })
-    },
-    [IPC_CHANNELS.GPT_IMAGE_HISTORY_GET]: {
-      action: 'ai-image.history-get',
-      category: 'ai-workflow',
-      target: () => ({ operation: 'history-read' })
     },
     [IPC_CHANNELS.GPT_IMAGE_HISTORY_SAVE]: {
       action: 'ai-image.history-save',
