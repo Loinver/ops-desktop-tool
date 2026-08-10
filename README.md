@@ -207,12 +207,19 @@ git push origin v1.0.4
 ```
 
 推送匹配 `package.json` 版本的 `v*` tag 会触发完整 CI，并自动创建或更新对应的 GitHub Release，上传现有的 macOS `.dmg`/`.zip` 和 Windows `.exe`/`.zip` 产物。`main` push 和针对 `main` 的 PR 只构建与验证，不发布 Release；tag 与 `package.json` 版本不一致时，CI 会直接失败。
+发布资产由平台任务直接上传到草稿 Release，再由汇总任务生成并发布 `SHA256SUMS.txt`；流程不再使用 Actions artifact，因此不会继续消耗 Actions 产物配额。
 
 ### macOS 未签名发布
 
 v* tag 发布会分别生成 `arm64` 和 `x64` 的 DMG/ZIP，但当前产物不使用 Apple Developer ID 证书签名，也不会提交 Apple 公证，因此不需要配置 `CSC_LINK`、`APPLE_ID` 等 Apple Actions Secrets。
 
 CI 仍会检查每个安装包的目标架构，并直接启动打包后的 `.app` 验证主进程与渲染页面能够正常加载。由于产物未经过 Developer ID 签名和公证，macOS 可能显示无法验证开发者或安全风险提示；用户需要在确认下载来源可信后，通过系统设置手动允许首次打开。
+
+### 在线更新
+
+应用更新页从 GitHub Releases 获取当前平台的安装包。当前仓库为私有仓库，首次使用前需要配置一个对该仓库具有只读内容访问权限的 GitHub Token；Token 只在 Electron 主进程中使用，并通过系统 `safeStorage` 加密保存在本机，不会传给 Renderer。更新检查会选择匹配当前平台和架构的安装包，并使用 Release 中的 `SHA256SUMS.txt` 校验下载内容。
+
+`v1.0.6` 已于 2026 年 8 月 10 日正式发布，包含 macOS arm64/x64 与 Windows arm64/x64 的 DMG、ZIP、EXE 资产。Windows 下载完成后可以确认安装；macOS 因未签名和未公证，下载完成后需要手动替换应用并按系统提示允许首次打开。
 
 CI 分别使用 `macos-15`（Apple Silicon）和 `macos-15-intel`（Intel）Runner 构建，并在每个架构上直接启动打包后的 `.app`，确认主进程与渲染页面能够正常加载后才上传产物。
 

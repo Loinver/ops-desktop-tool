@@ -1,3 +1,19 @@
+## [1.0.6] - 2026-08-10
+
+### Added
+
+- 统一任务中心的维护窗口、自动化批量执行、操作审计管理和 Windows Node 进程指标闭环
+- 从 GitHub 私有仓库 Release 检查、下载并校验当前平台在线更新包
+
+### Changed
+
+- Tag 发布流水线改为直接向草稿 Release 上传 macOS/Windows 资产，并汇总 `SHA256SUMS.txt`，不再占用 Actions artifact 配额
+- 发布产物继续保持未使用 Apple Developer ID 签名和公证的 macOS arm64/x64 DMG/ZIP
+
+### Fixed
+
+- 维护窗口启用、缩短、延长或关闭后会立即重排自动备份，避免继续等待旧的恢复时间
+
 ## [1.0.4] - 2026-08-07
 ### Changed
 - GitHub Release 改为发布未使用 Apple Developer ID 签名和公证的 macOS arm64/x64 安装包
