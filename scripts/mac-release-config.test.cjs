@@ -47,7 +47,7 @@ test('macOS build scripts expose arm64, x64 and unsigned release targets', () =>
 })
 
 test('release workflow builds and smoke tests unsigned Mac artifacts for both architectures', () => {
-  assert.match(workflow, /tags:\n      - "v\*"/)
+  assert.match(workflow, /tags:\n      - ['"]v\*['"]/)
   assert.doesNotMatch(workflow, /types: \[published\]/)
   assert.match(workflow, /if: startsWith\(github\.ref, 'refs\/tags\/v'\)/)
   assert.match(workflow, /node-version: '24'/)

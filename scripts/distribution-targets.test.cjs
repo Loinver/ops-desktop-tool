@@ -8,10 +8,12 @@ const packageJson = require(path.join(root, 'package.json'))
 const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'ci.yml'), 'utf8')
 
 const testJob = workflow.slice(workflow.indexOf('  test:'), workflow.indexOf('  build:'))
+const buildJob = workflow.slice(workflow.indexOf('  build:'), workflow.indexOf('  mac-build:'))
 const macBuildJob = workflow.slice(
   workflow.indexOf('  mac-build:'),
   workflow.indexOf('  win-build:')
 )
+const winBuildJob = workflow.slice(workflow.indexOf('  win-build:'), workflow.indexOf('  release:'))
 const releaseJob = workflow.slice(workflow.indexOf('  release:'))
 const releasePublishStep = workflow.slice(workflow.indexOf('- name: Publish release artifacts'))
 
@@ -64,7 +66,7 @@ test('distribution is limited to macOS and Windows without implicit publishing',
 })
 
 test('tag pushes are the only release trigger and publish source', () => {
-  assert.match(workflow, /push:\n    branches: \[main\]\n    tags:\n      - "v\*"/)
+  assert.match(workflow, /push:\n    branches: \[main\]\n    tags:\n      - ['"]v\*['"]/)
   assert.match(workflow, /pull_request:\n    branches: \[main\]/)
   assert.doesNotMatch(workflow, /^  release:\n    types: \[published\]/m)
   assert.doesNotMatch(
@@ -91,4 +93,17 @@ test('tag pushes validate the package version in the test job', () => {
   assert.match(testJob, /expected_tag="v\$\(node -p "require\('\.\/package\.json'\)\.version"\)"/)
   assert.match(testJob, /if \[ "\$GITHUB_REF_NAME" != "\$expected_tag" \]/)
   assert.match(testJob, /must exactly match package\.json version tag/)
+})
+
+test('intermediate artifacts are uploaded only for release tags and expire quickly', () => {
+  assert.doesNotMatch(buildJob, /actions\/upload-artifact@v4/)
+  assert.doesNotMatch(buildJob, /ops-desktop-build/)
+
+  for (const job of [macBuildJob, winBuildJob]) {
+    assert.match(
+      job,
+      /if: startsWith\(github\.ref, 'refs\/tags\/v'\)\n        uses: actions\/upload-artifact@v4/
+    )
+    assert.match(job, /retention-days: 1/)
+  }
 })
