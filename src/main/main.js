@@ -23,6 +23,7 @@ const {
 } = require('./ops-notification-service')
 const {
   initializeAutoBackupScheduler,
+  scheduleAutoBackup,
   stopAutoBackupScheduler
 } = require('./ops-auto-backup-scheduler')
 const { createWindowsTrayController } = require('./windows-tray-controller')
@@ -176,7 +177,7 @@ function registerAllHandlers() {
   registerModelTestHandlers()
   registerAiOpsHandlers()
   registerDataBackupHandlers()
-  registerOpsPlatformHandlers({ getMainWindow })
+  registerOpsPlatformHandlers({ getMainWindow, rescheduleAutoBackup: scheduleAutoBackup })
 }
 
 if (isMcpMode) {

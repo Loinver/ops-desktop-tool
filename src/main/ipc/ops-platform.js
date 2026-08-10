@@ -273,8 +273,17 @@ function startOpsDataBroadcast() {
   })
 }
 
-function registerOpsPlatformHandlers({ getMainWindow } = {}) {
-  runtime = { userDataPath: app.getPath('userData'), getMainWindow }
+function saveMaintenanceSettings({ currentUserDataPath, settings, rescheduleAutoBackup } = {}) {
+  if (settings?.enabled === true && settings?.confirmed !== true) {
+    throw new Error('启用维护窗口前必须完成确认')
+  }
+  const window = saveMaintenanceWindow(currentUserDataPath, settings)
+  rescheduleAutoBackup?.()
+  return window
+}
+
+function registerOpsPlatformHandlers({ getMainWindow, rescheduleAutoBackup } = {}) {
+  runtime = { userDataPath: app.getPath('userData'), getMainWindow, rescheduleAutoBackup }
   startOpsDataBroadcast()
 
   ipcMain.handle(IPC_CHANNELS.OPS_AUDIT_GET, async (_event, filters = {}) => {
@@ -315,10 +324,11 @@ function registerOpsPlatformHandlers({ getMainWindow } = {}) {
 
   ipcMain.handle(IPC_CHANNELS.OPS_MAINTENANCE_SAVE, async (_event, settings = {}) => {
     try {
-      if (settings?.enabled === true && settings?.confirmed !== true) {
-        throw new Error('启用维护窗口前必须完成确认')
-      }
-      const window = saveMaintenanceWindow(userDataPath(), settings)
+      const window = saveMaintenanceSettings({
+        currentUserDataPath: userDataPath(),
+        settings,
+        rescheduleAutoBackup: runtime?.rescheduleAutoBackup
+      })
       emitOpsDataChange({
         kind: 'maintenance-window-saved',
         sourceType: 'operations',
@@ -532,6 +542,7 @@ module.exports = {
     diagnosticsPreview,
     modelRecheckOutcome,
     modelResultForEvent,
-    safeChangePayload
+    safeChangePayload,
+    saveMaintenanceSettings
   }
 }
