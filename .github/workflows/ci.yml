@@ -80,31 +80,34 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          release_api="repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME"
-          error_file="$(mktemp)"
-          if draft_state="$(gh api "$release_api" --jq '.draft' 2>"$error_file")"; then
-            if [ "$draft_state" != "true" ]; then
-              echo "::error::Release $GITHUB_REF_NAME is already published; refusing to overwrite its assets"
-              exit 1
-            fi
-            echo "Resuming existing draft release $GITHUB_REF_NAME"
-          elif grep -Fq 'HTTP 404' "$error_file"; then
-            body=$(cat <<'EOF'
+          release_list_api="repos/$GITHUB_REPOSITORY/releases?per_page=100"
+          published_release_id="$(gh api "$release_list_api" \
+            --jq ".[] | select(.tag_name == \"$GITHUB_REF_NAME\" and .draft == false) | .id" \
+            | head -n 1)"
+          if [ -n "$published_release_id" ]; then
+            echo "::error::Release $GITHUB_REF_NAME is already published; refusing to overwrite its assets"
+            exit 1
+          fi
+
+          draft_release_id="$(gh api "$release_list_api" \
+            --jq "[.[] | select(.tag_name == \"$GITHUB_REF_NAME\" and .draft == true)] | sort_by(.assets | length) | reverse | .[0].id // empty")"
+          if [ -n "$draft_release_id" ]; then
+            echo "Resuming existing draft release $GITHUB_REF_NAME (id $draft_release_id)"
+            exit 0
+          fi
+
+          body=$(cat <<'EOF'
           macOS packages in this release are not signed with an Apple Developer ID certificate and are not notarized. macOS may display a security warning when opening them.
           SHA256SUMS.txt is included for the in-app GitHub Release updater.
           EOF
-            )
-            gh api --method POST "repos/$GITHUB_REPOSITORY/releases" \
-              -f tag_name="$GITHUB_REF_NAME" \
-              -f name="$GITHUB_REF_NAME" \
-              -f body="$body" \
-              -F draft=true \
-              -F generate_release_notes=true \
-              --silent
-          else
-            cat "$error_file" >&2
-            exit 1
-          fi
+          )
+          gh api --method POST "repos/$GITHUB_REPOSITORY/releases" \
+            -f tag_name="$GITHUB_REF_NAME" \
+            -f name="$GITHUB_REF_NAME" \
+            -f body="$body" \
+            -F draft=true \
+            -F generate_release_notes=true \
+            --silent
 
   mac-build:
     runs-on: ${{ matrix.os }}

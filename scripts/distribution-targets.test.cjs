@@ -60,6 +60,13 @@ test('distribution is limited to macOS and Windows without implicit publishing',
   assert.match(workflow, /needs: \[mac-build, win-build, release-init\]/)
 
   assert.match(releaseInitJob, /- name: Create or resume draft GitHub Release/)
+  assert.match(releaseInitJob, /releases\?per_page=100/)
+  assert.match(
+    releaseInitJob,
+    /select\(\.tag_name == \\\"\$GITHUB_REF_NAME\\\" and \.draft == false\)/
+  )
+  assert.match(releaseInitJob, /sort_by\(\.assets \| length\)/)
+  assert.match(releaseInitJob, /Resuming existing draft release/)
   assert.match(releaseInitJob, /gh api --method POST/)
   assert.match(releaseInitJob, /-F draft=true/)
   assert.match(releaseInitJob, /-F generate_release_notes=true/)
@@ -119,7 +126,7 @@ test('release assets bypass Actions artifact quota and publish through a draft r
     releaseInitJob,
     /Release \$GITHUB_REF_NAME is already published; refusing to overwrite its assets/
   )
-  assert.match(releaseInitJob, /grep -Fq 'HTTP 404'/)
+  assert.match(releaseInitJob, /draft_release_id/)
   assert.match(
     workflow,
     /concurrency:\n  group: \$\{\{ github\.workflow \}\}-\$\{\{ github\.ref \}\}\n  cancel-in-progress: false/
