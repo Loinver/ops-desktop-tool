@@ -172,7 +172,7 @@ test('requires the exact versioned product installer when a release version is s
   )
 })
 
-test('supports the legacy space-separated asset name used to bootstrap v1.0.5 clients', () => {
+test('supports Electron Builder space-separated asset names before GitHub normalization', () => {
   const release = releaseWithAssets([
     asset('Ops Desktop-1.0.6-x64.dmg'),
     asset('Ops Desktop-1.0.6-x64.zip'),
