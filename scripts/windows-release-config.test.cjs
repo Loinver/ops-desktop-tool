@@ -66,7 +66,7 @@ test('Windows 构建生成安装包和可直接启动的解压目录', () => {
   assert.equal(fs.existsSync(installerSmokeScriptPath), true)
 })
 
-test('Windows CI 在原生 x64 和 ARM64 runner 构建、启动并上传各自安装产物', () => {
+test('Windows Tag CI 在原生 x64 和 ARM64 runner 构建、启动并直接上传各自安装产物', () => {
   assert.match(workflow, /runs-on: \$\{\{ matrix\.os \}\}/)
   assert.match(workflow, /os: windows-latest/)
   assert.match(workflow, /os: windows-11-arm/)
@@ -85,16 +85,24 @@ test('Windows CI 在原生 x64 和 ARM64 runner 构建、启动并上传各自�
     workflow,
     /node scripts\/windows-installer-smoke\.cjs --arch=\$\{\{ matrix\.arch \}\} --allow-install/
   )
-  assert.match(workflow, /name: ops-desktop-win-\$\{\{ matrix\.arch \}\}/)
-  assert.match(workflow, /pattern: ops-desktop-win-\*/)
-  assert.match(workflow, /merge-multiple: true/)
-  assert.match(workflow, /release\/\*\.exe/)
-  assert.match(workflow, /release\/\*\.zip/)
+  assert.match(workflow, /- name: Prepare Windows release assets and checksum fragment/)
+  assert.match(workflow, /checksums-win-\$\{\{ matrix\.arch \}\}\.txt/)
+  assert.match(workflow, /- name: Upload Windows assets directly to draft release/)
+  assert.match(workflow, /gh release upload \$env:GITHUB_REF_NAME/)
+  assert.match(workflow, /Ops\.Desktop-\$version-windows-\$\{\{ matrix\.arch \}\}\.exe/)
+  assert.match(workflow, /Ops\.Desktop-\$version-windows-\$\{\{ matrix\.arch \}\}\.zip/)
+  assert.doesNotMatch(workflow, /actions\/(?:upload|download)-artifact@v4/)
 })
 
 test('Windows installer smoke test 使用隔离目录且不会覆盖现有安装', () => {
-  assert.equal(renderWindowsArtifactName('x64'), `Ops Desktop-${packageJson.version}-windows-x64.exe`)
-  assert.equal(renderWindowsArtifactName('arm64'), `Ops Desktop-${packageJson.version}-windows-arm64.exe`)
+  assert.equal(
+    renderWindowsArtifactName('x64'),
+    `Ops Desktop-${packageJson.version}-windows-x64.exe`
+  )
+  assert.equal(
+    renderWindowsArtifactName('arm64'),
+    `Ops Desktop-${packageJson.version}-windows-arm64.exe`
+  )
   assert.equal(
     packagedInstallerPath('arm64'),
     path.join(root, 'release', `Ops Desktop-${packageJson.version}-windows-arm64.exe`)
