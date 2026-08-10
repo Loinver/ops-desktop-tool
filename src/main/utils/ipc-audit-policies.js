@@ -70,6 +70,11 @@ function createIpcAuditPolicies() {
         port: integerValue(objectArg(args).port, 1, 65535)
       })
     },
+    [IPC_CHANNELS.NODE_MONITOR_CHECK]: {
+      action: 'node-monitor.check',
+      category: 'operations',
+      target: () => ({ operation: 'service-check' })
+    },
     [IPC_CHANNELS.SFTP_UPLOAD]: {
       action: 'release.upload-file',
       category: 'release',
@@ -109,10 +114,25 @@ function createIpcAuditPolicies() {
       category: 'release',
       target: () => ({ operation: 'connection-test' })
     },
+    [IPC_CHANNELS.SFTP_LIST]: {
+      action: 'release.list-remote',
+      category: 'release',
+      target: () => ({ operation: 'remote-list' })
+    },
+    [IPC_CHANNELS.SFTP_COMPARE]: {
+      action: 'release.compare',
+      category: 'release',
+      target: () => ({ operation: 'compare' })
+    },
     [IPC_CHANNELS.SFTP_MKDIR]: {
       action: 'release.mkdir',
       category: 'release',
       target: (args) => ({ hasRemotePath: hasValue(first(args)) })
+    },
+    [IPC_CHANNELS.SFTP_PREFLIGHT]: {
+      action: 'release.preflight',
+      category: 'release',
+      target: () => ({ operation: 'preflight' })
     },
     [IPC_CHANNELS.SFTP_PROFILE_SAVE]: {
       action: 'release.profile-save',
@@ -270,6 +290,13 @@ function createIpcAuditPolicies() {
         hasBaseUrl: hasValue(objectArg(args).baseUrl),
         hasApiKey: hasValue(objectArg(args).apiKey),
         clearApiKey: objectArg(args).clearApiKey === true
+      })
+    },
+    [IPC_CHANNELS.GPT_IMAGE_MODELS_LIST]: {
+      action: 'ai-image.models-list',
+      category: 'ai-config',
+      target: (args) => ({
+        sourceMode: enumValue(objectArg(args).sourceMode, GPT_IMAGE_SOURCE_MODES)
       })
     },
     [IPC_CHANNELS.GPT_IMAGE_GENERATE]: {
