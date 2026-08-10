@@ -2,8 +2,8 @@
 
 - 审计日期：2026-08-10
 - 审计对象：当前工作区中的 Electron 主进程、Preload/IPC、Vue Renderer、后台调度器、本地持久化、安全边界、自动化测试与真实桌面窗口
-- 仓库内应用版本：`1.0.5`
-- 交付状态：**功能审计、审计降噪和 CI artifact 策略已形成提交；旧 Actions artifact 已清理，正在准备 `v1.0.6` 发布**
+- 仓库内应用版本：`1.0.6`
+- 交付状态：**功能审计、审计降噪和 CI artifact 策略已形成提交；旧 Actions artifact 已清理，仓库版本已升级到 `1.0.6`，正在执行 `v1.0.6` 标签发布**
 - 历史说明：`docs/app-functional-audit-2026-08-07.md` 是前一轮快照；本文件是 2026-08-10 的当前权威检查文档
 
 ## 1. 总体结论
@@ -415,7 +415,7 @@ git diff --check
 
 审计复核后继续保留以下可追溯操作：Node 主动检查、SFTP 远端读取/比较/预检，以及 GPT 图像远端模型发现；仅对本地、无副作用的例行读取免除高风险审计，避免产生刷新噪音。
 
-GitHub Actions 中 48 个旧 artifact（约 8.67 GiB）已清理，API 查询剩余为 0。工作流已取消无下游消费的 Renderer `dist` 上传，并将 macOS/Windows 中间发布 artifact 限制为仅版本 Tag 上传、保留 1 天。仓库内应用版本当前仍为 `1.0.5`，下一步升级并发布 `v1.0.6`。
+GitHub Actions 中 48 个旧 artifact（约 8.67 GiB）已清理，API 查询剩余为 0。工作流已取消无下游消费的 Renderer `dist` 上传，并将 macOS/Windows 中间发布 artifact 限制为仅版本 Tag 上传、保留 1 天。仓库内应用版本已升级为 `1.0.6`，下一步创建并验证 `v1.0.6` 标签发布。
 
 `.codex/config.toml` 是用户本地配置，不属于产品交付，不应混入发布提交。
 

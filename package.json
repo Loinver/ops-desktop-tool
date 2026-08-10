@@ -1,6 +1,6 @@
 {
   "name": "ops-desktop-tool",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "本机优先的 AI 运维桌面工作台",
   "main": "src/main/main.js",
   "scripts": {
