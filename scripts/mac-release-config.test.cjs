@@ -80,6 +80,9 @@ test('release workflow builds and smoke tests unsigned Mac artifacts for both ar
     /node scripts\/mac-packaged-app-smoke\.cjs --arch=\$\{\{ matrix\.arch \}\}/
   )
   assert.match(workflow, /matrix\.executable_arch/)
-  assert.match(workflow, /pattern: ops-desktop-mac-\*/)
+  assert.match(workflow, /- name: Upload Mac assets directly to draft release/)
+  assert.match(workflow, /checksums-mac-\$\{\{ matrix\.arch \}\}\.txt/)
+  assert.match(workflow, /gh release upload "\$GITHUB_REF_NAME"/)
+  assert.doesNotMatch(workflow, /actions\/(?:upload|download)-artifact@v4/)
   assert.equal(fs.existsSync(path.join(root, '.github', 'workflows', 'code-signing.yml')), false)
 })

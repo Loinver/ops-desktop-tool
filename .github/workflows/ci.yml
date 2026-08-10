@@ -8,6 +8,10 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -63,9 +67,54 @@ jobs:
       - name: Build
         run: pnpm build
 
+  release-init:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Create or resume draft GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_api="repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME"
+          error_file="$(mktemp)"
+          if draft_state="$(gh api "$release_api" --jq '.draft' 2>"$error_file")"; then
+            if [ "$draft_state" != "true" ]; then
+              echo "::error::Release $GITHUB_REF_NAME is already published; refusing to overwrite its assets"
+              exit 1
+            fi
+            echo "Resuming existing draft release $GITHUB_REF_NAME"
+          elif grep -Fq 'HTTP 404' "$error_file"; then
+            body=$(cat <<'EOF'
+          macOS packages in this release are not signed with an Apple Developer ID certificate and are not notarized. macOS may display a security warning when opening them.
+          SHA256SUMS.txt is included for the in-app GitHub Release updater.
+          EOF
+            )
+            gh api --method POST "repos/$GITHUB_REPOSITORY/releases" \
+              -f tag_name="$GITHUB_REF_NAME" \
+              -f name="$GITHUB_REF_NAME" \
+              -f body="$body" \
+              -F draft=true \
+              -F generate_release_notes=true \
+              --silent
+          else
+            cat "$error_file" >&2
+            exit 1
+          fi
+
   mac-build:
     runs-on: ${{ matrix.os }}
-    needs: build
+    permissions:
+      contents: write
+    needs: [build, release-init]
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') &&
+      needs.build.result == 'success' &&
+      needs.release-init.result == 'success'
     strategy:
       fail-fast: false
       matrix:
@@ -122,20 +171,50 @@ jobs:
       - name: Smoke test packaged Mac app
         run: node scripts/mac-packaged-app-smoke.cjs --arch=${{ matrix.arch }}
 
-      - name: Upload Mac artifacts for release
+      - name: Prepare Mac release assets and checksum fragment
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: actions/upload-artifact@v4
-        with:
-          name: ops-desktop-mac-${{ matrix.arch }}
-          path: |
-            release/*.dmg
-            release/*.zip
-          if-no-files-found: error
-          retention-days: 1
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          cd release
+          for extension in dmg zip; do
+            source_name="Ops Desktop-${version}-${{ matrix.arch }}.${extension}"
+            target_name="Ops.Desktop-${version}-${{ matrix.arch }}.${extension}"
+            if [ ! -f "$source_name" ]; then
+              echo "::error::Expected release asset was not found: $source_name"
+              exit 1
+            fi
+            mv -- "$source_name" "$target_name"
+          done
+          shasum -a 256 -- \
+            "Ops.Desktop-${version}-${{ matrix.arch }}.dmg" \
+            "Ops.Desktop-${version}-${{ matrix.arch }}.zip" \
+            > "checksums-mac-${{ matrix.arch }}.txt"
+
+      - name: Upload Mac assets directly to draft release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          gh release upload "$GITHUB_REF_NAME" \
+            "release/Ops.Desktop-${version}-${{ matrix.arch }}.dmg" \
+            "release/Ops.Desktop-${version}-${{ matrix.arch }}.zip" \
+            "release/checksums-mac-${{ matrix.arch }}.txt" \
+            --clobber \
+            --repo "$GITHUB_REPOSITORY"
 
   win-build:
     runs-on: ${{ matrix.os }}
-    needs: build
+    permissions:
+      contents: write
+    needs: [build, release-init]
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') &&
+      needs.build.result == 'success' &&
+      needs.release-init.result == 'success'
     strategy:
       fail-fast: false
       matrix:
@@ -196,59 +275,107 @@ jobs:
       - name: Smoke test Windows installer lifecycle
         run: node scripts/windows-installer-smoke.cjs --arch=${{ matrix.arch }} --allow-install
 
-      - name: Upload Windows artifacts for release
+      - name: Prepare Windows release assets and checksum fragment
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: actions/upload-artifact@v4
-        with:
-          name: ops-desktop-win-${{ matrix.arch }}
-          path: |
-            release/*.exe
-            release/*.zip
-          if-no-files-found: error
-          retention-days: 1
+        shell: pwsh
+        run: |
+          $version = $env:GITHUB_REF_NAME.Substring(1)
+          $assetNames = @(
+            "Ops.Desktop-$version-windows-${{ matrix.arch }}.exe",
+            "Ops.Desktop-$version-windows-${{ matrix.arch }}.zip"
+          )
+          foreach ($targetName in $assetNames) {
+            $sourceName = $targetName -replace '^Ops\.Desktop-', 'Ops Desktop-'
+            $sourcePath = Join-Path release $sourceName
+            if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
+              throw "Expected release asset was not found: $sourceName"
+            }
+            Move-Item -LiteralPath $sourcePath -Destination (Join-Path release $targetName)
+          }
+          $checksumLines = foreach ($assetName in $assetNames) {
+            $assetPath = Join-Path release $assetName
+            $hash = (Get-FileHash -LiteralPath $assetPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $assetName"
+          }
+          $checksumLines | Set-Content -LiteralPath "release/checksums-win-${{ matrix.arch }}.txt" -Encoding ascii
+
+      - name: Upload Windows assets directly to draft release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $version = $env:GITHUB_REF_NAME.Substring(1)
+          gh release upload $env:GITHUB_REF_NAME `
+            "release/Ops.Desktop-$version-windows-${{ matrix.arch }}.exe" `
+            "release/Ops.Desktop-$version-windows-${{ matrix.arch }}.zip" `
+            "release/checksums-win-${{ matrix.arch }}.txt" `
+            --clobber `
+            --repo $env:GITHUB_REPOSITORY
 
   release:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    needs: [mac-build, win-build]
+    needs: [mac-build, win-build, release-init]
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
-      - name: Download Mac artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: ops-desktop-mac-*
-          path: release
-          merge-multiple: true
+      - name: Download checksum fragments from draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p release
+          gh release download "$GITHUB_REF_NAME" \
+            --pattern 'checksums-*.txt' \
+            --dir release \
+            --repo "$GITHUB_REPOSITORY"
 
-      - name: Download Windows artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: ops-desktop-win-*
-          path: release
-          merge-multiple: true
-
-      - name: Generate update checksums
+      - name: Generate and validate update checksums
         shell: bash
         run: |
-          cd release
-          for file in "Ops Desktop-"*; do
-            [ -e "$file" ] || continue
-            mv -- "$file" "Ops.Desktop-${file#Ops Desktop-}"
+          set -euo pipefail
+          cat release/checksums-*.txt | sort -k2 > release/SHA256SUMS.txt
+          expected_assets=(
+            "Ops.Desktop-${GITHUB_REF_NAME#v}-arm64.dmg"
+            "Ops.Desktop-${GITHUB_REF_NAME#v}-arm64.zip"
+            "Ops.Desktop-${GITHUB_REF_NAME#v}-x64.dmg"
+            "Ops.Desktop-${GITHUB_REF_NAME#v}-x64.zip"
+            "Ops.Desktop-${GITHUB_REF_NAME#v}-windows-arm64.exe"
+            "Ops.Desktop-${GITHUB_REF_NAME#v}-windows-arm64.zip"
+            "Ops.Desktop-${GITHUB_REF_NAME#v}-windows-x64.exe"
+            "Ops.Desktop-${GITHUB_REF_NAME#v}-windows-x64.zip"
+          )
+          if [ "$(wc -l < release/SHA256SUMS.txt | tr -d ' ')" -ne "${#expected_assets[@]}" ]; then
+            echo "::error::SHA256SUMS.txt must contain exactly ${#expected_assets[@]} assets"
+            cat release/SHA256SUMS.txt
+            exit 1
+          fi
+          for asset in "${expected_assets[@]}"; do
+            if ! grep -Fq "  $asset" release/SHA256SUMS.txt; then
+              echo "::error::Missing checksum entry for $asset"
+              exit 1
+            fi
           done
-          sha256sum -- *.dmg *.zip *.exe > SHA256SUMS.txt
 
-      - name: Publish release artifacts
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          generate_release_notes: true
-          body: |
-            macOS packages in this release are not signed with an Apple Developer ID certificate and are not notarized. macOS may display a security warning when opening them.
-            SHA256SUMS.txt is included for the in-app GitHub Release updater.
-          fail_on_unmatched_files: true
-          files: |
-            release/*.dmg
-            release/*.zip
-            release/*.exe
-            release/SHA256SUMS.txt
+      - name: Upload checksum manifest and remove temporary fragments
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh release upload "$GITHUB_REF_NAME" release/SHA256SUMS.txt \
+            --clobber \
+            --repo "$GITHUB_REPOSITORY"
+          for fragment in release/checksums-*.txt; do
+            gh release delete-asset "$GITHUB_REF_NAME" "$(basename "$fragment")" \
+              --yes \
+              --repo "$GITHUB_REPOSITORY"
+          done
+
+      - name: Publish completed GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release edit "$GITHUB_REF_NAME" \
+            --draft=false \
+            --latest \
+            --repo "$GITHUB_REPOSITORY"

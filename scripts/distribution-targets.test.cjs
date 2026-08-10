@@ -8,14 +8,17 @@ const packageJson = require(path.join(root, 'package.json'))
 const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'ci.yml'), 'utf8')
 
 const testJob = workflow.slice(workflow.indexOf('  test:'), workflow.indexOf('  build:'))
-const buildJob = workflow.slice(workflow.indexOf('  build:'), workflow.indexOf('  mac-build:'))
+const buildJob = workflow.slice(workflow.indexOf('  build:'), workflow.indexOf('  release-init:'))
+const releaseInitJob = workflow.slice(
+  workflow.indexOf('  release-init:'),
+  workflow.indexOf('  mac-build:')
+)
 const macBuildJob = workflow.slice(
   workflow.indexOf('  mac-build:'),
   workflow.indexOf('  win-build:')
 )
 const winBuildJob = workflow.slice(workflow.indexOf('  win-build:'), workflow.indexOf('  release:'))
 const releaseJob = workflow.slice(workflow.indexOf('  release:'))
-const releasePublishStep = workflow.slice(workflow.indexOf('- name: Publish release artifacts'))
 
 const packageScripts = [
   'electron:build:mac',
@@ -54,15 +57,23 @@ test('distribution is limited to macOS and Windows without implicit publishing',
   assert.doesNotMatch(workflow, /^  linux-build:/m)
   assert.doesNotMatch(workflow, /ops-desktop-linux/)
   assert.doesNotMatch(workflow, /AppImage|\.deb/)
-  assert.match(workflow, /needs: \[mac-build, win-build\]/)
+  assert.match(workflow, /needs: \[mac-build, win-build, release-init\]/)
 
-  assert.match(releasePublishStep, /uses: softprops\/action-gh-release@v2/)
-  assert.match(releasePublishStep, /generate_release_notes: true/)
-  assert.match(releasePublishStep, /not signed with an Apple Developer ID certificate/)
-  assert.match(releasePublishStep, /release\/\*\.dmg/)
-  assert.match(releasePublishStep, /release\/\*\.zip/)
-  assert.match(releasePublishStep, /release\/\*\.exe/)
-  assert.doesNotMatch(releasePublishStep, /AppImage|\.deb/)
+  assert.match(releaseInitJob, /- name: Create or resume draft GitHub Release/)
+  assert.match(releaseInitJob, /gh api --method POST/)
+  assert.match(releaseInitJob, /-F draft=true/)
+  assert.match(releaseInitJob, /-F generate_release_notes=true/)
+  assert.match(releaseInitJob, /not signed with an Apple Developer ID certificate/)
+
+  assert.match(releaseJob, /gh release download "\$GITHUB_REF_NAME"/)
+  assert.match(releaseJob, /--pattern 'checksums-\*\.txt'/)
+  assert.match(releaseJob, /release\/SHA256SUMS\.txt/)
+  assert.match(releaseJob, /gh release upload "\$GITHUB_REF_NAME" release\/SHA256SUMS\.txt/)
+  assert.match(releaseJob, /gh release delete-asset/)
+  assert.match(releaseJob, /gh release edit "\$GITHUB_REF_NAME"/)
+  assert.match(releaseJob, /--draft=false/)
+  assert.match(releaseJob, /--latest/)
+  assert.doesNotMatch(releaseJob, /AppImage|\.deb/)
 })
 
 test('tag pushes are the only release trigger and publish source', () => {
@@ -83,8 +94,9 @@ test('tag pushes are the only release trigger and publish source', () => {
     /Validate Mac release credentials|Build signed and notarized Mac package/
   )
 
+  assert.match(releaseInitJob, /if: startsWith\(github\.ref, 'refs\/tags\/v'\)/)
+  assert.match(releaseInitJob, /-f tag_name="\$GITHUB_REF_NAME"/)
   assert.match(releaseJob, /if: startsWith\(github\.ref, 'refs\/tags\/v'\)/)
-  assert.match(releasePublishStep, /tag_name: \$\{\{ github\.ref_name \}\}/)
 })
 
 test('tag pushes validate the package version in the test job', () => {
@@ -95,15 +107,41 @@ test('tag pushes validate the package version in the test job', () => {
   assert.match(testJob, /must exactly match package\.json version tag/)
 })
 
-test('intermediate artifacts are uploaded only for release tags and expire quickly', () => {
+test('release assets bypass Actions artifact quota and publish through a draft release', () => {
   assert.doesNotMatch(buildJob, /actions\/upload-artifact@v4/)
-  assert.doesNotMatch(buildJob, /ops-desktop-build/)
+  assert.doesNotMatch(workflow, /actions\/(?:upload|download)-artifact@v4/)
+  assert.doesNotMatch(workflow, /retention-days:/)
+
+  assert.match(releaseInitJob, /- name: Create or resume draft GitHub Release/)
+  assert.match(
+    releaseInitJob,
+    /Release \$GITHUB_REF_NAME is already published; refusing to overwrite its assets/
+  )
+  assert.match(releaseInitJob, /grep -Fq 'HTTP 404'/)
+  assert.match(
+    workflow,
+    /concurrency:\n  group: \$\{\{ github\.workflow \}\}-\$\{\{ github\.ref \}\}\n  cancel-in-progress: false/
+  )
+
+  assert.match(macBuildJob, /- name: Prepare Mac release assets and checksum fragment/)
+  assert.match(macBuildJob, /checksums-mac-\$\{\{ matrix\.arch \}\}\.txt/)
+  assert.match(macBuildJob, /- name: Upload Mac assets directly to draft release/)
+  assert.match(macBuildJob, /gh release upload "\$GITHUB_REF_NAME"/)
+
+  assert.match(winBuildJob, /- name: Prepare Windows release assets and checksum fragment/)
+  assert.match(winBuildJob, /checksums-win-\$\{\{ matrix\.arch \}\}\.txt/)
+  assert.match(winBuildJob, /- name: Upload Windows assets directly to draft release/)
+  assert.match(winBuildJob, /gh release upload \$env:GITHUB_REF_NAME/)
 
   for (const job of [macBuildJob, winBuildJob]) {
-    assert.match(
-      job,
-      /if: startsWith\(github\.ref, 'refs\/tags\/v'\)\n        uses: actions\/upload-artifact@v4/
-    )
-    assert.match(job, /retention-days: 1/)
+    assert.match(job, /permissions:\n      contents: write/)
+    assert.match(job, /needs: \[build, release-init\]/)
+    assert.match(job, /startsWith\(github\.ref, 'refs\/tags\/v'\)/)
+    assert.match(job, /needs\.release-init\.result == 'success'/)
+    assert.doesNotMatch(job, /needs\.release-init\.result == 'skipped'/)
+    assert.match(job, /--clobber/)
   }
+
+  assert.match(releaseJob, /SHA256SUMS\.txt must contain exactly/)
+  assert.match(releaseJob, /Missing checksum entry for \$asset/)
 })
