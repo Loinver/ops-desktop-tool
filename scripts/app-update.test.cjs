@@ -172,6 +172,23 @@ test('requires the exact versioned product installer when a release version is s
   )
 })
 
+test('supports the legacy space-separated asset name used to bootstrap v1.0.5 clients', () => {
+  const release = releaseWithAssets([
+    asset('Ops Desktop-1.0.6-x64.dmg'),
+    asset('Ops Desktop-1.0.6-x64.zip'),
+    asset('SHA256SUMS.txt')
+  ])
+
+  assert.equal(
+    selectReleaseAsset(release, {
+      platform: 'darwin',
+      arch: 'x64',
+      version: 'v1.0.6'
+    }).asset.name,
+    'Ops Desktop-1.0.6-x64.dmg'
+  )
+})
+
 test('only exposes trusted GitHub release URLs', () => {
   assert.equal(
     safeReleaseUrl('https://github.com/example/app/releases/tag/v2.0.0?download=1#notes'),

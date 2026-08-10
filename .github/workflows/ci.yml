@@ -179,17 +179,15 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           cd release
           for extension in dmg zip; do
-            source_name="Ops Desktop-${version}-${{ matrix.arch }}.${extension}"
-            target_name="Ops.Desktop-${version}-${{ matrix.arch }}.${extension}"
-            if [ ! -f "$source_name" ]; then
-              echo "::error::Expected release asset was not found: $source_name"
+            asset_name="Ops Desktop-${version}-${{ matrix.arch }}.${extension}"
+            if [ ! -f "$asset_name" ]; then
+              echo "::error::Expected release asset was not found: $asset_name"
               exit 1
             fi
-            mv -- "$source_name" "$target_name"
           done
           shasum -a 256 -- \
-            "Ops.Desktop-${version}-${{ matrix.arch }}.dmg" \
-            "Ops.Desktop-${version}-${{ matrix.arch }}.zip" \
+            "Ops Desktop-${version}-${{ matrix.arch }}.dmg" \
+            "Ops Desktop-${version}-${{ matrix.arch }}.zip" \
             > "checksums-mac-${{ matrix.arch }}.txt"
 
       - name: Upload Mac assets directly to draft release
@@ -200,8 +198,8 @@ jobs:
         run: |
           version="${GITHUB_REF_NAME#v}"
           gh release upload "$GITHUB_REF_NAME" \
-            "release/Ops.Desktop-${version}-${{ matrix.arch }}.dmg" \
-            "release/Ops.Desktop-${version}-${{ matrix.arch }}.zip" \
+            "release/Ops Desktop-${version}-${{ matrix.arch }}.dmg" \
+            "release/Ops Desktop-${version}-${{ matrix.arch }}.zip" \
             "release/checksums-mac-${{ matrix.arch }}.txt" \
             --clobber \
             --repo "$GITHUB_REPOSITORY"
@@ -281,16 +279,14 @@ jobs:
         run: |
           $version = $env:GITHUB_REF_NAME.Substring(1)
           $assetNames = @(
-            "Ops.Desktop-$version-windows-${{ matrix.arch }}.exe",
-            "Ops.Desktop-$version-windows-${{ matrix.arch }}.zip"
+            "Ops Desktop-$version-windows-${{ matrix.arch }}.exe",
+            "Ops Desktop-$version-windows-${{ matrix.arch }}.zip"
           )
-          foreach ($targetName in $assetNames) {
-            $sourceName = $targetName -replace '^Ops\.Desktop-', 'Ops Desktop-'
-            $sourcePath = Join-Path release $sourceName
-            if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
-              throw "Expected release asset was not found: $sourceName"
+          foreach ($assetName in $assetNames) {
+            $assetPath = Join-Path release $assetName
+            if (-not (Test-Path -LiteralPath $assetPath -PathType Leaf)) {
+              throw "Expected release asset was not found: $assetName"
             }
-            Move-Item -LiteralPath $sourcePath -Destination (Join-Path release $targetName)
           }
           $checksumLines = foreach ($assetName in $assetNames) {
             $assetPath = Join-Path release $assetName
@@ -307,8 +303,8 @@ jobs:
         run: |
           $version = $env:GITHUB_REF_NAME.Substring(1)
           gh release upload $env:GITHUB_REF_NAME `
-            "release/Ops.Desktop-$version-windows-${{ matrix.arch }}.exe" `
-            "release/Ops.Desktop-$version-windows-${{ matrix.arch }}.zip" `
+            "release/Ops Desktop-$version-windows-${{ matrix.arch }}.exe" `
+            "release/Ops Desktop-$version-windows-${{ matrix.arch }}.zip" `
             "release/checksums-win-${{ matrix.arch }}.txt" `
             --clobber `
             --repo $env:GITHUB_REPOSITORY
@@ -336,14 +332,14 @@ jobs:
           set -euo pipefail
           cat release/checksums-*.txt | sort -k2 > release/SHA256SUMS.txt
           expected_assets=(
-            "Ops.Desktop-${GITHUB_REF_NAME#v}-arm64.dmg"
-            "Ops.Desktop-${GITHUB_REF_NAME#v}-arm64.zip"
-            "Ops.Desktop-${GITHUB_REF_NAME#v}-x64.dmg"
-            "Ops.Desktop-${GITHUB_REF_NAME#v}-x64.zip"
-            "Ops.Desktop-${GITHUB_REF_NAME#v}-windows-arm64.exe"
-            "Ops.Desktop-${GITHUB_REF_NAME#v}-windows-arm64.zip"
-            "Ops.Desktop-${GITHUB_REF_NAME#v}-windows-x64.exe"
-            "Ops.Desktop-${GITHUB_REF_NAME#v}-windows-x64.zip"
+            "Ops Desktop-${GITHUB_REF_NAME#v}-arm64.dmg"
+            "Ops Desktop-${GITHUB_REF_NAME#v}-arm64.zip"
+            "Ops Desktop-${GITHUB_REF_NAME#v}-x64.dmg"
+            "Ops Desktop-${GITHUB_REF_NAME#v}-x64.zip"
+            "Ops Desktop-${GITHUB_REF_NAME#v}-windows-arm64.exe"
+            "Ops Desktop-${GITHUB_REF_NAME#v}-windows-arm64.zip"
+            "Ops Desktop-${GITHUB_REF_NAME#v}-windows-x64.exe"
+            "Ops Desktop-${GITHUB_REF_NAME#v}-windows-x64.zip"
           )
           if [ "$(wc -l < release/SHA256SUMS.txt | tr -d ' ')" -ne "${#expected_assets[@]}" ]; then
             echo "::error::SHA256SUMS.txt must contain exactly ${#expected_assets[@]} assets"
@@ -369,6 +365,28 @@ jobs:
             gh release delete-asset "$GITHUB_REF_NAME" "$(basename "$fragment")" \
               --yes \
               --repo "$GITHUB_REPOSITORY"
+          done
+
+      - name: Remove legacy dot-named release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          legacy_assets=(
+            "Ops.Desktop-${version}-arm64.dmg"
+            "Ops.Desktop-${version}-arm64.zip"
+            "Ops.Desktop-${version}-x64.dmg"
+            "Ops.Desktop-${version}-x64.zip"
+            "Ops.Desktop-${version}-windows-arm64.exe"
+            "Ops.Desktop-${version}-windows-arm64.zip"
+            "Ops.Desktop-${version}-windows-x64.exe"
+            "Ops.Desktop-${version}-windows-x64.zip"
+          )
+          for asset in "${legacy_assets[@]}"; do
+            gh release delete-asset "$GITHUB_REF_NAME" "$asset" \
+              --yes \
+              --repo "$GITHUB_REPOSITORY" || true
           done
 
       - name: Publish completed GitHub Release

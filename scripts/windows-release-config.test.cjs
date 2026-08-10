@@ -89,8 +89,8 @@ test('Windows Tag CI 在原生 x64 和 ARM64 runner 构建、启动并直接上�
   assert.match(workflow, /checksums-win-\$\{\{ matrix\.arch \}\}\.txt/)
   assert.match(workflow, /- name: Upload Windows assets directly to draft release/)
   assert.match(workflow, /gh release upload \$env:GITHUB_REF_NAME/)
-  assert.match(workflow, /Ops\.Desktop-\$version-windows-\$\{\{ matrix\.arch \}\}\.exe/)
-  assert.match(workflow, /Ops\.Desktop-\$version-windows-\$\{\{ matrix\.arch \}\}\.zip/)
+  assert.match(workflow, /Ops Desktop-\$version-windows-\$\{\{ matrix\.arch \}\}\.exe/)
+  assert.match(workflow, /Ops Desktop-\$version-windows-\$\{\{ matrix\.arch \}\}\.zip/)
   assert.doesNotMatch(workflow, /actions\/(?:upload|download)-artifact@v4/)
 })
 
