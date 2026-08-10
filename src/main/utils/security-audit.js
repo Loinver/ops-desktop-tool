@@ -1,11 +1,16 @@
 const crypto = require('node:crypto')
+const fs = require('node:fs')
 const path = require('node:path')
-const { readJsonFile, writeJsonFile } = require('./json-store')
+const { writeJsonFile } = require('./json-store')
 
 const AUDIT_FILE_NAME = 'security-audit.json'
-const AUDIT_STATE_VERSION = 1
+const AUDIT_STATE_VERSION = 2
 const MAX_AUDIT_RECORDS = 1_000
 const DEFAULT_LIST_LIMIT = 100
+const DEFAULT_RETENTION_DAYS = 90
+const MIN_RETENTION_DAYS = 1
+const MAX_RETENTION_DAYS = 3_650
+const MAX_PAGE_SIZE = 100
 const MAX_TEXT_LENGTH = 512
 const MAX_IDENTIFIER_LENGTH = 160
 const MAX_METADATA_DEPTH = 3
@@ -276,6 +281,19 @@ function normalizeStatus(value, fallback = 'started') {
   return fallback
 }
 
+function normalizeRetentionDays(value, fallback = DEFAULT_RETENTION_DAYS) {
+  const number = Number(value)
+  if (!Number.isFinite(number)) return fallback
+  return Math.max(MIN_RETENTION_DAYS, Math.min(MAX_RETENTION_DAYS, Math.trunc(number)))
+}
+
+function normalizeIntegrityHash(value) {
+  const hash = String(value || '')
+    .trim()
+    .toLowerCase()
+  return /^[a-f0-9]{64}$/.test(hash) ? hash : ''
+}
+
 function sanitizeError(error, errorCode, errorMessage, fallbackCode = '') {
   const source = error instanceof Error ? error : isObject(error) ? error : {}
   const sourceMessage =
@@ -320,30 +338,134 @@ function normalizeRecord(record) {
     finishedAt,
     durationMs,
     target: sanitizeTargetMetadata(record.target),
-    error
+    error,
+    previousHash: normalizeIntegrityHash(record.previousHash),
+    integrityHash: normalizeIntegrityHash(record.integrityHash)
   }
 }
 
-function readAuditState(userDataPath) {
-  const state = readJsonFile(getAuditStatePath(userDataPath), {
-    version: AUDIT_STATE_VERSION,
-    records: []
+function stableSerialize(value) {
+  if (Array.isArray(value)) return `[${value.map(stableSerialize).join(',')}]`
+  if (isObject(value)) {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableSerialize(value[key])}`)
+      .join(',')}}`
+  }
+  return JSON.stringify(value)
+}
+
+function integrityPayload(record) {
+  const { previousHash: _previousHash, integrityHash: _integrityHash, ...payload } = record
+  return payload
+}
+
+function computeIntegrityHash(record, previousHash = '') {
+  return crypto
+    .createHash('sha256')
+    .update(previousHash)
+    .update('\n')
+    .update(stableSerialize(integrityPayload(record)))
+    .digest('hex')
+}
+
+function chainAuditRecords(records) {
+  let previousHash = ''
+  return records.map((record) => {
+    const chained = {
+      ...record,
+      previousHash,
+      integrityHash: ''
+    }
+    chained.integrityHash = computeIntegrityHash(chained, previousHash)
+    previousHash = chained.integrityHash
+    return chained
   })
+}
+
+function verifyAuditIntegrity(records) {
+  let previousHash = ''
+  const items = Array.isArray(records) ? records : []
+  for (let index = 0; index < items.length; index += 1) {
+    const record = items[index]
+    const expectedHash = computeIntegrityHash(record, previousHash)
+    if (record.previousHash !== previousHash || record.integrityHash !== expectedHash) {
+      return {
+        valid: false,
+        checkedCount: index,
+        brokenAt: record.auditId || '',
+        reason: '审计记录完整性链不匹配'
+      }
+    }
+    previousHash = record.integrityHash
+  }
+  return {
+    valid: true,
+    checkedCount: items.length,
+    brokenAt: '',
+    reason: items.length ? '审计记录完整性链有效' : '暂无审计记录'
+  }
+}
+
+function pruneAuditRecords(records, retentionDays, now = Date.now()) {
+  const nowMilliseconds = Number(now)
+  if (!Number.isFinite(nowMilliseconds)) return records
+  const cutoff = nowMilliseconds - normalizeRetentionDays(retentionDays) * 24 * 60 * 60 * 1_000
+  return records.filter((record) => {
+    if (record.status === 'started') return true
+    const timestamp = timestampMilliseconds(record.finishedAt || record.startedAt)
+    return !timestamp || timestamp >= cutoff
+  })
+}
+
+function readAuditState(userDataPath) {
+  const statePath = getAuditStatePath(userDataPath)
+  let state
+  if (!fs.existsSync(statePath)) {
+    state = { version: AUDIT_STATE_VERSION, retentionDays: DEFAULT_RETENTION_DAYS, records: [] }
+  } else {
+    try {
+      state = JSON.parse(fs.readFileSync(statePath, 'utf8'))
+    } catch (cause) {
+      const error = new Error('安全审计文件损坏或不可读取，已拒绝按空记录继续')
+      error.code = 'AUDIT_STATE_CORRUPTED'
+      error.cause = cause
+      throw error
+    }
+  }
+
+  const legacy = Array.isArray(state) || Number(state?.version) < AUDIT_STATE_VERSION
   const sourceRecords = Array.isArray(state) ? state : state?.records
-  const records = (Array.isArray(sourceRecords) ? sourceRecords : [])
+  let records = (Array.isArray(sourceRecords) ? sourceRecords : [])
     .map(normalizeRecord)
     .filter(Boolean)
     .slice(-MAX_AUDIT_RECORDS)
-  return { version: AUDIT_STATE_VERSION, records }
+  if (legacy) records = chainAuditRecords(records)
+  const integrity = verifyAuditIntegrity(records)
+  return {
+    version: AUDIT_STATE_VERSION,
+    retentionDays: normalizeRetentionDays(state?.retentionDays),
+    records,
+    integrity
+  }
 }
 
 function writeAuditState(userDataPath, state) {
+  if (state?.integrity?.valid === false) {
+    const error = new Error('安全审计完整性校验失败，已拒绝覆盖现有记录')
+    error.code = 'AUDIT_INTEGRITY_FAILED'
+    throw error
+  }
+  const retentionDays = normalizeRetentionDays(state?.retentionDays)
+  let records = (Array.isArray(state?.records) ? state.records : [])
+    .map(normalizeRecord)
+    .filter(Boolean)
+  records = pruneAuditRecords(records, retentionDays, state?.now)
+  records = chainAuditRecords(records.slice(-MAX_AUDIT_RECORDS))
   const normalized = {
     version: AUDIT_STATE_VERSION,
-    records: (Array.isArray(state?.records) ? state.records : [])
-      .map(normalizeRecord)
-      .filter(Boolean)
-      .slice(-MAX_AUDIT_RECORDS)
+    retentionDays,
+    records
   }
   if (!writeJsonFile(getAuditStatePath(userDataPath), normalized)) {
     const error = new Error('保存安全审计记录失败')
@@ -384,8 +506,9 @@ function startAudit(input, details) {
     error: null
   }
   state.records.push(record)
+  state.now = timestampMilliseconds(startedAt)
   writeAuditState(options.userDataPath, state)
-  return clone(record)
+  return clone(readAuditState(options.userDataPath).records.at(-1))
 }
 
 function normalizeFinishCall(input, correlationOrDetails, details) {
@@ -457,11 +580,18 @@ function finishAudit(input, correlationOrDetails, details) {
     error
   }
   state.records[index] = updated
-  writeAuditState(options.userDataPath, state)
-  return clone(updated)
+  state.now = finishedMilliseconds
+  const saved = writeAuditState(options.userDataPath, state)
+  return clone(saved.records.find((item) => item.auditId === updated.auditId) || updated)
 }
 
 function filterAuditRecords(records, filters = {}) {
+  if (
+    filters.status &&
+    !['started', 'succeeded', 'failed', 'success', 'failure'].includes(filters.status)
+  ) {
+    throw new Error('无效的审计状态筛选')
+  }
   const normalizedStatus = filters.status ? normalizeStatus(filters.status, '') : ''
   const normalizedAction = filters.action ? sanitizeIdentifier(filters.action, '') : ''
   const normalizedCategory = filters.category ? sanitizeIdentifier(filters.category, '') : ''
@@ -492,34 +622,167 @@ function filterAuditRecords(records, filters = {}) {
 }
 
 function listAuditRecords(input, filters) {
+  return queryAuditRecords(input, filters).records
+}
+
+function encodeCursor(record) {
+  if (!record) return ''
+  return Buffer.from(JSON.stringify({ auditId: record.auditId }), 'utf8').toString('base64url')
+}
+
+function decodeCursor(value) {
+  if (!value) return ''
+  try {
+    const parsed = JSON.parse(Buffer.from(String(value), 'base64url').toString('utf8'))
+    return sanitizeIdentifier(parsed?.auditId, '')
+  } catch {
+    return ''
+  }
+}
+
+function queryAuditRecords(input, filters) {
   const options = normalizeCall(input, filters)
   const filterOptions = isObject(options.filters) ? { ...options.filters, ...options } : options
   const state = readAuditState(options.userDataPath)
+  const integrity = verifyAuditIntegrity(state.records)
+  const categories = [
+    ...new Set(state.records.map((record) => record.category).filter(Boolean))
+  ].sort()
+  const statusCounts = state.records.reduce(
+    (counts, record) => {
+      counts[record.status] = (counts[record.status] || 0) + 1
+      return counts
+    },
+    { started: 0, succeeded: 0, failed: 0 }
+  )
   const filtered = filterAuditRecords(state.records, filterOptions)
   const ordered = options.order === 'asc' ? filtered : filtered.slice().reverse()
-  const limitValue = Number(options.limit)
-  const limit = Number.isFinite(limitValue)
-    ? Math.max(0, Math.min(MAX_AUDIT_RECORDS, Math.trunc(limitValue)))
-    : DEFAULT_LIST_LIMIT
-  return clone(ordered.slice(0, limit))
+  const limitValue = Number(options.pageSize ?? options.limit)
+  const pageSize = Number.isFinite(limitValue)
+    ? Math.max(1, Math.min(MAX_PAGE_SIZE, Math.trunc(limitValue)))
+    : Math.min(DEFAULT_LIST_LIMIT, MAX_PAGE_SIZE)
+  const cursorAuditId = decodeCursor(options.cursor)
+  if (options.cursor && !cursorAuditId) throw new Error('无效的审计分页游标')
+  const cursorIndex = cursorAuditId
+    ? ordered.findIndex((record) => record.auditId === cursorAuditId)
+    : -1
+  if (cursorAuditId && cursorIndex < 0) throw new Error('审计分页游标已失效')
+  const startIndex = cursorIndex >= 0 ? cursorIndex + 1 : 0
+  const page = ordered.slice(startIndex, startIndex + pageSize)
+  const hasMore = startIndex + page.length < ordered.length
+  return clone({
+    records: page,
+    total: ordered.length,
+    hasMore,
+    nextCursor: hasMore ? encodeCursor(page.at(-1)) : '',
+    categories,
+    statusCounts,
+    retentionDays: state.retentionDays,
+    integrity
+  })
+}
+
+function getAuditSettings(userDataPath) {
+  const state = readAuditState(userDataPath)
+  return clone({
+    retentionDays: state.retentionDays,
+    maxRecords: MAX_AUDIT_RECORDS,
+    integrity: verifyAuditIntegrity(state.records)
+  })
+}
+
+function saveAuditSettings(input, settings) {
+  const options = normalizeCall(input, settings)
+  const state = readAuditState(options.userDataPath)
+  state.retentionDays = normalizeRetentionDays(options.retentionDays)
+  state.now = Number(options.now) || Date.now()
+  const saved = writeAuditState(options.userDataPath, state)
+  return clone({
+    retentionDays: saved.retentionDays,
+    maxRecords: MAX_AUDIT_RECORDS,
+    integrity: verifyAuditIntegrity(saved.records)
+  })
+}
+
+function clearAuditRecords(input, filters) {
+  const options = normalizeCall(input, filters)
+  if (options.confirmed !== true) throw new Error('清理审计记录前必须完成确认')
+  const category = sanitizeIdentifier(options.category, '')
+  if (!category || category !== String(options.category || '').trim()) {
+    throw new Error('清理审计记录必须指定有效分类')
+  }
+  const state = readAuditState(options.userDataPath)
+  const candidates = new Set(
+    filterAuditRecords(state.records, options).map((record) => record.auditId)
+  )
+  const beforeCount = state.records.length
+  state.records = state.records.filter(
+    (record) => record.status === 'started' || !candidates.has(record.auditId)
+  )
+  state.now = Number(options.now) || Date.now()
+  const saved = writeAuditState(options.userDataPath, state)
+  return clone({
+    deletedCount: beforeCount - saved.records.length,
+    remainingCount: saved.records.length,
+    integrity: verifyAuditIntegrity(saved.records)
+  })
+}
+
+function buildAuditExport(input, filters) {
+  const options = normalizeCall(input, filters)
+  const state = readAuditState(options.userDataPath)
+  const records = filterAuditRecords(state.records, options)
+  const ordered = records
+  const fullIntegrity = verifyAuditIntegrity(state.records)
+  return clone({
+    schemaVersion: 2,
+    generatedAt: normalizeTimestamp(options.now),
+    recordCount: ordered.length,
+    integrity: {
+      ...fullIntegrity,
+      scope: records.length === state.records.length ? 'full-chain' : 'filtered-subset',
+      independentlyVerifiable: records.length === state.records.length,
+      firstPreviousHash: ordered[0]?.previousHash || '',
+      lastIntegrityHash: ordered.at(-1)?.integrityHash || ''
+    },
+    filters: {
+      status: sanitizeIdentifier(options.status, ''),
+      category: sanitizeIdentifier(options.category, ''),
+      action: sanitizeIdentifier(options.action, ''),
+      channel: sanitizeIdentifier(options.channel, ''),
+      requestId: sanitizeIdentifier(options.requestId, ''),
+      from:
+        options.from || options.fromAt ? normalizeTimestamp(options.from ?? options.fromAt) : '',
+      to: options.to || options.toAt ? normalizeTimestamp(options.to ?? options.toAt) : ''
+    },
+    records: ordered
+  })
 }
 
 module.exports = {
   AUDIT_FILE_NAME,
   AUDIT_STATE_VERSION,
+  DEFAULT_RETENTION_DAYS,
   DEFAULT_LIST_LIMIT,
   MAX_AUDIT_RECORDS,
+  buildAuditExport,
+  clearAuditRecords,
+  computeIntegrityHash,
   finishAudit,
   filterAuditRecords,
+  getAuditSettings,
   getAuditStatePath,
   listAuditRecords,
   normalizeStatus,
+  queryAuditRecords,
   readAuditState,
   redactSensitiveText,
+  saveAuditSettings,
   sanitizeActor,
   sanitizeAuditMetadata: sanitizeTargetMetadata,
   sanitizeError,
   sanitizeTargetMetadata,
   startAudit,
+  verifyAuditIntegrity,
   writeAuditState
 }

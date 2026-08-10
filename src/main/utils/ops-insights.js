@@ -279,26 +279,47 @@ function buildNodeInsights(nodeHistory = []) {
       port: Math.max(0, Number(sample?.port) || 0),
       samples: 0,
       onlineSamples: 0,
+      metricSamples: 0,
+      unavailableMetricSamples: 0,
       cpuTotal: 0,
       maxCpuPercent: 0,
       memoryTotalBytes: 0,
       maxMemoryBytes: 0,
       latest: null
     }
-    const cpuPercent = boundedNumber(sample?.cpuPercent, 0, 100_000)
-    const memoryBytes = boundedNumber(sample?.memoryBytes, 0)
+    const metricsAvailable =
+      sample?.state === 'online' &&
+      sample?.metricsAvailable !== false &&
+      sample?.cpuPercent !== null &&
+      sample?.memoryBytes !== null &&
+      Number.isFinite(Number(sample?.cpuPercent)) &&
+      Number.isFinite(Number(sample?.memoryBytes))
+    const cpuPercent = metricsAvailable ? boundedNumber(sample?.cpuPercent, 0, 100_000) : null
+    const memoryBytes = metricsAvailable ? boundedNumber(sample?.memoryBytes, 0) : null
     group.samples += 1
     if (sample?.state === 'online') group.onlineSamples += 1
-    group.cpuTotal += cpuPercent
-    group.maxCpuPercent = Math.max(group.maxCpuPercent, cpuPercent)
-    group.memoryTotalBytes += memoryBytes
-    group.maxMemoryBytes = Math.max(group.maxMemoryBytes, memoryBytes)
+    if (metricsAvailable) {
+      group.metricSamples += 1
+      group.cpuTotal += cpuPercent
+      group.maxCpuPercent = Math.max(group.maxCpuPercent, cpuPercent)
+      group.memoryTotalBytes += memoryBytes
+      group.maxMemoryBytes = Math.max(group.maxMemoryBytes, memoryBytes)
+    } else if (sample?.state === 'online') {
+      group.unavailableMetricSamples += 1
+    }
     if (!group.latest || Number(sample?.checkedAt) > Number(group.latest?.checkedAt)) {
       group.latest = {
         state: sample?.state === 'online' ? 'online' : 'offline',
         pid: Math.max(0, Number(sample?.pid) || 0),
         cpuPercent,
         memoryBytes,
+        metricsAvailable,
+        metricsStatus:
+          sample?.state !== 'online'
+            ? 'not-applicable'
+            : metricsAvailable
+              ? 'available'
+              : 'unavailable',
         checkedAt: Number(sample?.checkedAt) || 0,
         commandLabel: text(sample?.commandLabel, 240)
       }
@@ -309,8 +330,10 @@ function buildNodeInsights(nodeHistory = []) {
     .map((item) => ({
       ...item,
       availability: item.samples ? round((item.onlineSamples / item.samples) * 100, 1) : 0,
-      averageCpuPercent: item.samples ? round(item.cpuTotal / item.samples, 1) : 0,
-      averageMemoryBytes: item.samples ? Math.round(item.memoryTotalBytes / item.samples) : 0
+      averageCpuPercent: item.metricSamples ? round(item.cpuTotal / item.metricSamples, 1) : null,
+      averageMemoryBytes: item.metricSamples
+        ? Math.round(item.memoryTotalBytes / item.metricSamples)
+        : null
     }))
     .sort((a, b) => Number(b.latest?.checkedAt) - Number(a.latest?.checkedAt))
     .slice(0, MAX_NODE_SERVICES)

@@ -1,5 +1,6 @@
 const crypto = require('node:crypto')
 const net = require('node:net')
+const { activeMaintenanceWindow } = require('./ops-maintenance-window')
 const { EventEmitter } = require('node:events')
 const path = require('node:path')
 const { readJsonFile, writeJsonFile } = require('./json-store')
@@ -569,7 +570,8 @@ async function runAutomationTask(userDataPath, id) {
   }
   return { task, result: entry }
 }
-async function runDueAutomationTasks(userDataPath) {
+async function runDueAutomationTasks(userDataPath, options = {}) {
+  if (activeMaintenanceWindow(userDataPath, { now: Number(options.now) || Date.now() })) return []
   const tasks = listAutomationTasks(userDataPath).filter(
     (task) => task.enabled && task.nextRunAt && task.nextRunAt <= Date.now()
   )

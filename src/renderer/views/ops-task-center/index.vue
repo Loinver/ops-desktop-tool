@@ -45,7 +45,7 @@
         </article>
         <article class="summary-card">
           <span>高风险审计</span>
-          <strong>{{ auditRecords.length }}</strong>
+          <strong>{{ auditTotal }}</strong>
           <small>{{ failedAuditCount }} 次失败</small>
         </article>
       </section>
@@ -61,6 +61,128 @@
           <span class="section-badge">单一数据源</span>
         </div>
 
+        <div class="task-control-panel">
+          <div class="task-filter-grid" aria-label="统一任务筛选">
+            <label>
+              <span>关键词</span>
+              <input v-model.trim="taskKeyword" type="search" placeholder="任务名、目标或类型" />
+            </label>
+            <label>
+              <span>来源</span>
+              <select v-model="taskSourceFilter">
+                <option value="">全部来源</option>
+                <option value="model">模型巡检</option>
+                <option value="automation">自动化巡检</option>
+                <option value="node">Node 服务</option>
+                <option value="backup">数据备份</option>
+              </select>
+            </label>
+            <label>
+              <span>状态</span>
+              <select v-model="taskStatusFilter">
+                <option value="">全部状态</option>
+                <option value="running">运行中/正常</option>
+                <option value="attention">需关注</option>
+                <option value="failed">失败/离线</option>
+                <option value="paused">已暂停</option>
+              </select>
+            </label>
+            <label>
+              <span>风险</span>
+              <select v-model="taskRiskFilter">
+                <option value="">全部风险</option>
+                <option value="high">高</option>
+                <option value="medium">中</option>
+                <option value="low">低</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="batch-toolbar">
+            <span>已选择 {{ selectedTaskRows.length }} 项</span>
+            <button
+              type="button"
+              class="button compact secondary"
+              :disabled="!selectedTaskRows.length || Boolean(actionKey)"
+              @click="runTaskBatch('run')"
+            >
+              批量执行
+            </button>
+            <button
+              type="button"
+              class="button compact secondary"
+              :disabled="!selectedToggleableTasks.length || Boolean(actionKey)"
+              @click="runTaskBatch('pause')"
+            >
+              批量暂停
+            </button>
+            <button
+              type="button"
+              class="button compact secondary"
+              :disabled="!selectedToggleableTasks.length || Boolean(actionKey)"
+              @click="runTaskBatch('resume')"
+            >
+              批量恢复
+            </button>
+            <button
+              v-if="selectedTaskRows.length"
+              type="button"
+              class="button compact ghost"
+              :disabled="Boolean(actionKey)"
+              @click="selectedTaskIds = []"
+            >
+              清除选择
+            </button>
+          </div>
+
+          <div v-if="batchSummary" class="batch-summary" role="status">
+            <strong>{{ batchSummary.title }}</strong>
+            <span>{{ batchSummary.message }}</span>
+          </div>
+
+          <div class="maintenance-panel">
+            <div>
+              <strong>自动调度维护窗口</strong>
+              <p>暂停模型巡检、HTTP/TCP 自动巡检和自动备份；Node 状态采集与人工操作继续可用。</p>
+              <small :class="maintenanceWindow.active ? 'danger-text' : 'muted-text'">
+                {{ maintenanceStatusText }}
+              </small>
+            </div>
+            <div class="maintenance-form">
+              <label>
+                <span>开始</span>
+                <input v-model="maintenanceDraft.startLocal" type="datetime-local" />
+              </label>
+              <label>
+                <span>结束</span>
+                <input v-model="maintenanceDraft.endLocal" type="datetime-local" />
+              </label>
+              <label class="maintenance-reason">
+                <span>原因</span>
+                <input v-model.trim="maintenanceDraft.reason" maxlength="300" placeholder="可选" />
+              </label>
+              <div class="maintenance-actions">
+                <button
+                  type="button"
+                  class="button compact primary"
+                  :disabled="Boolean(actionKey)"
+                  @click="saveMaintenanceWindow"
+                >
+                  保存窗口
+                </button>
+                <button
+                  type="button"
+                  class="button compact ghost"
+                  :disabled="!maintenanceWindow.enabled || Boolean(actionKey)"
+                  @click="disableMaintenanceWindow"
+                >
+                  关闭窗口
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div v-if="!hasLoaded && loading" class="empty-state" aria-busy="true">
           正在读取任务状态…
         </div>
@@ -68,16 +190,36 @@
           <table class="data-table task-table">
             <thead>
               <tr>
+                <th class="selection-column">
+                  <input
+                    type="checkbox"
+                    :checked="allFilteredTasksSelected"
+                    :disabled="!filteredTaskRows.some((task) => task.batchEligible)"
+                    aria-label="选择全部筛选任务"
+                    @change="toggleAllFilteredTasks"
+                  />
+                </th>
                 <th>任务</th>
                 <th>类型 / 周期</th>
                 <th>最近状态</th>
+                <th>风险</th>
                 <th>下次运行</th>
                 <th>启用</th>
                 <th class="actions-column">操作</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="task in taskRows" :key="task.id">
+              <tr v-for="task in filteredTaskRows" :key="task.id">
+                <td>
+                  <input
+                    v-if="task.batchEligible"
+                    type="checkbox"
+                    :checked="selectedTaskIds.includes(task.id)"
+                    :aria-label="`选择${task.name}`"
+                    @change="toggleTaskSelection(task.id)"
+                  />
+                  <span v-else class="muted-text">单项</span>
+                </td>
                 <td>
                   <strong>{{ task.name }}</strong>
                   <small>{{ task.description }}</small>
@@ -91,6 +233,11 @@
                     task.status
                   }}</span>
                   <small>{{ task.lastRunAt ? formatDateTime(task.lastRunAt) : '尚未运行' }}</small>
+                </td>
+                <td>
+                  <span :class="['risk-pill', `risk-pill--${task.risk}`]">{{
+                    riskLabel(task.risk)
+                  }}</span>
                 </td>
                 <td>{{ task.nextRunAt ? formatDateTime(task.nextRunAt) : '—' }}</td>
                 <td>
@@ -126,8 +273,8 @@
                   </div>
                 </td>
               </tr>
-              <tr v-if="!taskRows.length">
-                <td colspan="6"><div class="empty-state">暂无可显示任务</div></td>
+              <tr v-if="!filteredTaskRows.length">
+                <td colspan="8"><div class="empty-state">暂无匹配任务</div></td>
               </tr>
             </tbody>
           </table>
@@ -261,6 +408,14 @@
             </p>
           </div>
           <div class="filter-row">
+            <span
+              :class="[
+                'status-pill',
+                `status-pill--${auditIntegrity.valid === false ? 'danger' : 'success'}`
+              ]"
+            >
+              {{ auditIntegrity.valid === false ? '完整性异常' : '完整性有效' }}
+            </span>
             <select v-model="auditStatusFilter" aria-label="审计状态筛选">
               <option value="">全部状态</option>
               <option value="succeeded">成功</option>
@@ -273,6 +428,36 @@
                 {{ category }}
               </option>
             </select>
+            <select v-model.number="auditRetentionDays" aria-label="审计保留周期">
+              <option :value="30">保留 30 天</option>
+              <option :value="90">保留 90 天</option>
+              <option :value="180">保留 180 天</option>
+              <option :value="365">保留 365 天</option>
+            </select>
+            <button
+              type="button"
+              class="button compact secondary"
+              :disabled="actionKey === 'audit-settings'"
+              @click="saveAuditRetention"
+            >
+              {{ actionKey === 'audit-settings' ? '保存中…' : '保存周期' }}
+            </button>
+            <button
+              type="button"
+              class="button compact secondary"
+              :disabled="actionKey === 'audit-export'"
+              @click="exportAuditRecords"
+            >
+              {{ actionKey === 'audit-export' ? '导出中…' : '导出审计' }}
+            </button>
+            <button
+              type="button"
+              class="button compact danger"
+              :disabled="!auditCategoryFilter || actionKey === 'audit-clear'"
+              @click="clearAuditCategory"
+            >
+              {{ actionKey === 'audit-clear' ? '清理中…' : '清理当前分类' }}
+            </button>
           </div>
         </div>
 
@@ -288,7 +473,7 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="item in visibleAuditRecords" :key="item.auditId">
+              <tr v-for="item in auditRecords" :key="item.auditId">
                 <td>{{ formatDateTime(item.finishedAt || item.startedAt) }}</td>
                 <td>
                   <strong>{{ auditActionLabel(item.action) }}</strong>
@@ -308,31 +493,26 @@
                   }}</small>
                 </td>
               </tr>
-              <tr v-if="!filteredAuditRecords.length">
+              <tr v-if="!auditRecords.length">
                 <td colspan="5"><div class="empty-state">当前筛选条件下没有审计记录。</div></td>
               </tr>
             </tbody>
           </table>
         </div>
-        <div
-          v-if="filteredAuditRecords.length > AUDIT_PAGE_SIZE"
-          class="audit-pagination"
-          aria-live="polite"
-        >
-          <span class="muted-text">
-            已显示 {{ visibleAuditRecords.length }} / {{ filteredAuditRecords.length }} 条
-          </span>
+        <div v-if="auditTotal > AUDIT_PAGE_SIZE" class="audit-pagination" aria-live="polite">
+          <span class="muted-text"> 已显示 {{ auditRecords.length }} / {{ auditTotal }} 条 </span>
           <div class="inline-actions audit-pagination__actions">
             <button
-              v-if="remainingAuditCount"
+              v-if="auditHasMore"
               type="button"
               class="button compact secondary"
+              :disabled="auditLoadingMore"
               @click="showMoreAuditRecords"
             >
-              加载更多（{{ Math.min(AUDIT_PAGE_SIZE, remainingAuditCount) }}）
+              {{ auditLoadingMore ? '加载中…' : `加载更多（${nextAuditPageSize}）` }}
             </button>
             <button
-              v-if="auditVisibleCount > AUDIT_PAGE_SIZE"
+              v-if="auditRecords.length > AUDIT_PAGE_SIZE"
               type="button"
               class="button compact secondary"
               @click="collapseAuditRecords"
@@ -437,8 +617,11 @@
                       ><small>{{ item.samples }} 个样本</small>
                     </td>
                     <td>{{ item.availability }}%</td>
-                    <td>{{ item.averageCpuPercent }}%</td>
-                    <td>{{ formatBytes(item.averageMemoryBytes) }}</td>
+                    <td>
+                      {{ formatMetricPercent(item.averageCpuPercent) }}
+                      <small>{{ metricCoverageLabel(item) }}</small>
+                    </td>
+                    <td>{{ formatMetricBytes(item.averageMemoryBytes) }}</td>
                   </tr>
                   <tr v-if="!insights.nodeServices?.length">
                     <td colspan="4"><div class="empty-state">暂无 Node 历史样本</div></td>
@@ -612,13 +795,36 @@ const runbookResult = ref(null)
 const runbookBusy = ref(false)
 const auditStatusFilter = ref('')
 const auditCategoryFilter = ref('')
-const auditVisibleCount = ref(AUDIT_PAGE_SIZE)
+const auditTotal = ref(0)
+const auditHasMore = ref(false)
+const auditNextCursor = ref('')
+const auditCategories = ref([])
+const auditStatusCounts = ref({ started: 0, succeeded: 0, failed: 0 })
+const auditIntegrity = ref({ valid: true, checkedCount: 0 })
+const auditRetentionDays = ref(90)
+const auditLoadingMore = ref(false)
+const taskKeyword = ref('')
+const taskSourceFilter = ref('')
+const taskStatusFilter = ref('')
+const taskRiskFilter = ref('')
+const selectedTaskIds = ref([])
+const batchSummary = ref(null)
+const maintenanceWindow = ref({
+  enabled: false,
+  status: 'disabled',
+  active: false,
+  startAt: 0,
+  endAt: 0,
+  reason: ''
+})
+const maintenanceDraft = reactive({ startLocal: '', endLocal: '', reason: '' })
 const pricingSelection = ref('')
 const pricingDraft = reactive({ inputUsdPerMillion: 0, outputUsdPerMillion: 0 })
 const lastExport = ref(null)
 let unsubscribeOpsData = null
 let refreshTimer = null
 let refreshQueued = null
+let auditRequestGeneration = 0
 
 const activeEvents = computed(() => events.value.filter((item) => item.status !== 'resolved'))
 const criticalEventCount = computed(
@@ -628,28 +834,13 @@ const enabledTaskCount = computed(() => taskRows.value.filter((item) => item.ena
 const successfulRunbookCount = computed(
   () => runbookHistory.value.filter((item) => item.status === 'succeeded').length
 )
-const failedAuditCount = computed(
-  () => auditRecords.value.filter((item) => item.status === 'failed').length
-)
-const auditCategories = computed(() =>
-  [...new Set(auditRecords.value.map((item) => item.category).filter(Boolean))].sort()
-)
-const filteredAuditRecords = computed(() =>
-  auditRecords.value.filter(
-    (item) =>
-      (!auditStatusFilter.value || item.status === auditStatusFilter.value) &&
-      (!auditCategoryFilter.value || item.category === auditCategoryFilter.value)
-  )
-)
-const visibleAuditRecords = computed(() =>
-  filteredAuditRecords.value.slice(0, auditVisibleCount.value)
-)
-const remainingAuditCount = computed(() =>
-  Math.max(0, filteredAuditRecords.value.length - visibleAuditRecords.value.length)
+const failedAuditCount = computed(() => Number(auditStatusCounts.value.failed) || 0)
+const nextAuditPageSize = computed(() =>
+  Math.min(AUDIT_PAGE_SIZE, Math.max(0, auditTotal.value - auditRecords.value.length))
 )
 
 watch([auditStatusFilter, auditCategoryFilter], () => {
-  auditVisibleCount.value = AUDIT_PAGE_SIZE
+  void loadAudit()
 })
 const runbookResultSteps = computed(() => [
   ...(runbookResult.value?.actionResults || []),
@@ -707,7 +898,7 @@ const taskRows = computed(() => {
       raw: item,
       kind: 'automation',
       name: item.title || '未命名巡检',
-      description: item.type === 'tcp-port' ? `${item.target}:${item.port}` : item.target,
+      description: automationTaskDescription(item),
       typeLabel: item.type === 'tcp-port' ? 'TCP 端口' : 'HTTP 健康检查',
       schedule: `每 ${item.intervalMinutes || 5} 分钟`,
       status: !item.lastResult ? '等待首次运行' : item.lastResult.ok ? '正常' : '最近失败',
@@ -757,7 +948,57 @@ const taskRows = computed(() => {
       configRoute: '/data-management'
     }
   ]
-  return rows
+  return rows.map((task) => ({
+    ...task,
+    batchEligible: task.kind === 'automation',
+    statusGroup: taskStatusGroup(task),
+    risk: taskRiskLevel(task)
+  }))
+})
+
+const filteredTaskRows = computed(() => {
+  const keyword = taskKeyword.value.toLocaleLowerCase()
+  return taskRows.value.filter((task) => {
+    const searchable = [task.name, task.description, task.typeLabel, task.schedule, task.status]
+      .join(' ')
+      .toLocaleLowerCase()
+    return (
+      (!keyword || searchable.includes(keyword)) &&
+      (!taskSourceFilter.value || task.kind === taskSourceFilter.value) &&
+      (!taskStatusFilter.value || task.statusGroup === taskStatusFilter.value) &&
+      (!taskRiskFilter.value || task.risk === taskRiskFilter.value)
+    )
+  })
+})
+const selectedTaskRows = computed(() =>
+  taskRows.value.filter((task) => task.batchEligible && selectedTaskIds.value.includes(task.id))
+)
+const selectedToggleableTasks = computed(() =>
+  selectedTaskRows.value.filter((task) => task.toggleable)
+)
+const allFilteredTasksSelected = computed(
+  () =>
+    filteredTaskRows.value.length > 0 &&
+    filteredTaskRows.value.some((task) => task.batchEligible) &&
+    filteredTaskRows.value
+      .filter((task) => task.batchEligible)
+      .every((task) => selectedTaskIds.value.includes(task.id))
+)
+const maintenanceStatusText = computed(() => {
+  const item = maintenanceWindow.value
+  if (item.status === 'active') {
+    return `进行中，将于 ${formatDateTime(item.endAt)} 自动恢复调度${item.reason ? ` · ${item.reason}` : ''}`
+  }
+  if (item.status === 'upcoming') {
+    return `计划 ${formatDateTime(item.startAt)} 至 ${formatDateTime(item.endAt)}${item.reason ? ` · ${item.reason}` : ''}`
+  }
+  if (item.status === 'expired') return `最近窗口已于 ${formatDateTime(item.endAt)} 结束`
+  return '当前未设置维护窗口'
+})
+
+watch(taskRows, (rows) => {
+  const ids = new Set(rows.map((task) => task.id))
+  selectedTaskIds.value = selectedTaskIds.value.filter((id) => ids.has(id))
 })
 
 function assertOk(result, fallback) {
@@ -777,6 +1018,7 @@ async function loadAll() {
     ['自动化任务', loadAutomationTasks],
     ['Node 服务', loadNodeWatches],
     ['自动备份', loadBackup],
+    ['维护窗口', loadMaintenanceWindow],
     ['运维事件', loadEvents],
     ['安全审计', loadAudit],
     ['Runbook 历史', loadRunbookHistory],
@@ -827,6 +1069,15 @@ async function loadBackup() {
   backupHealth.value = health?.health || health || backupHealth.value
 }
 
+async function loadMaintenanceWindow() {
+  const result = assertOk(await opsApi.getOpsMaintenanceWindow(), '读取维护窗口失败')
+  maintenanceWindow.value = result.window || maintenanceWindow.value
+  const now = Date.now()
+  maintenanceDraft.startLocal = toLocalDateTimeInput(result.window?.startAt || now + 5 * 60_000)
+  maintenanceDraft.endLocal = toLocalDateTimeInput(result.window?.endAt || now + 65 * 60_000)
+  maintenanceDraft.reason = result.window?.reason || ''
+}
+
 async function loadEvents() {
   const result = assertOk(await opsApi.getOpsEvents({ limit: 200 }), '读取运维事件失败')
   events.value = result.items || result.events || []
@@ -836,20 +1087,130 @@ async function loadEvents() {
   }
 }
 
-function showMoreAuditRecords() {
-  auditVisibleCount.value = Math.min(
-    filteredAuditRecords.value.length,
-    auditVisibleCount.value + AUDIT_PAGE_SIZE
-  )
+async function showMoreAuditRecords() {
+  if (!auditHasMore.value || auditLoadingMore.value) return
+  auditLoadingMore.value = true
+  try {
+    await loadAudit({ append: true })
+  } finally {
+    auditLoadingMore.value = false
+  }
 }
 
 function collapseAuditRecords() {
-  auditVisibleCount.value = AUDIT_PAGE_SIZE
+  void loadAudit()
 }
 
-async function loadAudit() {
-  const result = assertOk(await opsApi.getOpsAuditRecords({ limit: 200 }), '读取安全审计失败')
-  auditRecords.value = result.records || []
+async function loadAudit({ append = false } = {}) {
+  const generation = append ? auditRequestGeneration : ++auditRequestGeneration
+  const filters = {
+    status: auditStatusFilter.value,
+    category: auditCategoryFilter.value
+  }
+  const cursor = append ? auditNextCursor.value : ''
+  const result = assertOk(
+    await opsApi.getOpsAuditRecords({
+      pageSize: AUDIT_PAGE_SIZE,
+      cursor,
+      ...filters
+    }),
+    '读取安全审计失败'
+  )
+  if (
+    generation !== auditRequestGeneration ||
+    filters.status !== auditStatusFilter.value ||
+    filters.category !== auditCategoryFilter.value ||
+    (append && cursor !== auditNextCursor.value)
+  ) {
+    return
+  }
+  auditRecords.value = append
+    ? [...auditRecords.value, ...(result.records || [])]
+    : result.records || []
+  auditTotal.value = Number(result.total) || auditRecords.value.length
+  auditHasMore.value = result.hasMore === true
+  auditNextCursor.value = result.nextCursor || ''
+  auditCategories.value = result.categories || auditCategories.value
+  auditStatusCounts.value = result.statusCounts || auditStatusCounts.value
+  auditIntegrity.value = result.integrity || auditIntegrity.value
+  auditRetentionDays.value = Number(result.retentionDays) || auditRetentionDays.value
+}
+
+function currentAuditFilters() {
+  return {
+    status: auditStatusFilter.value,
+    category: auditCategoryFilter.value
+  }
+}
+
+async function saveAuditRetention() {
+  if (actionKey.value) return
+  actionKey.value = 'audit-settings'
+  try {
+    const result = assertOk(
+      await opsApi.saveOpsAuditSettings({ retentionDays: auditRetentionDays.value }),
+      '保存审计保留周期失败'
+    )
+    auditRetentionDays.value = result.settings?.retentionDays || auditRetentionDays.value
+    auditIntegrity.value = result.settings?.integrity || auditIntegrity.value
+    MessagePlugin.success({ content: '审计保留周期已保存', placement: 'bottom-right' })
+    await loadAudit()
+  } catch (error) {
+    MessagePlugin.error({
+      content: error.message || '保存审计保留周期失败',
+      placement: 'bottom-right'
+    })
+  } finally {
+    actionKey.value = ''
+  }
+}
+
+async function exportAuditRecords() {
+  if (actionKey.value) return
+  actionKey.value = 'audit-export'
+  try {
+    const result = assertOk(
+      await opsApi.exportOpsAuditRecords(currentAuditFilters()),
+      '导出审计记录失败'
+    )
+    if (result.canceled) return
+    MessagePlugin.success({
+      content: `已导出 ${result.recordCount || 0} 条审计记录：${result.fileName}`,
+      placement: 'bottom-right'
+    })
+    await loadAudit()
+  } catch (error) {
+    MessagePlugin.error({ content: error.message || '导出审计记录失败', placement: 'bottom-right' })
+  } finally {
+    actionKey.value = ''
+  }
+}
+
+async function clearAuditCategory() {
+  if (!auditCategoryFilter.value || actionKey.value) return
+  const filters = currentAuditFilters()
+  const confirmed = await opsApi.confirm({
+    title: '确认清理审计分类',
+    message: `将清理“${filters.category}”分类下符合当前状态筛选的已完成记录。`,
+    detail: '执行中的审计不会被删除；此操作会重新建立剩余记录的完整性链。'
+  })
+  if (!confirmed) return
+  actionKey.value = 'audit-clear'
+  try {
+    const result = assertOk(
+      await opsApi.clearOpsAuditRecords({ ...filters, confirmed: true }),
+      '清理审计记录失败'
+    )
+    MessagePlugin.success({
+      content: `已清理 ${result.result?.deletedCount || 0} 条审计记录`,
+      placement: 'bottom-right'
+    })
+    await loadAudit()
+  } catch (error) {
+    MessagePlugin.error({ content: error.message || '清理审计记录失败', placement: 'bottom-right' })
+  } finally {
+    actionKey.value = ''
+  }
 }
 
 async function loadRunbookHistory() {
@@ -878,25 +1239,7 @@ async function toggleTask(task) {
   if (actionKey.value) return
   actionKey.value = key
   try {
-    if (task.kind === 'model') {
-      const result = assertOk(
-        await opsApi.saveModelMonitorSettings({ enabled: !task.enabled }),
-        '保存模型巡检设置失败'
-      )
-      modelSettings.value = result.settings
-    } else if (task.kind === 'automation') {
-      const payload = { ...cloneForIpc(task.raw), enabled: !task.enabled }
-      const result = assertOk(await opsApi.saveAutomationTask(payload), '保存自动化任务失败')
-      const index = automationTasks.value.findIndex((item) => item.id === result.task?.id)
-      if (index >= 0) automationTasks.value.splice(index, 1, result.task)
-    } else if (task.kind === 'backup') {
-      const result = assertOk(
-        await opsApi.saveAutoBackupSettings({ enabled: !task.enabled }),
-        '保存自动备份设置失败'
-      )
-      backupSettings.value = result.settings || result
-      await loadBackup()
-    }
+    await setTaskEnabled(task, !task.enabled)
     MessagePlugin.success({ content: `${task.name}设置已更新`, placement: 'bottom-right' })
     await refreshAfterAction()
   } catch (error) {
@@ -910,16 +1253,168 @@ async function runTask(task) {
   if (actionKey.value) return
   actionKey.value = `run:${task.id}`
   try {
-    if (task.kind === 'model') assertOk(await opsApi.runModelInspection(), '模型巡检失败')
-    else if (task.kind === 'automation')
-      assertOk(await opsApi.runAutomationTask(task.sourceId), '自动化检查失败')
-    else if (task.kind === 'node')
-      assertOk(await opsApi.checkNodeServiceWatches(), 'Node 服务检查失败')
-    else if (task.kind === 'backup') assertOk(await opsApi.runAutoBackupNow(), '自动备份失败')
+    await executeTaskOnce(task)
     MessagePlugin.success({ content: `${task.name}执行完成`, placement: 'bottom-right' })
     await refreshAfterAction()
   } catch (error) {
     MessagePlugin.error({ content: error.message || '执行任务失败', placement: 'bottom-right' })
+  } finally {
+    actionKey.value = ''
+  }
+}
+
+async function setTaskEnabled(task, enabled) {
+  if (!task.toggleable) throw new Error(`${task.name}不支持启停`)
+  if (task.kind === 'model') {
+    const result = assertOk(
+      await opsApi.saveModelMonitorSettings({ enabled }),
+      '保存模型巡检设置失败'
+    )
+    if (result.settings) modelSettings.value = result.settings
+  } else if (task.kind === 'automation') {
+    const payload = { ...cloneForIpc(task.raw), enabled }
+    const result = assertOk(await opsApi.saveAutomationTask(payload), '保存自动化任务失败')
+    const index = automationTasks.value.findIndex((item) => item.id === result.task?.id)
+    if (index >= 0 && result.task) automationTasks.value.splice(index, 1, result.task)
+  } else if (task.kind === 'backup') {
+    const result = assertOk(
+      await opsApi.saveAutoBackupSettings({ enabled }),
+      '保存自动备份设置失败'
+    )
+    backupSettings.value = result.settings || result
+  }
+}
+
+async function executeTaskOnce(task) {
+  if (task.kind === 'model') assertOk(await opsApi.runModelInspection(), '模型巡检失败')
+  else if (task.kind === 'automation')
+    assertOk(await opsApi.runAutomationTask(task.sourceId), '自动化检查失败')
+  else if (task.kind === 'node')
+    assertOk(await opsApi.checkNodeServiceWatches(), 'Node 服务检查失败')
+  else if (task.kind === 'backup') assertOk(await opsApi.runAutoBackupNow(), '自动备份失败')
+}
+
+function toggleTaskSelection(taskId) {
+  selectedTaskIds.value = selectedTaskIds.value.includes(taskId)
+    ? selectedTaskIds.value.filter((id) => id !== taskId)
+    : [...selectedTaskIds.value, taskId]
+}
+
+function toggleAllFilteredTasks() {
+  const visibleIds = filteredTaskRows.value
+    .filter((task) => task.batchEligible)
+    .map((task) => task.id)
+  if (allFilteredTasksSelected.value) {
+    const visible = new Set(visibleIds)
+    selectedTaskIds.value = selectedTaskIds.value.filter((id) => !visible.has(id))
+  } else {
+    selectedTaskIds.value = [...new Set([...selectedTaskIds.value, ...visibleIds])]
+  }
+}
+
+async function runTaskBatch(mode) {
+  if (actionKey.value) return
+  const tasks = selectedToggleableTasks.value.filter((task) => {
+    if (mode === 'pause') return task.enabled
+    if (mode === 'resume') return !task.enabled
+    return true
+  })
+  if (!tasks.length) {
+    MessagePlugin.warning({ content: '当前选择中没有可执行的任务', placement: 'bottom-right' })
+    return
+  }
+  const modeName = { run: '执行', pause: '暂停', resume: '恢复' }[mode]
+  const confirmed = await opsApi.confirm({
+    title: `确认批量${modeName}`,
+    message: `将按顺序${modeName} ${tasks.length} 个任务，任一任务失败后立即停止批次。`,
+    detail: '批次仅调用现有白名单 IPC；不会并发执行、运行任意命令或自动跳过失败项。'
+  })
+  if (!confirmed) return
+  actionKey.value = `batch:${mode}`
+  batchSummary.value = null
+  try {
+    const result = assertOk(
+      await opsApi.executeOpsTaskBatch({
+        action: mode,
+        taskIds: tasks.map((task) => task.sourceId),
+        confirmed: true
+      }),
+      `批量${modeName}失败`
+    )
+    const batch = result.batch
+    const failed = batch.results?.find((item) => item.status === 'failed')
+    batchSummary.value = {
+      title: failed ? '批次已在首个失败任务处暂停' : `批量${modeName}完成`,
+      message: failed
+        ? `已成功 ${batch.succeededCount}/${batch.requestedCount} 项：${failed.message}`
+        : `成功 ${batch.succeededCount} 项，跳过 ${batch.skippedCount} 项；批次 ${batch.batchId}。`
+    }
+    MessagePlugin[failed ? 'warning' : 'success']({
+      content: batchSummary.value.title,
+      placement: 'bottom-right'
+    })
+    await refreshAfterAction()
+  } catch (error) {
+    batchSummary.value = { title: `批量${modeName}失败`, message: error.message || '执行失败' }
+    MessagePlugin.error({ content: batchSummary.value.title, placement: 'bottom-right' })
+  } finally {
+    actionKey.value = ''
+  }
+}
+
+async function saveMaintenanceWindow() {
+  if (actionKey.value) return
+  const startAt = new Date(maintenanceDraft.startLocal).getTime()
+  const endAt = new Date(maintenanceDraft.endLocal).getTime()
+  if (!Number.isFinite(startAt) || !Number.isFinite(endAt) || endAt <= startAt) {
+    MessagePlugin.warning({ content: '请设置有效的维护开始和结束时间', placement: 'bottom-right' })
+    return
+  }
+  const confirmed = await opsApi.confirm({
+    title: '确认启用维护窗口',
+    message: `自动调度将在 ${formatDateTime(startAt)} 至 ${formatDateTime(endAt)} 暂停。`,
+    detail: 'Node 状态采集和人工执行保持可用；窗口结束后到期任务会恢复执行。'
+  })
+  if (!confirmed) return
+  actionKey.value = 'maintenance-save'
+  try {
+    const result = assertOk(
+      await opsApi.saveOpsMaintenanceWindow({
+        enabled: true,
+        startAt,
+        endAt,
+        reason: maintenanceDraft.reason,
+        confirmed: true
+      }),
+      '保存维护窗口失败'
+    )
+    maintenanceWindow.value = result.window
+    MessagePlugin.success({ content: '维护窗口已保存', placement: 'bottom-right' })
+  } catch (error) {
+    MessagePlugin.error({ content: error.message || '保存维护窗口失败', placement: 'bottom-right' })
+  } finally {
+    actionKey.value = ''
+  }
+}
+
+async function disableMaintenanceWindow() {
+  if (actionKey.value) return
+  const confirmed = await opsApi.confirm({
+    title: '确认关闭维护窗口',
+    message: '自动调度将恢复按各任务的到期时间执行。',
+    detail: '已到期的任务可能在下一次调度检查时立即运行。'
+  })
+  if (!confirmed) return
+  actionKey.value = 'maintenance-disable'
+  try {
+    const result = assertOk(
+      await opsApi.saveOpsMaintenanceWindow({ enabled: false, confirmed: true }),
+      '关闭维护窗口失败'
+    )
+    maintenanceWindow.value = result.window
+    MessagePlugin.success({ content: '维护窗口已关闭', placement: 'bottom-right' })
+  } catch (error) {
+    MessagePlugin.error({ content: error.message || '关闭维护窗口失败', placement: 'bottom-right' })
   } finally {
     actionKey.value = ''
   }
@@ -931,6 +1426,7 @@ async function refreshAfterAction() {
     loadAutomationTasks(),
     loadNodeWatches(),
     loadBackup(),
+    loadMaintenanceWindow(),
     loadEvents(),
     loadAudit(),
     loadRunbookHistory(),
@@ -1087,6 +1583,22 @@ function nodeStatusTone() {
   return 'success'
 }
 
+function formatMetricPercent(value) {
+  return value === null || value === undefined ? '指标不可用' : `${value}%`
+}
+
+function formatMetricBytes(value) {
+  return value === null || value === undefined ? '指标不可用' : formatBytes(value)
+}
+
+function metricCoverageLabel(item) {
+  const samples = Number(item?.metricSamples) || 0
+  const unavailable = Number(item?.unavailableMetricSamples) || 0
+  if (!samples && unavailable) return `${unavailable} 个在线样本采集失败`
+  if (!samples) return '暂无资源样本'
+  return `${samples} 个资源样本${unavailable ? ` · ${unavailable} 个采集失败` : ''}`
+}
+
 function backupIntervalLabel(value) {
   return { hourly: '每小时', daily: '每天', weekly: '每周' }[value] || value || '未配置周期'
 }
@@ -1196,6 +1708,36 @@ function riskLabel(level) {
   )
 }
 
+function taskStatusGroup(task) {
+  if (task.tone === 'danger') return 'failed'
+  if (!task.enabled && task.toggleable) return 'paused'
+  if (task.tone === 'warning' || task.tone === 'neutral') return 'attention'
+  return 'running'
+}
+
+function taskRiskLevel(task) {
+  if (task.tone === 'danger') return 'high'
+  if (task.kind === 'backup' || task.tone === 'warning') return 'medium'
+  return 'low'
+}
+
+function automationTaskDescription(task) {
+  if (task?.type === 'tcp-port') return `${String(task.target || '').slice(0, 160)}:${task.port}`
+  try {
+    const url = new URL(String(task?.target || ''))
+    return `${url.origin}${url.pathname}`.slice(0, 240)
+  } catch {
+    return 'HTTP 目标已配置'
+  }
+}
+
+function toLocalDateTimeInput(value) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+  return local.toISOString().slice(0, 16)
+}
+
 function formatDateTime(value) {
   if (!value) return '—'
   const date = new Date(value)
@@ -1267,6 +1809,113 @@ onBeforeUnmount(() => {
 <style scoped>
 .task-center-page {
   min-width: 0;
+}
+
+.task-control-panel {
+  display: grid;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-md);
+  background: var(--bg-subtle);
+}
+
+.task-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--spacing-sm);
+}
+
+.task-filter-grid label,
+.maintenance-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+}
+
+.task-filter-grid input,
+.task-filter-grid select,
+.maintenance-form input {
+  min-width: 0;
+  height: var(--header-control-height);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0 10px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.batch-toolbar,
+.maintenance-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+}
+
+.batch-summary {
+  display: flex;
+  gap: var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  background: var(--primary-light);
+  color: var(--text-secondary);
+}
+
+.maintenance-panel {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.2fr);
+  gap: var(--spacing-lg);
+  border-top: 1px solid var(--border-light);
+  padding-top: var(--spacing-md);
+}
+
+.maintenance-panel p {
+  margin: 5px 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.maintenance-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-sm);
+}
+
+.maintenance-reason,
+.maintenance-actions {
+  grid-column: 1 / -1;
+}
+
+.selection-column {
+  width: 44px;
+}
+
+.risk-pill {
+  display: inline-flex;
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+}
+
+.risk-pill--low {
+  background: var(--success-light);
+  color: var(--success);
+}
+.risk-pill--medium {
+  background: var(--warning-light);
+  color: var(--warning);
+}
+.risk-pill--high,
+.risk-pill--critical {
+  background: var(--danger-light);
+  color: var(--danger);
+}
+.danger-text {
+  color: var(--danger);
 }
 
 .button {
@@ -1814,6 +2463,9 @@ select:disabled {
 }
 
 @media (max-width: 1100px) {
+  .task-filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
   .summary-grid,
   .insight-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1826,6 +2478,21 @@ select:disabled {
 }
 
 @media (max-width: 760px) {
+  .task-filter-grid,
+  .maintenance-panel,
+  .maintenance-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .maintenance-reason,
+  .maintenance-actions {
+    grid-column: auto;
+  }
+
+  .batch-toolbar .button,
+  .maintenance-actions .button {
+    width: 100%;
+  }
   .summary-grid,
   .insight-grid,
   .two-column-grid,

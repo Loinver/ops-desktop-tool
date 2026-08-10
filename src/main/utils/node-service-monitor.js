@@ -98,15 +98,24 @@ function normalizeHistoryEntry(input = {}) {
   const protocol = normalizeProtocol(input.protocol)
   const port = normalizePort(input.port)
   const serviceId = watchId(protocol, port)
+  const state = ['online', 'offline', 'unknown'].includes(input.state) ? input.state : 'unknown'
+  const hasCpuMetric = input.cpuPercent !== null && Number.isFinite(Number(input.cpuPercent))
+  const hasMemoryMetric = input.memoryBytes !== null && Number.isFinite(Number(input.memoryBytes))
+  const metricsAvailable =
+    state === 'online' && hasCpuMetric && hasMemoryMetric && input.metricsAvailable !== false
+  const metricsStatus =
+    state !== 'online' ? 'not-applicable' : metricsAvailable ? 'available' : 'unavailable'
   return {
     id: text(input.id, 120) || `${serviceId}:${Number(input.checkedAt) || Date.now()}`,
     serviceId,
     protocol,
     port,
-    state: ['online', 'offline', 'unknown'].includes(input.state) ? input.state : 'unknown',
+    state,
     pid: Math.max(0, Number(input.pid) || 0),
-    cpuPercent: Math.max(0, Number(input.cpuPercent) || 0),
-    memoryBytes: Math.max(0, Number(input.memoryBytes) || 0),
+    cpuPercent: metricsAvailable ? Math.max(0, Number(input.cpuPercent) || 0) : null,
+    memoryBytes: metricsAvailable ? Math.max(0, Number(input.memoryBytes) || 0) : null,
+    metricsAvailable,
+    metricsStatus,
     commandLabel: text(input.commandLabel || input.command, 300),
     checkedAt: Number(input.checkedAt) || Date.now()
   }
@@ -179,8 +188,9 @@ function recordNodeServiceSamples(userDataPath, watches, entries, checkedAt) {
       port: watch.port,
       state: matched ? 'online' : 'offline',
       pid: matched?.pid || 0,
-      cpuPercent: matched?.cpuPercent || 0,
-      memoryBytes: matched?.memoryBytes || 0,
+      cpuPercent: matched?.cpuPercent,
+      memoryBytes: matched?.memoryBytes,
+      metricsAvailable: matched?.metricsAvailable,
       commandLabel: matched?.command || watch.commandLabel,
       checkedAt
     })
@@ -190,7 +200,8 @@ function recordNodeServiceSamples(userDataPath, watches, entries, checkedAt) {
       latest.state !== sample.state ||
       latest.pid !== sample.pid ||
       latest.cpuPercent !== sample.cpuPercent ||
-      latest.memoryBytes !== sample.memoryBytes
+      latest.memoryBytes !== sample.memoryBytes ||
+      latest.metricsStatus !== sample.metricsStatus
     if (!changed && sample.checkedAt - latest.checkedAt < HISTORY_SAMPLE_INTERVAL_MS) continue
     next.push(sample)
   }

@@ -123,6 +123,17 @@ function createApi(overrides = {}) {
       status: 'healthy',
       summary: '最近备份成功'
     }),
+    getOpsMaintenanceWindow: vi.fn().mockResolvedValue({
+      ok: true,
+      window: {
+        enabled: false,
+        status: 'disabled',
+        active: false,
+        startAt: 0,
+        endAt: 0,
+        reason: ''
+      }
+    }),
     getOpsEvents: vi.fn().mockResolvedValue({ ok: true, items: [event] }),
     getOpsAuditRecords: vi.fn().mockResolvedValue({
       ok: true,
@@ -139,7 +150,14 @@ function createApi(overrides = {}) {
           target: { id: '4321', signal: 'SIGTERM' },
           error: { message: '进程不存在' }
         }
-      ]
+      ],
+      total: 1,
+      hasMore: false,
+      nextCursor: '',
+      categories: ['process'],
+      statusCounts: { started: 0, succeeded: 0, failed: 1 },
+      retentionDays: 90,
+      integrity: { valid: true, checkedCount: 1 }
     }),
     getOpsRunbookHistory: vi.fn().mockResolvedValue({ ok: true, runs: [] }),
     getOpsInsights: vi.fn().mockResolvedValue({
@@ -210,6 +228,22 @@ function createApi(overrides = {}) {
     runAutomationTask: vi.fn().mockResolvedValue({ ok: true }),
     checkNodeServiceWatches: vi.fn().mockResolvedValue({ ok: true }),
     runAutoBackupNow: vi.fn().mockResolvedValue({ ok: true }),
+    executeOpsTaskBatch: vi.fn().mockResolvedValue({
+      ok: true,
+      batch: {
+        batchId: 'batch-1',
+        status: 'succeeded',
+        requestedCount: 1,
+        succeededCount: 1,
+        skippedCount: 0,
+        failedCount: 0,
+        results: []
+      }
+    }),
+    saveOpsMaintenanceWindow: vi.fn().mockImplementation(async (settings) => ({
+      ok: true,
+      window: { ...settings, status: settings.enabled ? 'upcoming' : 'disabled', active: false }
+    })),
     planOpsRunbook: vi.fn().mockResolvedValue({ ok: true, plan }),
     executeOpsRunbook: vi.fn().mockResolvedValue({ ok: true, result: runResult }),
     confirm: vi.fn().mockResolvedValue(true),
@@ -230,6 +264,22 @@ function createApi(overrides = {}) {
       canceled: false,
       fileName: 'ops-diagnostics.json',
       sizeBytes: 2048
+    }),
+    saveOpsAuditSettings: vi.fn().mockResolvedValue({
+      ok: true,
+      settings: { retentionDays: 90, integrity: { valid: true, checkedCount: 1 } }
+    }),
+    exportOpsAuditRecords: vi.fn().mockResolvedValue({
+      ok: true,
+      canceled: false,
+      fileName: 'ops-audit.json',
+      recordCount: 1,
+      sizeBytes: 1024,
+      integrity: { valid: true, checkedCount: 1 }
+    }),
+    clearOpsAuditRecords: vi.fn().mockResolvedValue({
+      ok: true,
+      result: { deletedCount: 1, remainingCount: 0, integrity: { valid: true } }
     }),
     onOpsDataChanged: vi.fn().mockReturnValue(vi.fn()),
     ...overrides
@@ -319,14 +369,35 @@ describe('OpsTaskCenter closed-loop controls', () => {
       durationMs: 100,
       target: { id: String(index + 1) }
     }))
-    const { wrapper } = await mountTaskCenter({
-      getOpsAuditRecords: vi.fn().mockResolvedValue({ ok: true, records })
+    const getOpsAuditRecords = vi.fn().mockImplementation(async (options = {}) => {
+      const filtered = records.filter(
+        (record) =>
+          (!options.status || record.status === options.status) &&
+          (!options.category || record.category === options.category)
+      )
+      const start = Number(options.cursor || 0)
+      const pageSize = Number(options.pageSize) || 20
+      const page = filtered.slice(start, start + pageSize)
+      const next = start + page.length
+      return {
+        ok: true,
+        records: page,
+        total: filtered.length,
+        hasMore: next < filtered.length,
+        nextCursor: next < filtered.length ? String(next) : '',
+        categories: ['data', 'process'],
+        statusCounts: { started: 0, succeeded: 45, failed: 0 },
+        retentionDays: 90,
+        integrity: { valid: true, checkedCount: 45 }
+      }
     })
+    const { wrapper } = await mountTaskCenter({ getOpsAuditRecords })
 
     expect(wrapper.findAll('.audit-table tbody tr')).toHaveLength(20)
     expect(wrapper.get('.audit-pagination').text()).toContain('已显示 20 / 45 条')
 
     await buttonByText(wrapper, '加载更多（20）').trigger('click')
+    await flushPromises()
     expect(wrapper.findAll('.audit-table tbody tr')).toHaveLength(40)
 
     await wrapper.get('select[aria-label="审计分类筛选"]').setValue('process')
@@ -335,9 +406,38 @@ describe('OpsTaskCenter closed-loop controls', () => {
     expect(wrapper.get('.audit-pagination').text()).toContain('已显示 20 / 30 条')
 
     await buttonByText(wrapper, '加载更多（10）').trigger('click')
+    await flushPromises()
     expect(wrapper.findAll('.audit-table tbody tr')).toHaveLength(30)
     await buttonByText(wrapper, '收起').trigger('click')
+    await flushPromises()
     expect(wrapper.findAll('.audit-table tbody tr')).toHaveLength(20)
+    expect(getOpsAuditRecords).toHaveBeenLastCalledWith(
+      expect.objectContaining({ category: 'process', cursor: '', pageSize: 20 })
+    )
+    wrapper.unmount()
+  })
+
+  it('saves retention, exports filtered audit records and clears a confirmed category', async () => {
+    const { api, wrapper } = await mountTaskCenter()
+    await wrapper.get('select[aria-label="审计分类筛选"]').setValue('process')
+    await flushPromises()
+    await wrapper.get('select[aria-label="审计保留周期"]').setValue('180')
+    await buttonByText(wrapper, '保存周期').trigger('click')
+    await flushPromises()
+    expect(api.saveOpsAuditSettings).toHaveBeenCalledWith({ retentionDays: 180 })
+
+    await buttonByText(wrapper, '导出审计').trigger('click')
+    await flushPromises()
+    expect(api.exportOpsAuditRecords).toHaveBeenCalledWith({ status: '', category: 'process' })
+
+    await buttonByText(wrapper, '清理当前分类').trigger('click')
+    await flushPromises()
+    expect(api.confirm).toHaveBeenCalled()
+    expect(api.clearOpsAuditRecords).toHaveBeenCalledWith({
+      status: '',
+      category: 'process',
+      confirmed: true
+    })
     wrapper.unmount()
   })
 

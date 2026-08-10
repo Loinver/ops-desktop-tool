@@ -365,6 +365,50 @@ function createIpcAuditPolicies() {
         confirmed: objectArg(args).confirmed === true
       })
     },
+    [IPC_CHANNELS.OPS_MAINTENANCE_SAVE]: {
+      action: 'ops-maintenance.save',
+      category: 'operations',
+      target: (args) => ({
+        enabled: objectArg(args).enabled === true,
+        confirmed: objectArg(args).confirmed === true,
+        hasReason: hasValue(objectArg(args).reason)
+      })
+    },
+    [IPC_CHANNELS.OPS_TASK_BATCH]: {
+      action: 'ops-task.batch',
+      category: 'operations',
+      target: (args) => ({
+        operation: enumValue(objectArg(args).action, ['run', 'pause', 'resume']),
+        itemCount: countArray(objectArg(args).taskIds),
+        confirmed: objectArg(args).confirmed === true
+      })
+    },
+    [IPC_CHANNELS.OPS_AUDIT_SETTINGS_SAVE]: {
+      action: 'ops-audit.settings-save',
+      category: 'security',
+      target: (args) => ({
+        retentionCount: integerValue(objectArg(args).retentionDays, 1, 3650)
+      })
+    },
+    [IPC_CHANNELS.OPS_AUDIT_EXPORT]: {
+      action: 'ops-audit.export',
+      category: 'security',
+      target: (args) => ({
+        status: enumValue(objectArg(args).status, ['started', 'succeeded', 'failed']),
+        scope: hasValue(objectArg(args).category) ? 'filtered-category' : 'all-categories',
+        format: 'json',
+        redacted: true
+      })
+    },
+    [IPC_CHANNELS.OPS_AUDIT_CLEAR]: {
+      action: 'ops-audit.clear',
+      category: 'security',
+      target: (args) => ({
+        status: enumValue(objectArg(args).status, ['started', 'succeeded', 'failed']),
+        scope: hasValue(objectArg(args).category) ? 'filtered-category' : 'all-categories',
+        confirmed: objectArg(args).confirmed === true
+      })
+    },
     [IPC_CHANNELS.OPS_DIAGNOSTICS_EXPORT]: {
       action: 'ops-diagnostics.export',
       category: 'diagnostics',

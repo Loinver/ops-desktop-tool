@@ -69,10 +69,11 @@ function parseNetstatWindows(output) {
   return output
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .filter((line) => /^(TCP|UDP)\s+/i.test(line))
+    .filter((line) => /^(TCP|UDP)(?:v[46])?\s+/i.test(line))
     .map((line) => {
       const columns = line.split(/\s+/)
-      const protocol = columns[0].toUpperCase()
+      const rawProtocol = columns[0].toUpperCase()
+      const protocol = rawProtocol.startsWith('UDP') ? 'UDP' : 'TCP'
       const local = columns[1] || ''
       const pidText = columns[protocol === 'UDP' ? 3 : 4]
       const pid = Number.parseInt(pidText, 10)
@@ -100,7 +101,6 @@ function parseTasklist(output) {
 
   output
     .split(/\r?\n/)
-    .slice(3)
     .map((line) => line.trim())
     .filter(Boolean)
     .forEach((line) => {
@@ -179,11 +179,174 @@ function parsePsMetrics(output) {
   return metrics
 }
 
-async function enrichProcessMetrics(entries, { platform = os.platform(), runCommand = run } = {}) {
+function normalizeWindowsPidList(pids) {
+  const values = Array.isArray(pids) ? pids : []
+  const normalized = values.map((pid) => Number(pid))
+  if (normalized.some((pid) => !Number.isSafeInteger(pid) || pid < 1 || pid > 0xffffffff)) {
+    throw new Error('Windows Node 指标 PID 必须是有效的正整数。')
+  }
+  return [...new Set(normalized)]
+}
+
+function buildWindowsMetricsCommand(pids) {
+  const normalizedPids = normalizeWindowsPidList(pids)
+  const targetPids = normalizedPids.join(',')
+  const script = `
+$ErrorActionPreference = 'Stop'
+$targetPids = @(${targetPids})
+$performanceByPid = @{}
+Get-CimInstance -ClassName Win32_PerfFormattedData_PerfProc_Process |
+  Where-Object { $targetPids -contains [int]$_.IDProcess } |
+  ForEach-Object { $performanceByPid[[int]$_.IDProcess] = $_ }
+$results = @(
+  Get-CimInstance -ClassName Win32_Process -Filter "Name = 'node.exe'" |
+    Where-Object { $targetPids -contains [int]$_.ProcessId } |
+    ForEach-Object {
+      $process = $_
+      $performance = $performanceByPid[[int]$process.ProcessId]
+      $startedAt = $null
+      if ($process.CreationDate) {
+        $startedAt = ([datetime]$process.CreationDate).ToUniversalTime().ToString('o')
+      }
+      [pscustomobject]@{
+        pid = [int]$process.ProcessId
+        parentPid = if ($null -ne $process.ParentProcessId) { [int]$process.ParentProcessId } else { $null }
+        memoryBytes = if ($null -ne $process.WorkingSetSize) { [int64]$process.WorkingSetSize } else { $null }
+        startedAt = $startedAt
+        cpuPercent = if ($performance -and $null -ne $performance.PercentProcessorTime) { [double]$performance.PercentProcessorTime } else { $null }
+      }
+    }
+)
+$results | ConvertTo-Json -Compress
+`.trim()
+
+  return {
+    command: 'powershell.exe',
+    args: ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script]
+  }
+}
+
+function normalizeMetricNumber(value, { integer = false } = {}) {
+  if (value === null || value === undefined || value === '') {
+    return null
+  }
+
+  const number = Number(value)
+  if (!Number.isFinite(number) || number < 0 || (integer && !Number.isInteger(number))) {
+    return null
+  }
+  return number
+}
+
+function normalizeStartedAt(value) {
+  if (value === null || value === undefined || value === '') {
+    return null
+  }
+
+  const timestamp = Date.parse(String(value))
+  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : null
+}
+
+function parseWindowsProcessMetrics(output) {
+  const text = String(output || '')
+    .replace(/^\uFEFF/, '')
+    .trim()
+  if (!text || text === 'null') {
+    return new Map()
+  }
+
+  let parsed
+  try {
+    parsed = JSON.parse(text)
+  } catch (error) {
+    throw new Error(`Windows Node 指标输出不是有效 JSON：${error.message}`, { cause: error })
+  }
+
+  const records = Array.isArray(parsed) ? parsed : [parsed]
+  const metrics = new Map()
+  for (const record of records) {
+    if (!record || typeof record !== 'object') continue
+    const pid = normalizeMetricNumber(record.pid, { integer: true })
+    if (!pid || pid > 0xffffffff) continue
+
+    const cpuPercent = normalizeMetricNumber(record.cpuPercent)
+    const memoryBytes = normalizeMetricNumber(record.memoryBytes, { integer: true })
+    const parentPid = normalizeMetricNumber(record.parentPid, { integer: true })
+    const startedAt = normalizeStartedAt(record.startedAt)
+    const metricsAvailable =
+      cpuPercent !== null && memoryBytes !== null && parentPid !== null && startedAt !== null
+
+    metrics.set(pid, {
+      cpuPercent,
+      memoryBytes,
+      startedAt,
+      parentPid,
+      metricsAvailable,
+      metricsStatus: metricsAvailable ? 'available' : 'unavailable'
+    })
+  }
+  return metrics
+}
+
+function unavailableWindowsMetrics(entry) {
+  return {
+    ...entry,
+    cpuPercent: null,
+    memoryBytes: null,
+    startedAt: null,
+    parentPid: null,
+    metricsAvailable: false,
+    metricsStatus: 'unavailable'
+  }
+}
+
+async function collectWindowsProcessMetrics(
+  pids,
+  {
+    runCommand = run,
+    parseWindowsMetrics = parseWindowsProcessMetrics,
+    buildCommand = buildWindowsMetricsCommand
+  } = {}
+) {
+  const command = buildCommand(pids)
+  const output = await runCommand(command.command, command.args)
+  const metrics = parseWindowsMetrics(output)
+  if (!(metrics instanceof Map)) {
+    throw new Error('Windows Node 指标解析器必须返回 Map。')
+  }
+  return metrics
+}
+
+async function enrichProcessMetrics(
+  entries,
+  {
+    platform = os.platform(),
+    runCommand = run,
+    parseWindowsMetrics = parseWindowsProcessMetrics,
+    buildWindowsCommand = buildWindowsMetricsCommand
+  } = {}
+) {
   const items = Array.isArray(entries) ? entries : []
-  if (platform === 'win32' || items.length === 0) return items
+  if (items.length === 0) return items
   const pids = [...new Set(items.map((entry) => Number(entry.pid)).filter((pid) => pid > 0))]
   if (!pids.length) return items
+
+  if (platform === 'win32') {
+    try {
+      const metrics = await collectWindowsProcessMetrics(pids, {
+        runCommand,
+        parseWindowsMetrics,
+        buildCommand: buildWindowsCommand
+      })
+      return items.map((entry) => {
+        const metric = metrics.get(Number(entry.pid))
+        return metric ? { ...entry, ...metric } : unavailableWindowsMetrics(entry)
+      })
+    } catch {
+      return items.map(unavailableWindowsMetrics)
+    }
+  }
+
   try {
     const output = await runCommand('ps', ['-o', 'pid=,pcpu=,rss=', '-p', pids.join(',')])
     const metrics = parsePsMetrics(output)
@@ -193,14 +356,17 @@ async function enrichProcessMetrics(entries, { platform = os.platform(), runComm
   }
 }
 
-async function getPortUsage() {
-  const platform = os.platform()
-
+async function getPortUsage({
+  platform = os.platform(),
+  runCommand = run,
+  parseWindowsMetrics = parseWindowsProcessMetrics,
+  buildWindowsCommand = buildWindowsMetricsCommand
+} = {}) {
   try {
     if (platform === 'win32') {
       const [netstatOutput, taskOutput] = await Promise.all([
-        run('netstat', ['-ano']),
-        run('tasklist', [])
+        runCommand('netstat', ['-ano']),
+        runCommand('tasklist', [])
       ])
       const names = parseTasklist(taskOutput)
       const entries = parseNetstatWindows(netstatOutput).map((entry) => ({
@@ -211,14 +377,22 @@ async function getPortUsage() {
       return {
         ok: true,
         platform,
-        entries: sortEntries(filterNodeEntries(uniqueEntries(entries))),
+        entries: await enrichProcessMetrics(
+          sortEntries(filterNodeEntries(uniqueEntries(entries))),
+          {
+            platform,
+            runCommand,
+            parseWindowsMetrics,
+            buildWindowsCommand
+          }
+        ),
         scannedAt: new Date().toISOString()
       }
     }
 
     const [tcpOutput, udpOutput] = await Promise.allSettled([
-      run('lsof', ['-nP', '-iTCP', '-sTCP:LISTEN']),
-      run('lsof', ['-nP', '-iUDP'])
+      runCommand('lsof', ['-nP', '-iTCP', '-sTCP:LISTEN']),
+      runCommand('lsof', ['-nP', '-iUDP'])
     ])
 
     const entries = []
@@ -233,7 +407,12 @@ async function getPortUsage() {
     return {
       ok: true,
       platform,
-      entries: await enrichProcessMetrics(nodeEntries, { platform }),
+      entries: await enrichProcessMetrics(nodeEntries, {
+        platform,
+        runCommand,
+        parseWindowsMetrics,
+        buildWindowsCommand
+      }),
       scannedAt: new Date().toISOString()
     }
   } catch (error) {
@@ -365,7 +544,10 @@ module.exports = {
   parseLsof,
   parseNetstatWindows,
   parsePsMetrics,
+  parseWindowsProcessMetrics,
   __testables: {
+    buildWindowsMetricsCommand,
+    collectWindowsProcessMetrics,
     enrichProcessMetrics,
     normalizeSignal,
     terminateProcess

@@ -89,16 +89,20 @@ test('记录有界 Node 服务状态与资源采样历史，并跳过短时间�
   const userDataPath = createTempDir()
   try {
     watchNodeService(userDataPath, service)
-    checkWatchedNodeServices(userDataPath, [{ ...service, cpuPercent: 12.5, memoryBytes: 1024 }], {
-      now: 100
-    })
-    checkWatchedNodeServices(userDataPath, [{ ...service, cpuPercent: 12.5, memoryBytes: 1024 }], {
-      now: 200
-    })
+    checkWatchedNodeServices(
+      userDataPath,
+      [{ ...service, cpuPercent: 12.5, memoryBytes: 1024, metricsAvailable: true }],
+      { now: 100 }
+    )
+    checkWatchedNodeServices(
+      userDataPath,
+      [{ ...service, cpuPercent: 12.5, memoryBytes: 1024, metricsAvailable: true }],
+      { now: 200 }
+    )
     checkWatchedNodeServices(userDataPath, [], { now: 300 })
     checkWatchedNodeServices(
       userDataPath,
-      [{ ...service, pid: 1300, cpuPercent: 8, memoryBytes: 2048 }],
+      [{ ...service, pid: 1300, cpuPercent: 8, memoryBytes: 2048, metricsAvailable: true }],
       { now: 400 }
     )
 
@@ -108,11 +112,36 @@ test('记录有界 Node 服务状态与资源采样历史，并跳过短时间�
       history.map((item) => [item.state, item.pid, item.memoryBytes]),
       [
         ['online', 1300, 2048],
-        ['offline', 0, 0],
+        ['offline', 0, null],
         ['online', 1200, 1024]
       ]
     )
     assert.equal(listNodeServiceHistory(userDataPath, { since: 350 }).length, 1)
+    assert.deepEqual(
+      history.map((item) => item.metricsStatus),
+      ['available', 'not-applicable', 'available']
+    )
+  } finally {
+    fs.rmSync(userDataPath, { recursive: true, force: true })
+  }
+})
+
+test('在线服务指标采集失败时保留不可用状态而不是伪装成 0', () => {
+  const userDataPath = createTempDir()
+  try {
+    watchNodeService(userDataPath, service)
+    checkWatchedNodeServices(
+      userDataPath,
+      [{ ...service, cpuPercent: null, memoryBytes: null, metricsAvailable: false }],
+      { now: 500 }
+    )
+
+    const [sample] = listNodeServiceHistory(userDataPath, { serviceId: 'TCP:3000' })
+    assert.equal(sample.state, 'online')
+    assert.equal(sample.metricsAvailable, false)
+    assert.equal(sample.metricsStatus, 'unavailable')
+    assert.equal(sample.cpuPercent, null)
+    assert.equal(sample.memoryBytes, null)
   } finally {
     fs.rmSync(userDataPath, { recursive: true, force: true })
   }

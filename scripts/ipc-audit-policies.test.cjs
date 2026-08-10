@@ -471,6 +471,30 @@ const requiredChannels = [
     category: 'ai-workflow',
     args: [],
     targetKeys: ['operation']
+  },
+  {
+    name: 'OPS_AUDIT_SETTINGS_SAVE',
+    channel: IPC_CHANNELS.OPS_AUDIT_SETTINGS_SAVE,
+    action: 'ops-audit.settings-save',
+    category: 'security',
+    args: [{ retentionDays: 180, path: sensitiveValues[2] }],
+    targetKeys: ['retentionCount']
+  },
+  {
+    name: 'OPS_AUDIT_EXPORT',
+    channel: IPC_CHANNELS.OPS_AUDIT_EXPORT,
+    action: 'ops-audit.export',
+    category: 'security',
+    args: [{ category: sensitiveValues[8], status: 'failed', path: sensitiveValues[2] }],
+    targetKeys: ['status', 'scope', 'format', 'redacted']
+  },
+  {
+    name: 'OPS_AUDIT_CLEAR',
+    channel: IPC_CHANNELS.OPS_AUDIT_CLEAR,
+    action: 'ops-audit.clear',
+    category: 'security',
+    args: [{ category: sensitiveValues[8], status: 'failed', confirmed: true }],
+    targetKeys: ['status', 'scope', 'confirmed']
   }
 ]
 
@@ -491,7 +515,9 @@ const passiveReadChannels = [
   IPC_CHANNELS.QUICKLAUNCH_GET,
   IPC_CHANNELS.QUICKLAUNCH_PARSE_URLS,
   IPC_CHANNELS.GPT_IMAGE_CONFIG_GET,
-  IPC_CHANNELS.GPT_IMAGE_HISTORY_GET
+  IPC_CHANNELS.GPT_IMAGE_HISTORY_GET,
+  IPC_CHANNELS.OPS_AUDIT_GET,
+  IPC_CHANNELS.OPS_AUDIT_SETTINGS_GET
 ]
 const passiveReadChannelSet = new Set(passiveReadChannels)
 const highRiskRequiredChannels = requiredChannels.filter(

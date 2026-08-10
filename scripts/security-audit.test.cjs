@@ -5,9 +5,14 @@ const path = require('node:path')
 const test = require('node:test')
 const {
   MAX_AUDIT_RECORDS,
+  buildAuditExport,
+  clearAuditRecords,
   finishAudit,
   getAuditStatePath,
   listAuditRecords,
+  queryAuditRecords,
+  readAuditState,
+  saveAuditSettings,
   startAudit
 } = require('../src/main/utils/security-audit')
 
@@ -54,10 +59,12 @@ test('bounds the local JSON audit state to the newest 1000 records', () => {
     }
 
     const saved = JSON.parse(fs.readFileSync(getAuditStatePath(userDataPath), 'utf8'))
-    assert.equal(saved.version, 1)
+    assert.equal(saved.version, 2)
+    assert.equal(saved.retentionDays, 90)
     assert.equal(saved.records.length, MAX_AUDIT_RECORDS)
     assert.equal(saved.records[0].requestId, 'request-5')
     assert.equal(saved.records.at(-1).requestId, 'request-1004')
+    assert.match(saved.records.at(-1).integrityHash, /^[a-f0-9]{64}$/)
   })
 })
 
@@ -211,5 +218,156 @@ test('surfaces persistence failures to the caller', () => {
     } finally {
       console.error = originalConsoleError
     }
+  })
+})
+
+test('supports server-side cursor pagination, filtering, retention and category clearing', () => {
+  withTempDirectory((userDataPath) => {
+    const baseTime = Date.UTC(2026, 7, 10, 0, 0, 0)
+    for (let index = 0; index < 7; index += 1) {
+      const started = startAudit({
+        userDataPath,
+        action: index % 2 ? 'backup.export' : 'process.kill',
+        category: index < 5 ? 'process' : 'backup',
+        channel: 'security-audit:test',
+        requestId: `request-page-${index}`,
+        now: baseTime + index * 1_000
+      })
+      finishAudit({
+        userDataPath,
+        auditId: started.auditId,
+        status: index === 3 ? 'failed' : 'succeeded',
+        now: baseTime + index * 1_000 + 100
+      })
+    }
+
+    const first = queryAuditRecords({ userDataPath, pageSize: 2, category: 'process' })
+    assert.equal(first.records.length, 2)
+    assert.equal(first.total, 5)
+    assert.equal(first.hasMore, true)
+    assert.ok(first.nextCursor)
+    assert.deepEqual(first.categories, ['backup', 'process'])
+    assert.equal(first.statusCounts.failed, 1)
+    assert.equal(first.integrity.valid, true)
+
+    const second = queryAuditRecords({
+      userDataPath,
+      pageSize: 2,
+      category: 'process',
+      cursor: first.nextCursor
+    })
+    assert.equal(second.records.length, 2)
+    assert.notEqual(second.records[0].auditId, first.records[0].auditId)
+
+    const settings = saveAuditSettings({
+      userDataPath,
+      retentionDays: 30,
+      now: baseTime + 31 * 24 * 60 * 60 * 1_000
+    })
+    assert.equal(settings.retentionDays, 30)
+    assert.equal(queryAuditRecords({ userDataPath, pageSize: 20 }).total, 0)
+
+    const recent = startAudit({
+      userDataPath,
+      action: 'process.kill',
+      category: 'process',
+      channel: 'security-audit:test',
+      now: baseTime + 32 * 24 * 60 * 60 * 1_000
+    })
+    finishAudit({
+      userDataPath,
+      auditId: recent.auditId,
+      status: 'succeeded',
+      now: baseTime + 32 * 24 * 60 * 60 * 1_000 + 100
+    })
+    const cleared = clearAuditRecords({ userDataPath, category: 'process', confirmed: true })
+    assert.equal(cleared.deletedCount, 1)
+    assert.equal(cleared.remainingCount, 0)
+    assert.equal(cleared.integrity.valid, true)
+  })
+})
+
+test('detects tampering and exports the integrity result without exposing sensitive values', () => {
+  withTempDirectory((userDataPath) => {
+    const secret = 'secret-token-value-123'
+    const started = startAudit({
+      userDataPath,
+      action: 'provider.update',
+      category: 'ai-config',
+      channel: 'security-audit:test',
+      target: { scope: `token=${secret}`, hasApiKey: true },
+      now: Date.UTC(2026, 7, 10, 0, 0, 0)
+    })
+    finishAudit({
+      userDataPath,
+      auditId: started.auditId,
+      status: 'succeeded',
+      now: Date.UTC(2026, 7, 10, 0, 0, 1)
+    })
+
+    const statePath = getAuditStatePath(userDataPath)
+    const stored = JSON.parse(fs.readFileSync(statePath, 'utf8'))
+    assert.equal(JSON.stringify(stored).includes(secret), false)
+    stored.records[0].action = 'tampered.action'
+    fs.writeFileSync(statePath, JSON.stringify(stored), 'utf8')
+
+    const state = readAuditState(userDataPath)
+    assert.equal(state.integrity.valid, false)
+    const bundle = buildAuditExport({ userDataPath, now: Date.UTC(2026, 7, 10, 1, 0, 0) })
+    assert.equal(bundle.integrity.valid, false)
+    assert.equal(JSON.stringify(bundle).includes(secret), false)
+    assert.throws(
+      () =>
+        startAudit({
+          userDataPath,
+          action: 'blocked.write',
+          category: 'security',
+          channel: 'security-audit:test'
+        }),
+      (error) => error?.code === 'AUDIT_INTEGRITY_FAILED'
+    )
+  })
+})
+
+test('rejects corrupted JSON instead of replacing it with an empty audit state', () => {
+  withTempDirectory((userDataPath) => {
+    fs.writeFileSync(getAuditStatePath(userDataPath), '{broken-json', 'utf8')
+    assert.throws(
+      () => readAuditState(userDataPath),
+      (error) => error?.code === 'AUDIT_STATE_CORRUPTED'
+    )
+    assert.equal(fs.readFileSync(getAuditStatePath(userDataPath), 'utf8'), '{broken-json')
+  })
+})
+
+test('does not treat missing v2 hashes as a legacy migration', () => {
+  withTempDirectory((userDataPath) => {
+    const started = startAudit({
+      userDataPath,
+      action: 'release.publish',
+      category: 'release',
+      channel: 'release:publish',
+      now: 1_700_000_000_000
+    })
+    const statePath = getAuditStatePath(userDataPath)
+    const state = JSON.parse(fs.readFileSync(statePath, 'utf8'))
+    delete state.records[0].integrityHash
+    fs.writeFileSync(statePath, JSON.stringify(state), 'utf8')
+
+    const loaded = readAuditState(userDataPath)
+    assert.equal(loaded.integrity.valid, false)
+    assert.equal(loaded.records[0].auditId, started.auditId)
+    assert.throws(
+      () => startAudit({ userDataPath, action: 'release.rollback', category: 'release' }),
+      (error) => error?.code === 'AUDIT_INTEGRITY_FAILED'
+    )
+  })
+})
+
+test('requires explicit confirmation and a category for audit clearing', () => {
+  withTempDirectory((userDataPath) => {
+    startAudit({ userDataPath, action: 'process.kill', category: 'process' })
+    assert.throws(() => clearAuditRecords({ userDataPath, category: 'process' }), /确认/)
+    assert.throws(() => clearAuditRecords({ userDataPath, confirmed: true }), /分类/)
   })
 })

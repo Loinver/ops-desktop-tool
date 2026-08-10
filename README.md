@@ -4,19 +4,19 @@
 
 ## 功能架构
 
-| 分组 | 模块 | 能力 |
-| --- | --- | --- |
-| 总览 | 运维仪表盘 | 汇总发布状态、模型可用率、巡检状态、趋势与最近活动 |
-| 总览 | 运维中心 | 按来源与稳定指纹聚合运维事件，记录重复发生、确认、解决和自动恢复时间线；运行 HTTP/TCP 自动化巡检，并使用 AI Copilot 辅助排障 |
-| 核心运维 | 系统发布 | 发布前预检、忽略规则、多环境 Profile、发布历史、远端备份、健康检查与一键回滚；通过 SFTP 上传、续传、比较、删除、创建目录或 ZIP 部署 |
-| 核心运维 | 模型可靠性 | 检测 cc-switch 中转模型可用性，管理测试范围、历史趋势、定时巡检和异常桌面通知 |
-| 核心运维 | Node 服务 | 扫描本机 Node.js 监听端口，按端口、PID、命令和地址筛选，支持正常结束或强制结束进程 |
-| AI 与知识 | AI 能力中心 | 统一管理 OpenAI 兼容 Provider、模型语义评测、脱敏日志分析、本地知识库、确认式安全工作流与只读 MCP 服务 |
-| 本机工具 | 快捷启动 | 保存常用应用、文件、目录或网页入口，并从桌面端安全启动 |
-| 本机工具 | 剪贴板历史 | 记录文本和图片历史，支持筛选、搜索、复制、删除与清空 |
-| 本机工具 | 系统信息 | 查看操作系统、CPU、内存和运行环境信息 |
-| 本机工具 | 本地数据管理 | 按功能分类导出 AES-256-GCM 加密备份，支持定时保留、执行历史和本机恢复点回滚 |
-| 实验功能 | AI 图像实验 | 对接 OpenAI 兼容的模型与图片生成接口，保存配置、生成记录和图片文件 |
+| 分组      | 模块         | 能力                                                                                                                                |
+| --------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| 总览      | 运维仪表盘   | 汇总发布状态、模型可用率、巡检状态、趋势与最近活动                                                                                  |
+| 总览      | 运维中心     | 按来源与稳定指纹聚合运维事件，记录重复发生、确认、解决和自动恢复时间线；运行 HTTP/TCP 自动化巡检，并使用 AI Copilot 辅助排障        |
+| 核心运维  | 系统发布     | 发布前预检、忽略规则、多环境 Profile、发布历史、远端备份、健康检查与一键回滚；通过 SFTP 上传、续传、比较、删除、创建目录或 ZIP 部署 |
+| 核心运维  | 模型可靠性   | 检测 cc-switch 中转模型可用性，管理测试范围、历史趋势、定时巡检和异常桌面通知                                                       |
+| 核心运维  | Node 服务    | 扫描本机 Node.js 监听端口，按端口、PID、命令和地址筛选，支持正常结束或强制结束进程                                                  |
+| AI 与知识 | AI 能力中心  | 统一管理 OpenAI 兼容 Provider、模型语义评测、脱敏日志分析、本地知识库、确认式安全工作流与只读 MCP 服务                              |
+| 本机工具  | 快捷启动     | 保存常用应用、文件、目录或网页入口，并从桌面端安全启动                                                                              |
+| 本机工具  | 剪贴板历史   | 记录文本和图片历史，支持筛选、搜索、复制、删除与清空                                                                                |
+| 本机工具  | 系统信息     | 查看操作系统、CPU、内存和运行环境信息                                                                                               |
+| 本机工具  | 本地数据管理 | 按功能分类导出 AES-256-GCM 加密备份，支持定时保留、执行历史和本机恢复点回滚                                                         |
+| 实验功能  | AI 图像实验  | 对接 OpenAI 兼容的模型与图片生成接口，保存配置、生成记录和图片文件                                                                  |
 
 ## 环境要求
 
@@ -132,26 +132,26 @@ export SFTP_PASSWORD='your-password'
 
 应用数据写入 Electron 的 `app.getPath('userData')` 目录，主要文件包括：
 
-| 文件 | 内容 |
-| --- | --- |
-| `quick-launch.json` | 快捷启动项 |
-| `clipboard-history.json` | 剪贴板历史 |
-| `sftp-config.json` | SFTP 连接配置，密码为加密字段 |
-| `sftp-paths.json` | 旧版默认本地和远程发布目录 |
-| `release-profiles.json` | 多环境发布 Profile、目录与忽略规则，密码仍为加密字段 |
-| `release-history.json` | 发布、失败和回滚历史 |
-| `model-test-history.json` | 手动测试与定时巡检历史 |
-| `model-monitor-settings.json` | 巡检间隔、通知开关和巡检目标 |
-| `gpt-image-config.json` | AI 图像实验配置，API Key 为加密字段 |
-| `gpt-image-history.json` | AI 图像实验历史 |
-| `ai-providers.json` | AI Provider 配置，API Key 为加密字段 |
-| `ai-evaluations.json` | 模型语义评测用例与运行结果，回答会先脱敏 |
-| `ai-log-analysis.json` | 脱敏日志的本地规则分析和可选 AI 总结 |
-| `ai-knowledge.json` | 本地运维知识库，保存前会脱敏 |
-| `ai-workflows.json` | 自然语言工作流预览历史 |
-| `ops-backup-restore-points/` | 导入或回滚前自动保留的本机恢复点，最多保留最近 3 次 |
+| 文件                            | 内容                                                      |
+| ------------------------------- | --------------------------------------------------------- |
+| `quick-launch.json`             | 快捷启动项                                                |
+| `clipboard-history.json`        | 剪贴板历史                                                |
+| `sftp-config.json`              | SFTP 连接配置，密码为加密字段                             |
+| `sftp-paths.json`               | 旧版默认本地和远程发布目录                                |
+| `release-profiles.json`         | 多环境发布 Profile、目录与忽略规则，密码仍为加密字段      |
+| `release-history.json`          | 发布、失败和回滚历史                                      |
+| `model-test-history.json`       | 手动测试与定时巡检历史                                    |
+| `model-monitor-settings.json`   | 巡检间隔、通知开关和巡检目标                              |
+| `gpt-image-config.json`         | AI 图像实验配置，API Key 为加密字段                       |
+| `gpt-image-history.json`        | AI 图像实验历史                                           |
+| `ai-providers.json`             | AI Provider 配置，API Key 为加密字段                      |
+| `ai-evaluations.json`           | 模型语义评测用例与运行结果，回答会先脱敏                  |
+| `ai-log-analysis.json`          | 脱敏日志的本地规则分析和可选 AI 总结                      |
+| `ai-knowledge.json`             | 本地运维知识库，保存前会脱敏                              |
+| `ai-workflows.json`             | 自然语言工作流预览历史                                    |
+| `ops-backup-restore-points/`    | 导入或回滚前自动保留的本机恢复点，最多保留最近 3 次       |
 | `ops-auto-backup-settings.json` | 自动备份的目录、周期、保留策略与 safeStorage 加密后的密码 |
-| `ops-auto-backup-history.json` | 自动备份成功或失败的本机执行历史（最多 50 条） |
+| `ops-auto-backup-history.json`  | 自动备份成功或失败的本机执行历史（最多 50 条）            |
 
 SFTP 密码和 AI API Key 使用 Electron `safeStorage` 加密后保存。渲染进程只能获得 `hasPassword`、`passwordMasked`、`hasApiKey`、`apiKeyMasked` 等状态，不会获得完整凭证。旧版本遗留的明文字段会在可用时自动迁移为加密字段；系统安全存储不可用时，应用拒绝把新的敏感凭证明文写入磁盘。
 
@@ -173,7 +173,7 @@ ZIP 部署成功后，旧版本按发布记录保留在远端目标目录父级�
 
 ## 模型监控
 
-模型可靠性测试完成后会保存最小化结果快照（状态、耗时、HTTP 状态与诊断，不保存 API Key 和真实回复正文）。当前测试范围可一键设为巡检目标；Electron 主进程按配置间隔执行巡检，失败时可发送系统桌面通知。定时巡检会按 Provider、协议与模型生成稳定事件指纹，重复异常累计到同一事件，后续检测恢复正常时自动关闭并保留恢复时间线。首页运维仪表盘展示最近发布、模型可用率与趋势。
+模型可靠性测试完成后会保存最小化结果快照（状态、耗时、HTTP 状态与诊断，不保存 API Key 和真实回复正文）。当前测试范围可一键设为巡检目标；Electron 主进程按配置间隔执行巡检，失败时可发送系统桌面通知。定时巡检会按 Provider、协议与模型生成稳定事件指纹，重复异常累计到同一事件，检测恢复正常时自动关闭并保留恢复时间线。首页运维仪表盘展示最近发布、模型可用率与趋势。
 
 ## 安全边界
 
@@ -216,15 +216,17 @@ CI 仍会检查每个安装包的目标架构，并直接启动打包后的 `.ap
 
 CI 分别使用 `macos-15`（Apple Silicon）和 `macos-15-intel`（Intel）Runner 构建，并在每个架构上直接启动打包后的 `.app`，确认主进程与渲染页面能够正常加载后才上传产物。
 
-Windows CI 也会在构建完成后直接启动 `win-unpacked/Ops Desktop.exe`，在隔离的临时 Windows 用户目录中生成处于 WAL 模式、且尚未 checkpoint 的真实 SQLite CC Switch 配置，并从渲染页面通过 preload/IPC 验证应用能读取最新快照、自动发现 Provider、模型和端点，同时确认 API Key 不会返回渲染层；全部通过后才上传 NSIS/ZIP 产物。
+Windows CI 也会在构建完成后直接启动 `win-unpacked/Ops Desktop.exe`，在隔离的临时 Windows 用户目录中生成处于 WAL 模式、且 WAL 内容未 checkpoint 的真实 SQLite CC Switch 配置，并从渲染页面通过 preload/IPC 验证应用能读取最新快照、自动发现 Provider、模型和端点，同时确认 API Key 不会返回渲染层；全部通过后才上传 NSIS/ZIP 产物。
 
-### 发布前检查清单
+### 发布验收步骤
 
-- [ ] `pnpm verify`（Prettier、lint、单元/Renderer 测试与 Electron E2E）全部通过
-- [ ] `pnpm check` 运行成功
-- [ ] 构建输出在 `release/` 目录中完整（macOS 同时包含 arm64/x64 的 .dmg 与 .zip）
-- [ ] macOS Release 已明确标注未使用 Developer ID 签名和 Apple 公证
-- [ ] `CHANGELOG.md` 已更新
+每次版本发布均按以下门禁执行：
+
+1. 运行 `pnpm verify`，通过 Prettier、lint、单元/Renderer 测试与 Electron E2E。
+2. 运行 `pnpm check`，完成全量验证与构建。
+3. 检查 `release/` 产物；macOS 同时包含 arm64/x64 的 `.dmg` 与 `.zip`。
+4. 在 macOS Release 说明中明确产物不使用 Developer ID 签名和 Apple 公证。
+5. 更新 `CHANGELOG.md` 后创建与 `package.json` 版本一致的 Tag。
 
 ### 安装与使用
 

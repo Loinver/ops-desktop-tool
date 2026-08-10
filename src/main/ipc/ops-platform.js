@@ -12,10 +12,21 @@ const {
   runAutomationTask,
   updateOpsEvent
 } = require('../utils/ops-automation')
-const { normalizeOpsDataChange, onOpsDataChange } = require('../utils/ops-data-change')
+const {
+  emitOpsDataChange,
+  normalizeOpsDataChange,
+  onOpsDataChange
+} = require('../utils/ops-data-change')
 const { buildRunbookPlan, executeRunbook, listRunbookHistory } = require('../utils/ops-runbook')
 const { buildOpsDiagnosticsBundle } = require('../utils/ops-diagnostics')
-const { listAuditRecords } = require('../utils/security-audit')
+const {
+  buildAuditExport,
+  clearAuditRecords,
+  getAuditSettings,
+  listAuditRecords,
+  queryAuditRecords,
+  saveAuditSettings
+} = require('../utils/security-audit')
 const {
   buildOpsInsights,
   loadOpsInsightsSettings,
@@ -27,6 +38,8 @@ const { loadEvaluationState, loadLogState } = require('../utils/ai-ops')
 const { loadReleaseHistory } = require('../utils/release-store')
 const { runScheduledInspection } = require('./model-test')
 const { runNodeServiceMonitorCheck } = require('./ports')
+const { loadMaintenanceWindow, saveMaintenanceWindow } = require('../utils/ops-maintenance-window')
+const { executeAutomationTaskBatch } = require('../utils/ops-task-batch')
 
 let unsubscribeOpsDataChanges = null
 let runtime = null
@@ -266,16 +279,155 @@ function registerOpsPlatformHandlers({ getMainWindow } = {}) {
 
   ipcMain.handle(IPC_CHANNELS.OPS_AUDIT_GET, async (_event, filters = {}) => {
     try {
+      const safeFilters = filters && typeof filters === 'object' ? filters : {}
       return {
         ok: true,
-        records: listAuditRecords({
-          userDataPath: userDataPath(),
-          ...(filters && typeof filters === 'object' ? filters : {}),
-          limit: Math.min(200, Math.max(1, Number(filters?.limit) || 100))
+        ...queryAuditRecords({
+          status: safeFilters.status,
+          category: safeFilters.category,
+          action: safeFilters.action,
+          channel: safeFilters.channel,
+          requestId: safeFilters.requestId,
+          actorId: safeFilters.actorId,
+          from: safeFilters.from,
+          to: safeFilters.to,
+          cursor: safeFilters.cursor,
+          order: safeFilters.order === 'asc' ? 'asc' : 'desc',
+          pageSize: Math.min(
+            100,
+            Math.max(1, Number(safeFilters.pageSize ?? safeFilters.limit) || 20)
+          ),
+          userDataPath: userDataPath()
         })
       }
     } catch (error) {
       return { ok: false, error: error?.message || '读取操作审计失败' }
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.OPS_MAINTENANCE_GET, async () => {
+    try {
+      return { ok: true, window: loadMaintenanceWindow(userDataPath()) }
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : '读取维护窗口失败' }
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.OPS_MAINTENANCE_SAVE, async (_event, settings = {}) => {
+    try {
+      if (settings?.enabled === true && settings?.confirmed !== true) {
+        throw new Error('启用维护窗口前必须完成确认')
+      }
+      const window = saveMaintenanceWindow(userDataPath(), settings)
+      emitOpsDataChange({
+        kind: 'maintenance-window-saved',
+        sourceType: 'operations',
+        sourceId: 'maintenance-window',
+        status: window.status,
+        updatedAt: window.updatedAt
+      })
+      return { ok: true, window }
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : '保存维护窗口失败' }
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.OPS_TASK_BATCH, async (_event, options = {}) => {
+    try {
+      const batch = await executeAutomationTaskBatch({
+        userDataPath: userDataPath(),
+        input: options
+      })
+      emitOpsDataChange({
+        kind: 'task-batch-completed',
+        sourceType: 'automation',
+        sourceId: batch.batchId,
+        status: batch.status,
+        updatedAt: batch.finishedAt
+      })
+      return { ok: true, batch }
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : '批量任务执行失败' }
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.OPS_AUDIT_SETTINGS_GET, async () => {
+    try {
+      return { ok: true, settings: getAuditSettings(userDataPath()) }
+    } catch (error) {
+      return { ok: false, error: error?.message || '读取审计设置失败' }
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.OPS_AUDIT_SETTINGS_SAVE, async (_event, settings = {}) => {
+    try {
+      return {
+        ok: true,
+        settings: saveAuditSettings({
+          retentionDays: settings?.retentionDays,
+          userDataPath: userDataPath()
+        })
+      }
+    } catch (error) {
+      return { ok: false, error: error?.message || '保存审计设置失败' }
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.OPS_AUDIT_CLEAR, async (_event, filters = {}) => {
+    try {
+      if (filters?.confirmed !== true) throw new Error('清理审计记录前必须完成确认')
+      const category = typeof filters?.category === 'string' ? filters.category.trim() : ''
+      if (!category) throw new Error('清理审计记录必须指定分类')
+      return {
+        ok: true,
+        result: clearAuditRecords({
+          confirmed: true,
+          category,
+          status: filters?.status,
+          from: filters?.from,
+          to: filters?.to,
+          userDataPath: userDataPath()
+        })
+      }
+    } catch (error) {
+      return { ok: false, error: error?.message || '清理审计记录失败' }
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.OPS_AUDIT_EXPORT, async (_event, filters = {}) => {
+    try {
+      const safeFilters = filters && typeof filters === 'object' ? filters : {}
+      const bundle = buildAuditExport({
+        status: safeFilters.status,
+        category: safeFilters.category,
+        action: safeFilters.action,
+        channel: safeFilters.channel,
+        requestId: safeFilters.requestId,
+        actorId: safeFilters.actorId,
+        from: safeFilters.from,
+        to: safeFilters.to,
+        userDataPath: userDataPath()
+      })
+      const defaultName = `ops-audit-${new Date().toISOString().replace(/[:.]/g, '-')}.json`
+      const win = runtime?.getMainWindow?.()
+      const result = await dialog.showSaveDialog(win || undefined, {
+        title: '导出脱敏审计记录',
+        defaultPath: defaultName,
+        filters: [{ name: 'JSON', extensions: ['json'] }]
+      })
+      if (result.canceled || !result.filePath) return { ok: true, canceled: true }
+      const content = `${JSON.stringify(bundle, null, 2)}\n`
+      fs.writeFileSync(result.filePath, content, { encoding: 'utf8', mode: 0o600 })
+      return {
+        ok: true,
+        canceled: false,
+        fileName: path.basename(result.filePath),
+        recordCount: bundle.recordCount,
+        sizeBytes: Buffer.byteLength(content),
+        integrity: bundle.integrity
+      }
+    } catch (error) {
+      return { ok: false, error: error?.message || '导出审计记录失败' }
     }
   })
 

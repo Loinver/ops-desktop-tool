@@ -12,6 +12,7 @@ const {
   recordAutoBackupExecutionFailure,
   recoverAutoBackupExecution
 } = require('./utils/auto-backup-events')
+const { activeMaintenanceWindow } = require('./utils/ops-maintenance-window')
 
 let runtime = null
 let timer = null
@@ -53,6 +54,12 @@ function scheduleAutoBackup() {
   if (!settings.enabled) return
   const nextRunAt = settings.nextRunAt || Date.now() + AUTO_BACKUP_INTERVALS[settings.interval]
   timer = setTimeout(() => {
+    const maintenance = activeMaintenanceWindow(runtime.userDataPath)
+    if (maintenance) {
+      timer = setTimeout(scheduleAutoBackup, Math.max(1000, delayUntil(maintenance.resumeAt)))
+      timer.unref?.()
+      return
+    }
     try {
       const result = runAutoBackup({
         userDataPath: runtime.userDataPath,

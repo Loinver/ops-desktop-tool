@@ -76,6 +76,7 @@ test('builds model quality, estimated cost, release risk and node history insigh
         state: 'online',
         cpuPercent: 10,
         memoryBytes: 100,
+        metricsAvailable: true,
         checkedAt: 900
       },
       {
@@ -99,9 +100,44 @@ test('builds model quality, estimated cost, release risk and node history insigh
   assert.equal(data.releaseRisk.level, 'high')
   assert.match(data.releaseRisk.disclaimer, /历史记录/)
   assert.equal(data.nodeServices[0].availability, 50)
-  assert.equal(data.nodeServices[0].averageCpuPercent, 5)
+  assert.equal(data.nodeServices[0].averageCpuPercent, 10)
+  assert.equal(data.nodeServices[0].averageMemoryBytes, 100)
+  assert.equal(data.nodeServices[0].metricSamples, 1)
   assert.equal(data.nodeServices[0].latest.state, 'offline')
   assert.equal(JSON.stringify(data).includes('12345678'), false)
+})
+
+test('Node 洞察区分真实零值与指标不可用', () => {
+  const data = buildOpsInsights({
+    nodeHistory: [
+      {
+        serviceId: 'TCP:3000',
+        protocol: 'TCP',
+        port: 3000,
+        state: 'online',
+        cpuPercent: 0,
+        memoryBytes: 0,
+        metricsAvailable: true,
+        checkedAt: 100
+      },
+      {
+        serviceId: 'TCP:3000',
+        protocol: 'TCP',
+        port: 3000,
+        state: 'online',
+        cpuPercent: null,
+        memoryBytes: null,
+        metricsAvailable: false,
+        checkedAt: 200
+      }
+    ]
+  })
+
+  assert.equal(data.nodeServices[0].averageCpuPercent, 0)
+  assert.equal(data.nodeServices[0].averageMemoryBytes, 0)
+  assert.equal(data.nodeServices[0].metricSamples, 1)
+  assert.equal(data.nodeServices[0].unavailableMetricSamples, 1)
+  assert.equal(data.nodeServices[0].latest.metricsStatus, 'unavailable')
 })
 
 test('persists bounded per-model pricing settings', () => {

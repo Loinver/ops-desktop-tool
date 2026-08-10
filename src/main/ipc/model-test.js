@@ -32,6 +32,7 @@ const {
   listOpsEvents,
   recoverOpsEvent
 } = require('../utils/ops-automation')
+const { activeMaintenanceWindow } = require('../utils/ops-maintenance-window')
 const { listWatchedNodeServices } = require('../utils/node-service-monitor')
 
 const DEFAULT_TIMEOUT_MS = 30_000
@@ -1243,6 +1244,7 @@ function startMonitorTimer() {
   monitorTimer = setInterval(() => {
     const settings = loadMonitorSettings()
     if (!settings.enabled || inspectionRunning || !settings.targets.length) return
+    if (activeMaintenanceWindow(app.getPath('userData'))) return
     if (!settings.nextRunAt || settings.nextRunAt <= Date.now()) {
       runScheduledInspection().catch((error) => console.error('模型定时巡检失败:', error))
     }
