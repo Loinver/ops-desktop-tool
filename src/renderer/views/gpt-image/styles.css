@@ -852,3 +852,71 @@
     grid-column: auto;
   }
 }
+
+/* AI 生图费用与预算保护 */
+.cost-chip {
+  color: var(--success, #15803d);
+  background: #f0fdf4;
+}
+
+.warning-chip {
+  color: #a16207;
+  background: #fefce8;
+}
+
+.cost-strip {
+  grid-column: 1 / -1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  padding: 7px 10px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  background: #fff;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.cost-strip.warning > span:first-child {
+  color: #a16207;
+  font-weight: 600;
+}
+
+.budget-section.wide {
+  grid-column: 1 / -1;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+  background: #f8fafc;
+}
+
+.budget-section > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.budget-section strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.budget-section span {
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+@media (max-width: 640px) {
+  .cost-strip {
+    gap: 4px 10px;
+  }
+
+  .cost-strip span:first-child {
+    flex-basis: 100%;
+  }
+}

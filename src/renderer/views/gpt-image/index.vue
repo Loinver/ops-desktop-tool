@@ -60,6 +60,18 @@
                 <t-icon name="time" />
                 {{ message.loading ? '已用' : '用时' }} {{ message.durationText }}
               </span>
+              <span
+                v-if="message.role === 'assistant' && message.costKnown"
+                class="duration-chip cost-chip"
+              >
+                费用估算 {{ formatUsd(message.estimatedCostUsd, 4) }}
+              </span>
+              <span
+                v-else-if="message.role === 'assistant' && message.costUnknown"
+                class="duration-chip warning-chip"
+              >
+                费用未知
+              </span>
             </div>
 
             <p v-if="message.text" class="message-text">{{ message.text }}</p>
@@ -76,7 +88,17 @@
             <div v-if="message.error" class="error-box">
               <span>{{ message.error }}</span>
               <button
-                v-if="message.retryable"
+                v-if="message.budgetBlocked && message.budgetOverrideToken"
+                type="button"
+                class="btn-inline"
+                :disabled="generating"
+                @click="continueOverBudget(message)"
+              >
+                <t-icon name="check-circle" />
+                本次手动继续
+              </button>
+              <button
+                v-else-if="message.retryable"
                 type="button"
                 class="btn-inline"
                 :disabled="generating"
@@ -138,6 +160,20 @@
             >
               <t-icon name="close" />
             </button>
+          </div>
+          <div class="cost-strip" :class="{ warning: !nextBatchEstimate.costKnown }">
+            <span>{{ nextBatchEstimateText }}</span>
+            <span
+              >今日 {{ formatUsd(usageState.summary.today.estimatedCostUsd)
+              }}{{ dailyBudgetText }}</span
+            >
+            <span
+              >本月 {{ formatUsd(usageState.summary.month.estimatedCostUsd)
+              }}{{ monthlyBudgetText }}</span
+            >
+            <span v-if="usageState.summary.today.unknownCostRequests > 0">
+              {{ usageState.summary.today.unknownCostRequests }} 次费用未知
+            </span>
           </div>
           <div class="composer-input">
             <input
@@ -347,6 +383,70 @@
               </select>
             </label>
 
+            <label class="field">
+              <span>自定义每张费用（USD）</span>
+              <input
+                v-model.number="settingsConfig.estimatedCostPerImageUsd"
+                type="number"
+                min="0"
+                max="1000"
+                step="0.001"
+                placeholder="0 表示自动估算"
+              />
+              <small class="field-help"
+                >兼容第三方 Provider 时建议填写；0 表示尝试使用内置估算。</small
+              >
+            </label>
+
+            <label class="field">
+              <span>单批费用上限（USD）</span>
+              <input
+                v-model.number="settingsConfig.maxCostPerRequestUsd"
+                type="number"
+                min="0"
+                max="1000"
+                step="0.01"
+                placeholder="0 表示不限制"
+              />
+              <small class="field-help">按张数和最大重试次数预留，超限时需要单次确认。</small>
+            </label>
+
+            <div class="budget-section wide">
+              <div>
+                <strong>全局 AI 预算</strong>
+                <span>与 AI 对话共用，按本机本地日期统计；金额仅用于保护和趋势估算。</span>
+              </div>
+            </div>
+
+            <label class="field">
+              <span>每日预算（USD）</span>
+              <input
+                v-model.number="usageBudgetForm.dailyBudgetUsd"
+                type="number"
+                min="0"
+                max="1000000"
+                step="0.01"
+                placeholder="0 表示不限制"
+              />
+            </label>
+
+            <label class="field">
+              <span>每月预算（USD）</span>
+              <input
+                v-model.number="usageBudgetForm.monthlyBudgetUsd"
+                type="number"
+                min="0"
+                max="1000000"
+                step="0.01"
+                placeholder="0 表示不限制"
+              />
+            </label>
+
+            <label class="toggle-row checkbox-row wide">
+              <input v-model="usageBudgetForm.allowUnknownCost" type="checkbox" />
+              <span>允许费用未知的模型在启用全局预算时继续请求</span>
+            </label>
+
             <label class="toggle-row checkbox-row wide">
               <input v-model="useContext" type="checkbox" />
               <span>仅文生图携带最近对话上下文</span>
@@ -450,7 +550,9 @@ const config = reactive({
   size: '1024x1024',
   quality: 'auto',
   count: 1,
-  retryCount: 1
+  retryCount: 1,
+  estimatedCostPerImageUsd: 0,
+  maxCostPerRequestUsd: 0
 })
 const settingsConfig = reactive({ ...config })
 const draft = ref('')
@@ -474,6 +576,20 @@ const messagesEl = ref(null)
 const historyItems = ref([])
 const selectedReference = ref(null)
 const requestMode = ref('generate')
+const usageState = reactive({
+  settings: { dailyBudgetUsd: 0, monthlyBudgetUsd: 0, allowUnknownCost: false },
+  summary: {
+    today: { estimatedCostUsd: 0, unknownCostRequests: 0, images: 0 },
+    month: { estimatedCostUsd: 0, unknownCostRequests: 0, images: 0 },
+    byModel: [],
+    recent: []
+  }
+})
+const usageBudgetForm = reactive({
+  dailyBudgetUsd: 0,
+  monthlyBudgetUsd: 0,
+  allowUnknownCost: false
+})
 const HISTORY_STORAGE_KEY = 'ops:gpt-image:history'
 const MAX_HISTORY_ITEMS = 80
 const promptSuggestions = [
@@ -539,6 +655,22 @@ const requestModeLabel = computed(() => {
   if (requestMode.value === 'variation') return '生成变体'
   return '文生图'
 })
+const nextBatchEstimate = computed(() => estimateVisibleBatchCost(config))
+const nextBatchEstimateText = computed(() =>
+  nextBatchEstimate.value.costKnown
+    ? `下一批预计 ${formatUsd(nextBatchEstimate.value.estimatedCostUsd, 4)}（含最大重试预留）`
+    : '下一批费用未知，启用预算时可能需要确认'
+)
+const dailyBudgetText = computed(() =>
+  usageState.settings.dailyBudgetUsd > 0
+    ? ` / ${formatUsd(usageState.settings.dailyBudgetUsd)}`
+    : ''
+)
+const monthlyBudgetText = computed(() =>
+  usageState.settings.monthlyBudgetUsd > 0
+    ? ` / ${formatUsd(usageState.settings.monthlyBudgetUsd)}`
+    : ''
+)
 
 function nowTime() {
   return new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
@@ -557,7 +689,12 @@ function serializeImageConfig(source = {}) {
     size: String(source.size || '').trim(),
     quality: String(source.quality || '').trim(),
     count: Math.max(1, Math.min(Number(source.count) || 1, 4)),
-    retryCount: Math.max(0, Math.min(Number(source.retryCount) || 0, 2))
+    retryCount: Math.max(0, Math.min(Number(source.retryCount) || 0, 2)),
+    estimatedCostPerImageUsd: Math.max(
+      0,
+      Math.min(Number(source.estimatedCostPerImageUsd) || 0, 1000)
+    ),
+    maxCostPerRequestUsd: Math.max(0, Math.min(Number(source.maxCostPerRequestUsd) || 0, 1000))
   }
 }
 function normalizeHistoryItem(item = {}) {
@@ -577,6 +714,8 @@ function normalizeHistoryItem(item = {}) {
     batchIndex: Math.max(0, Number(item.batchIndex) || 0),
     batchSize: Math.max(1, Number(item.batchSize) || 1),
     attempts: Math.max(1, Number(item.attempts) || 1),
+    estimatedCostUsd: Math.max(0, Math.min(Number(item.estimatedCostUsd) || 0, 1000)),
+    costKnown: Boolean(item.costKnown),
     durationMs: Number(item.durationMs) || 0,
     createdAt: Number(item.createdAt) || Date.now()
   }
@@ -588,6 +727,79 @@ function normalizeHistory(history) {
     .filter((item) => item.id && item.prompt && item.assetId && item.imageUrl)
     .slice(0, MAX_HISTORY_ITEMS)
 }
+
+function formatUsd(value, digits = 2) {
+  const amount = Number(value)
+  return `$${(Number.isFinite(amount) && amount >= 0 ? amount : 0).toFixed(digits)}`
+}
+function officialImageOutputCost(model, size, quality) {
+  const square = size === '1024x1024'
+  const rectangle = size === '1024x1536' || size === '1536x1024'
+  if (!square && !rectangle) return null
+  const shape = square ? 'square' : 'rectangle'
+  const normalizedModel = String(model || '').toLowerCase()
+  const tables =
+    normalizedModel.startsWith('gpt-image-1') && !normalizedModel.startsWith('gpt-image-1.5')
+      ? {
+          square: { low: 0.011, medium: 0.042, high: 0.167 },
+          rectangle: { low: 0.016, medium: 0.063, high: 0.25 }
+        }
+      : {
+          square: { low: 0.009, medium: 0.034, high: 0.133 },
+          rectangle: { low: 0.013, medium: 0.05, high: 0.2 }
+        }
+  if (!/^gpt-image-(?:2|1\.5|1)(?:$|[-:])/i.test(String(model || ''))) return null
+  const result = tables[shape][String(quality || '').toLowerCase()]
+  return Number.isFinite(result) ? result : null
+}
+function isOfficialManualConfig(source = {}) {
+  if (source.sourceMode !== 'manual') return false
+  try {
+    return new URL(String(source.baseUrl || '')).hostname.toLowerCase() === 'api.openai.com'
+  } catch {
+    return false
+  }
+}
+function estimateVisibleBatchCost(source = {}) {
+  const count = Math.max(1, Math.min(Number(source.count) || 1, 4))
+  const attempts = Math.max(1, Math.min(Number(source.retryCount) + 1 || 1, 3))
+  const manualPerImage = Math.max(0, Number(source.estimatedCostPerImageUsd) || 0)
+  if (manualPerImage > 0) {
+    return { costKnown: true, estimatedCostUsd: manualPerImage * count * attempts }
+  }
+  if (!isOfficialManualConfig(source)) return { costKnown: false, estimatedCostUsd: null }
+  const perImage = officialImageOutputCost(source.model, source.size, source.quality)
+  if (perImage === null) return { costKnown: false, estimatedCostUsd: null }
+  const sourceReserve = requestMode.value === 'generate' ? 0 : Math.max(0.04, perImage * 0.25)
+  return {
+    costKnown: true,
+    estimatedCostUsd: (perImage * count + sourceReserve) * attempts
+  }
+}
+function applyUsageState(value) {
+  if (!value || typeof value !== 'object') return
+  Object.assign(usageState.settings, value.settings || {})
+  Object.assign(usageState.summary, value.summary || {})
+  usageState.summary.today = {
+    ...usageState.summary.today,
+    ...(value.summary?.today || {})
+  }
+  usageState.summary.month = {
+    ...usageState.summary.month,
+    ...(value.summary?.month || {})
+  }
+  Object.assign(usageBudgetForm, usageState.settings)
+}
+async function loadAiUsageState() {
+  if (typeof opsApi?.getAiUsageState !== 'function') return
+  try {
+    const result = await opsApi.getAiUsageState()
+    if (result?.ok) applyUsageState(result.usage)
+  } catch (error) {
+    console.warn('读取 AI 用量状态失败:', error)
+  }
+}
+
 function formatDuration(ms) {
   const value = Number(ms) || 0
   if (value < 1000) return `${Math.max(value, 0)}ms`
@@ -629,7 +841,7 @@ async function loadConfig() {
       }
     }
   } finally {
-    await loadHistory()
+    await Promise.all([loadHistory(), loadAiUsageState()])
   }
 }
 async function loadHistory() {
@@ -682,6 +894,11 @@ async function saveConfig() {
     const nextConfig = { ...serializeImageConfig(settingsConfig), clearApiKey: clearApiKey.value }
     const result = await opsApi.saveGptImageConfig(nextConfig)
     if (!result?.ok) throw new Error(result?.error || '配置保存失败')
+    if (typeof opsApi?.saveAiUsageSettings === 'function') {
+      const usageResult = await opsApi.saveAiUsageSettings({ ...usageBudgetForm })
+      if (!usageResult?.ok) throw new Error(usageResult?.error || '保存 AI 预算失败')
+      applyUsageState(usageResult.usage)
+    }
     Object.assign(config, result.config || {}, { apiKey: '' })
     Object.assign(settingsConfig, config, { apiKey: '' })
     clearApiKey.value = false
@@ -761,7 +978,12 @@ function createAssistantMessage(request) {
     loading: true,
     error: '',
     retryable: false,
+    budgetBlocked: false,
+    budgetOverrideToken: '',
     images: [],
+    estimatedCostUsd: 0,
+    costKnown: false,
+    costUnknown: false,
     elapsedMs: 0,
     durationText: '0ms',
     attempts: 0,
@@ -776,8 +998,12 @@ async function runImageRequest(assistantMessage, request) {
   assistantMessage.loading = true
   assistantMessage.error = ''
   assistantMessage.retryable = false
+  assistantMessage.budgetBlocked = false
+  assistantMessage.budgetOverrideToken = ''
   assistantMessage.images = []
-  assistantMessage.request = { ...request }
+  assistantMessage.costKnown = false
+  assistantMessage.costUnknown = false
+  assistantMessage.request = { ...request, budgetOverrideToken: '' }
   timer = window.setInterval(() => {
     assistantMessage.elapsedMs = Date.now() - startedAt
     assistantMessage.durationText = formatDuration(assistantMessage.elapsedMs)
@@ -793,16 +1019,35 @@ async function runImageRequest(assistantMessage, request) {
       sourceAssetId: request.sourceAssetId,
       count: request.count,
       retryCount: request.retryCount,
+      budgetOverrideToken: request.budgetOverrideToken || '',
       config: imageConfig
     })
     assistantMessage.elapsedMs = Date.now() - startedAt
     assistantMessage.durationText = formatDuration(assistantMessage.elapsedMs)
     assistantMessage.attempts = Number(result?.attempts) || 1
+    if (result?.usageState) applyUsageState(result.usageState)
+    else if (result?.budget) applyUsageState(result.budget)
+    if (result?.usageTrackingWarning) {
+      MessagePlugin.warning({ content: result.usageTrackingWarning, placement: 'bottom-right' })
+    }
     if (!result?.ok) {
       assistantMessage.error = result?.error || '生成失败'
+      assistantMessage.budgetBlocked = [
+        'AI_USAGE_BUDGET_EXCEEDED',
+        'AI_USAGE_COST_UNKNOWN',
+        'AI_IMAGE_REQUEST_BUDGET_EXCEEDED'
+      ].includes(result?.code)
+      assistantMessage.budgetOverrideToken = String(result?.budgetOverrideToken || '')
       assistantMessage.retryable = Boolean(result?.retryable && !result?.cancelled)
+      const blockedEstimate = Number(result?.budget?.estimatedCostUsd)
+      assistantMessage.costKnown = Number.isFinite(blockedEstimate) && blockedEstimate >= 0
+      assistantMessage.estimatedCostUsd = assistantMessage.costKnown ? blockedEstimate : 0
+      assistantMessage.costUnknown = result?.code === 'AI_USAGE_COST_UNKNOWN'
       return
     }
+    assistantMessage.estimatedCostUsd = Math.max(0, Number(result?.estimatedCostUsd) || 0)
+    assistantMessage.costKnown = Boolean(result?.costKnown)
+    assistantMessage.costUnknown = !assistantMessage.costKnown
     const resultImages = (Array.isArray(result.images) ? result.images : [result.image])
       .filter(Boolean)
       .map((image, index) => ({
@@ -839,6 +1084,10 @@ async function runImageRequest(assistantMessage, request) {
         batchIndex: index,
         batchSize: resultImages.length,
         attempts: assistantMessage.attempts,
+        estimatedCostUsd: assistantMessage.costKnown
+          ? assistantMessage.estimatedCostUsd / resultImages.length
+          : 0,
+        costKnown: assistantMessage.costKnown,
         durationMs: assistantMessage.elapsedMs,
         createdAt
       }))
@@ -892,6 +1141,16 @@ async function cancelGeneration() {
 async function retryMessage(message) {
   if (generating.value || !message?.request) return
   await runImageRequest(message, { ...message.request, requestId: createId() })
+}
+async function continueOverBudget(message) {
+  if (generating.value || !message?.request || !message?.budgetOverrideToken) return
+  const token = message.budgetOverrideToken
+  message.budgetOverrideToken = ''
+  await runImageRequest(message, {
+    ...message.request,
+    requestId: createId(),
+    budgetOverrideToken: token
+  })
 }
 function selectReference(message, image, mode = 'edit') {
   const assetId = String(image?.assetId || '').trim()
@@ -1013,6 +1272,11 @@ function openHistoryItem(item) {
       elapsedMs: item.durationMs || 0,
       durationText: item.durationMs ? formatDuration(item.durationMs) : '',
       attempts: item.attempts || 1,
+      estimatedCostUsd: item.estimatedCostUsd || 0,
+      costKnown: Boolean(item.costKnown),
+      costUnknown: !item.costKnown,
+      budgetBlocked: false,
+      budgetOverrideToken: '',
       request: {
         displayPrompt: item.prompt,
         prompt: item.fullPrompt || item.prompt,
@@ -1045,6 +1309,7 @@ function formatHistoryMeta(item) {
     item.model,
     item.size,
     item.quality,
+    item.costKnown ? formatUsd(item.estimatedCostUsd, 4) : '费用未知',
     item.durationMs ? formatDuration(item.durationMs) : ''
   ]
     .filter(Boolean)

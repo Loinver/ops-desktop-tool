@@ -122,3 +122,16 @@ test('AI 生图历史会保存批量、编辑来源和重试元数据并限制�
   assert.equal(item.batchSize, 4)
   assert.equal(item.attempts, 3)
 })
+
+test('AI 生图历史费用元数据会限制边界且未知费用不会伪装为已知', () => {
+  const item = __testables.sanitizeHistoryItem({
+    id: 'cost-item',
+    prompt: '费用测试',
+    assetId,
+    imageUrl: previewUrl,
+    estimatedCostUsd: 9999,
+    costKnown: false
+  })
+  assert.equal(item.estimatedCostUsd, 1000)
+  assert.equal(item.costKnown, false)
+})

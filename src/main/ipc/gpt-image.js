@@ -1,3 +1,4 @@
+const crypto = require('node:crypto')
 const path = require('node:path')
 const fs = require('node:fs/promises')
 const { app, BrowserWindow, dialog, ipcMain, nativeImage, safeStorage } = require('electron')
@@ -25,6 +26,14 @@ const {
 } = require('../utils/gpt-image-assets')
 const { fetchPublicResource } = require('../utils/safe-remote-resource')
 const {
+  estimateImageRequestCostUsd,
+  estimateImageUsageCostUsd,
+  getAiUsageState,
+  recordAiUsage,
+  releaseAiUsageBudget,
+  reserveAiUsageBudget
+} = require('../utils/ai-usage')
+const {
   REQUEST_TIMEOUT_MS,
   buildImageHttpRequest,
   executeWithRetry,
@@ -41,7 +50,10 @@ const assetsDir = path.join(userDataPath, 'gpt-image-assets')
 const MAX_HISTORY_ITEMS = 80
 const MAX_HISTORY_FILE_BYTES = 8 * 1024 * 1024
 const MAX_PROMPT_CHARS = 12_000
+const MAX_IMAGE_COST_USD = 1_000
+const BUDGET_OVERRIDE_TTL_MS = 5 * 60 * 1_000
 const activeImageRequests = new Map()
+const imageBudgetOverrides = new Map()
 
 const DEFAULT_CONFIG = {
   sourceMode: 'manual',
@@ -53,7 +65,9 @@ const DEFAULT_CONFIG = {
   size: '1024x1024',
   quality: 'auto',
   count: 1,
-  retryCount: 1
+  retryCount: 1,
+  estimatedCostPerImageUsd: 0,
+  maxCostPerRequestUsd: 0
 }
 
 function sanitizeConfig(config = {}) {
@@ -72,6 +86,14 @@ function sanitizeConfig(config = {}) {
     retryCount: Math.max(
       0,
       Math.min(Math.trunc(Number.isFinite(retryCount) ? retryCount : DEFAULT_CONFIG.retryCount), 2)
+    ),
+    estimatedCostPerImageUsd: Math.max(
+      0,
+      Math.min(Number(config.estimatedCostPerImageUsd) || 0, MAX_IMAGE_COST_USD)
+    ),
+    maxCostPerRequestUsd: Math.max(
+      0,
+      Math.min(Number(config.maxCostPerRequestUsd) || 0, MAX_IMAGE_COST_USD)
     )
   }
 }
@@ -96,7 +118,9 @@ function serializeConfigForStorage(config) {
     size: normalized.size,
     quality: normalized.quality,
     count: normalized.count,
-    retryCount: normalized.retryCount
+    retryCount: normalized.retryCount,
+    estimatedCostPerImageUsd: normalized.estimatedCostPerImageUsd,
+    maxCostPerRequestUsd: normalized.maxCostPerRequestUsd
   }
 }
 
@@ -143,7 +167,9 @@ function toSafeConfig(config) {
     size: normalized.size,
     quality: normalized.quality,
     count: normalized.count,
-    retryCount: normalized.retryCount
+    retryCount: normalized.retryCount,
+    estimatedCostPerImageUsd: normalized.estimatedCostPerImageUsd,
+    maxCostPerRequestUsd: normalized.maxCostPerRequestUsd
   }
 }
 
@@ -247,6 +273,8 @@ function sanitizeHistoryItem(item = {}) {
     batchIndex: Math.max(0, Math.min(Math.trunc(Number(item.batchIndex) || 0), 3)),
     batchSize: Math.max(1, Math.min(Math.trunc(Number(item.batchSize) || 1), 4)),
     attempts: Math.max(1, Math.min(Math.trunc(Number(item.attempts) || 1), 3)),
+    estimatedCostUsd: Math.max(0, Math.min(Number(item.estimatedCostUsd) || 0, MAX_IMAGE_COST_USD)),
+    costKnown: Boolean(item.costKnown),
     durationMs: Math.max(0, Math.min(Number(item.durationMs) || 0, 24 * 60 * 60 * 1000)),
     createdAt: Number(item.createdAt) || Date.now()
   }
@@ -467,6 +495,86 @@ async function requestImages(config, request, source, signal) {
   return { data: value, attempts }
 }
 
+function imageProviderIdentity(config = {}) {
+  let host = ''
+  try {
+    host = new URL(normalizeBaseUrl(config.baseUrl)).hostname.toLowerCase()
+  } catch {}
+  const official = host === 'api.openai.com'
+  return {
+    official,
+    providerId: String(
+      config.sourceProviderId || (official ? 'openai' : host || 'openai-compatible')
+    ).slice(0, 120),
+    providerName: String(
+      official ? 'OpenAI' : config.sourceProviderId || host || 'OpenAI Compatible'
+    ).slice(0, 120)
+  }
+}
+
+function imageBudgetReservationId(sender, requestId) {
+  return `${imageRequestKey(sender, requestId)}:${crypto.randomUUID()}`
+}
+
+function imageBudgetFingerprint(config, request) {
+  return crypto
+    .createHash('sha256')
+    .update(
+      JSON.stringify({
+        baseUrl: normalizeBaseUrl(config.baseUrl),
+        model: config.model,
+        size: config.size,
+        quality: config.quality,
+        estimatedCostPerImageUsd: config.estimatedCostPerImageUsd,
+        maxCostPerRequestUsd: config.maxCostPerRequestUsd,
+        prompt: request.prompt,
+        mode: request.mode,
+        sourceAssetId: request.sourceAssetId,
+        count: request.count,
+        retryCount: request.retryCount
+      })
+    )
+    .digest('hex')
+}
+
+function pruneImageBudgetOverrides() {
+  const now = Date.now()
+  for (const [key, value] of imageBudgetOverrides) {
+    if (value.expiresAt <= now) imageBudgetOverrides.delete(key)
+  }
+}
+
+function createImageBudgetOverride(sender, fingerprint) {
+  pruneImageBudgetOverrides()
+  const token = crypto.randomUUID()
+  imageBudgetOverrides.set(`${sender?.id || 'unknown'}:${token}`, {
+    fingerprint,
+    expiresAt: Date.now() + BUDGET_OVERRIDE_TTL_MS
+  })
+  return token
+}
+
+function consumeImageBudgetOverride(sender, token, fingerprint) {
+  const normalizedToken = String(token || '').trim()
+  if (!normalizedToken) return false
+  pruneImageBudgetOverrides()
+  const key = `${sender?.id || 'unknown'}:${normalizedToken}`
+  const value = imageBudgetOverrides.get(key)
+  imageBudgetOverrides.delete(key)
+  return Boolean(value && value.fingerprint === fingerprint && value.expiresAt > Date.now())
+}
+
+function imageBudgetFailure(sender, fingerprint, budget, code = budget?.code) {
+  return {
+    ok: false,
+    error: budget?.reason || 'AI 生图预算保护已阻止本次请求',
+    code: code || 'AI_USAGE_BUDGET_EXCEEDED',
+    budget,
+    budgetOverrideToken: createImageBudgetOverride(sender, fingerprint),
+    retryable: false
+  }
+}
+
 function registerGptImageHandlers() {
   ipcMain.handle(IPC_CHANNELS.GPT_IMAGE_CONFIG_GET, async () => {
     try {
@@ -636,7 +744,65 @@ function registerGptImageHandlers() {
       return { ok: false, error: '请选择一张本地生成图片作为参考图', retryable: false }
     }
 
+    const provider = imageProviderIdentity(config)
+    const budgetFingerprint = imageBudgetFingerprint(config, request)
+    const budgetOverride = consumeImageBudgetOverride(
+      event.sender,
+      payload.budgetOverrideToken,
+      budgetFingerprint
+    )
+    const requestEstimate = estimateImageRequestCostUsd({
+      officialProvider: provider.official,
+      model: config.model,
+      size: config.size,
+      quality: config.quality,
+      count: request.count,
+      prompt: request.prompt,
+      mode: request.mode,
+      retryCount: request.retryCount,
+      manualCostPerImageUsd: config.estimatedCostPerImageUsd
+    })
+    if (config.maxCostPerRequestUsd > 0 && !budgetOverride) {
+      if (!requestEstimate.costKnown) {
+        const usageState = getAiUsageState(userDataPath)
+        return imageBudgetFailure(event.sender, budgetFingerprint, {
+          reason:
+            '本次生图费用未知，无法执行单批预算保护；请设置自定义每张费用、选择可估算参数或手动确认本次继续',
+          code: 'AI_USAGE_COST_UNKNOWN',
+          estimatedCostUsd: null,
+          settings: usageState.settings,
+          summary: usageState.summary
+        })
+      }
+      if (requestEstimate.estimatedCostUsd > config.maxCostPerRequestUsd) {
+        const usageState = getAiUsageState(userDataPath)
+        return imageBudgetFailure(
+          event.sender,
+          budgetFingerprint,
+          {
+            reason: `本次生图预计 $${requestEstimate.estimatedCostUsd.toFixed(4)}，超过单批上限 $${config.maxCostPerRequestUsd.toFixed(2)}；请调整参数或手动确认本次继续`,
+            code: 'AI_IMAGE_REQUEST_BUDGET_EXCEEDED',
+            estimatedCostUsd: requestEstimate.estimatedCostUsd,
+            requestLimitUsd: config.maxCostPerRequestUsd,
+            settings: usageState.settings,
+            summary: usageState.summary
+          },
+          'AI_IMAGE_REQUEST_BUDGET_EXCEEDED'
+        )
+      }
+    }
+
     const key = imageRequestKey(event.sender, request.requestId)
+    const reservationId = imageBudgetReservationId(event.sender, request.requestId)
+    const budget = reserveAiUsageBudget(userDataPath, {
+      reservationId,
+      providerId: provider.providerId,
+      model: config.model,
+      estimatedCostUsd: requestEstimate.estimatedCostUsd,
+      costKnown: requestEstimate.costKnown,
+      override: budgetOverride
+    })
+    if (!budget.allowed) return imageBudgetFailure(event.sender, budgetFingerprint, budget)
     const previous = activeImageRequests.get(key)
     if (previous) {
       previous.cancelled = true
@@ -660,8 +826,60 @@ function registerGptImageHandlers() {
       const rawImages = Array.isArray(data?.data)
         ? data.data.filter((image) => image?.b64_json || image?.url).slice(0, request.count)
         : []
+      const providerUsageCostUsd = provider.official
+        ? estimateImageUsageCostUsd(config.model, data?.usage)
+        : null
+      const fallbackEstimate = estimateImageRequestCostUsd({
+        officialProvider: provider.official,
+        model: config.model,
+        size: config.size,
+        quality: config.quality,
+        count: rawImages.length || request.count,
+        prompt: request.prompt,
+        mode: request.mode,
+        retryCount: 0,
+        manualCostPerImageUsd: config.estimatedCostPerImageUsd,
+        includeRetries: false
+      })
+      const actualEstimatedCostUsd =
+        providerUsageCostUsd === null ? fallbackEstimate.estimatedCostUsd : providerUsageCostUsd
+      const actualCostKnown = actualEstimatedCostUsd !== null
+      let usageState = null
+      let usageEntry = null
+      let usageTrackingWarning = ''
+      try {
+        const recorded = recordAiUsage(userDataPath, {
+          reservationId,
+          kind: 'image',
+          units: rawImages.length || request.count,
+          providerId: provider.providerId,
+          providerName: provider.providerName,
+          model: config.model,
+          usage: data?.usage,
+          inputText: request.prompt,
+          estimatedCostUsd: actualEstimatedCostUsd,
+          costKnown: actualCostKnown,
+          costSource:
+            providerUsageCostUsd === null ? fallbackEstimate.costSource : 'provider-usage',
+          outputText: '',
+          strictPersistence: true
+        })
+        usageEntry = recorded.entry
+        usageState = { settings: recorded.settings, summary: recorded.summary }
+      } catch (usageError) {
+        usageTrackingWarning = usageError?.message || 'AI 生图用量记录失败'
+        console.error('记录 AI 生图用量失败:', usageError)
+      }
       if (rawImages.length === 0) {
-        return { ok: false, error: '接口未返回图片数据', retryable: false, attempts }
+        return {
+          ok: false,
+          error: '接口未返回图片数据',
+          retryable: false,
+          attempts,
+          usageState,
+          usageEntry,
+          usageTrackingWarning
+        }
       }
 
       const images = []
@@ -700,6 +918,13 @@ function registerGptImageHandlers() {
         image: retainedImages[0],
         images: retainedImages,
         usage: data?.usage || null,
+        usageState,
+        usageEntry,
+        usageTrackingWarning,
+        estimatedCostUsd: usageEntry?.estimatedCostUsd ?? actualEstimatedCostUsd,
+        costKnown: usageEntry?.costKnown ?? actualCostKnown,
+        costSource: usageEntry?.costSource || fallbackEstimate.costSource,
+        requestEstimate,
         attempts,
         mode: request.mode
       }
@@ -724,6 +949,7 @@ function registerGptImageHandlers() {
       }
     } finally {
       clearTimeout(timeout)
+      releaseAiUsageBudget(userDataPath, reservationId)
       if (activeImageRequests.get(key) === active) activeImageRequests.delete(key)
     }
   })
@@ -746,6 +972,11 @@ module.exports = {
     sanitizeHistoryItem,
     sanitizePreviewUrl,
     imageRequestKey,
+    imageBudgetReservationId,
+    imageProviderIdentity,
+    imageBudgetFingerprint,
+    createImageBudgetOverride,
+    consumeImageBudgetOverride,
     requestError
   }
 }
