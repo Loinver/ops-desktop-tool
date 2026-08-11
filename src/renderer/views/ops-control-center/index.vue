@@ -97,15 +97,21 @@
                   v-for="step in copilotResult.plan.steps"
                   :key="step.id || `${step.type}-${step.label}`"
                 >
-                  {{ step.description || step.label
-                  }}<em v-if="step.requiresConfirmation">需要确认</em
-                  ><button
+                  <div class="plan-step-content">
+                    <strong>{{ step.description || step.label }}</strong>
+                    <span><b>影响</b>{{ step.impact || '仅执行预览中的安全动作。' }}</span>
+                    <span><b>回滚点</b>{{ step.rollbackPoint || '未产生系统变更。' }}</span>
+                    <span><b>审批</b>{{ step.approval?.reason || '由用户主动触发。' }}</span>
+                  </div>
+                  <em :class="step.risk">{{ copilotRiskLabel(step.risk) }}</em>
+                  <button
                     v-if="step.type === 'navigate'"
                     class="btn-text"
                     type="button"
+                    :disabled="busy"
                     @click="openPlanStep(step)"
                   >
-                    前往
+                    {{ step.approval?.required ? '确认并前往' : '前往' }}
                   </button>
                 </li>
               </ol>
@@ -113,6 +119,7 @@
                 v-if="copilotExternalSteps.length"
                 class="btn-secondary"
                 type="button"
+                :disabled="busy"
                 @click="executePlan"
               >
                 确认打开 {{ copilotExternalSteps.length }} 个外部链接
@@ -219,6 +226,9 @@
               <div class="event-actions">
                 <button type="button" class="btn-text" @click="toggleEvent(item)">
                   {{ expandedEventId === item.id ? '收起' : '详情' }}
+                </button>
+                <button type="button" class="btn-text" @click="attachEventToAiChat(item)">
+                  <t-icon name="attach" /> 附加证据
                 </button>
                 <button
                   v-if="item.status === 'open'"
@@ -354,6 +364,7 @@ import MessagePlugin from 'tdesign-vue-next/es/message/plugin.mjs'
 import { Select as TSelect } from 'tdesign-vue-next/es/select/index.mjs'
 import { useRoute, useRouter } from 'vue-router'
 import { useConfirm } from '../../composables/useConfirm'
+import { addAiContextAttachment } from '../../utils/ai-context.js'
 
 defineOptions({ name: 'OpsControlCenter' })
 
@@ -541,38 +552,81 @@ async function askCopilot() {
 }
 async function executePlan() {
   const plan = copilotResult.value?.plan
-  if (!plan || !copilotExternalSteps.value.length) return
+  if (!plan?.id || !copilotExternalSteps.value.length) return
   if (
-    plan.requiresConfirmation &&
     !(await confirm({
       title: '确认打开外部链接',
-      content: '仅打开计划中的外部链接；不会发布、删除或回滚。',
+      content: '仅打开计划中的外部链接；不会提交数据，也不会发布、删除、回滚或结束进程。',
       theme: 'warning'
     }))
   )
     return
-  const result = await opsApi.executeAiWorkflow({ plan, confirmed: true })
-  if (notify(result, '执行工作流失败')) {
-    const opened = (result.completed || []).filter((step) => step.status === 'done').length
-    MessagePlugin.success({ content: `已打开 ${opened} 个外部链接`, placement: 'bottom-right' })
+  busy.value = true
+  try {
+    const result = await opsApi.executeAiWorkflow({
+      planId: plan.id,
+      stepIds: copilotExternalSteps.value.map((step) => step.id),
+      confirmed: true
+    })
+    if (notify(result, '执行工作流失败')) {
+      const opened = (result.completed || []).filter((step) => step.status === 'done').length
+      MessagePlugin.success({
+        content: `已打开 ${opened} 个外部链接，审批已写入安全审计`,
+        placement: 'bottom-right'
+      })
+    }
+  } finally {
+    busy.value = false
   }
 }
-function openPlanStep(step) {
-  if (step?.type !== 'navigate' || !step.target) return
-  const target = String(step.target)
-  if (
-    ![
-      '/system-release',
-      '/ai-models',
-      '/ai-operations',
-      '/knowledge-base',
-      '/ai-integrations'
-    ].includes(target.split('?')[0])
-  ) {
+function validCopilotRoute(target) {
+  return [
+    '/system-release',
+    '/ai-models',
+    '/ai-operations',
+    '/knowledge-base',
+    '/ai-integrations',
+    '/node-services'
+  ].includes(String(target || '').split('?')[0])
+}
+function copilotRiskLabel(level) {
+  return { high: '高风险', medium: '需注意', low: '低风险' }[level] || '未知'
+}
+async function openPlanStep(step) {
+  const plan = copilotResult.value?.plan
+  if (step?.type !== 'navigate' || !step.target || !plan?.id) return
+  if (!validCopilotRoute(step.target)) {
     MessagePlugin.error({ content: '该页面步骤无效，请重新生成计划', placement: 'bottom-right' })
     return
   }
-  router.push(target)
+  let confirmed = false
+  if (step.approval?.required) {
+    confirmed = await confirm({
+      title: '确认进入高影响操作页面',
+      content: `${step.impact || '此步骤只会切换页面。'} ${step.rollbackPoint || ''} 进入后，任何真实操作仍需单独确认。`,
+      theme: 'warning'
+    })
+    if (!confirmed) return
+  }
+  busy.value = true
+  try {
+    const result = await opsApi.executeAiWorkflow({
+      planId: plan.id,
+      stepIds: [step.id],
+      confirmed
+    })
+    if (!notify(result, '审批页面步骤失败')) return
+    const navigation = (result.completed || []).find(
+      (item) => item.status === 'requires-user-navigation'
+    )
+    if (!navigation || !validCopilotRoute(navigation.target)) {
+      MessagePlugin.error({ content: '页面步骤未通过主进程校验', placement: 'bottom-right' })
+      return
+    }
+    await router.push(String(navigation.target))
+  } finally {
+    busy.value = false
+  }
 }
 function openKnowledge(source) {
   router.push({ path: '/knowledge-base', query: { document: source.title } })
@@ -580,6 +634,24 @@ function openKnowledge(source) {
     content: `请在知识库查看「${source.title}」第 ${source.startLine}-${source.endLine} 行。`,
     placement: 'bottom-right'
   })
+}
+
+function attachEventToAiChat(item) {
+  const timeline = (item.timeline || [])
+    .slice(-8)
+    .map((entry) => `${timelineName(entry.type)}：${entry.message || '状态已更新'}`)
+  addAiContextAttachment({
+    source: '事件详情',
+    title: item.title || '运维事件',
+    content: [item.description, item.resolutionNote, ...timeline].filter(Boolean).join('\n'),
+    metadata: {
+      level: levelName(item.severity || item.level),
+      status: statusName(item.status),
+      source: sourceName(item.sourceType || item.category),
+      eventId: item.id
+    }
+  })
+  MessagePlugin.success({ content: '事件证据已附加到 AI 对话', placement: 'bottom-right' })
 }
 async function updateEvent(item, status) {
   const result = await opsApi.updateOpsEvent(item.id, status)
@@ -773,16 +845,57 @@ onActivated(() => {
   font-size: 13px;
 }
 .plan-card ol {
+  display: grid;
+  gap: 10px;
   margin: 10px 0 12px;
-  padding-left: 20px;
+  padding: 0;
+  list-style: none;
   font-size: 13px;
-  line-height: 1.8;
+}
+.plan-card li {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px;
+  border: 1px solid var(--border-light);
+  border-radius: 9px;
+  background: var(--surface);
+}
+.plan-step-content {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 5px;
+}
+.plan-step-content span {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 7px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.plan-step-content b {
+  color: var(--text-muted);
+  font-size: 11px;
 }
 .plan-card em {
-  margin-left: 7px;
-  color: #d97706;
-  font-size: 12px;
+  flex: none;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--success-light);
+  color: var(--success);
+  font-size: 11px;
   font-style: normal;
+  font-weight: 700;
+}
+.plan-card em.medium {
+  background: var(--warning-light);
+  color: #a16207;
+}
+.plan-card em.high {
+  background: var(--danger-light);
+  color: var(--danger);
 }
 
 .event-panel {

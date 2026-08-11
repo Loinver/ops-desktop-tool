@@ -503,6 +503,11 @@
                 <summary>查看脱敏日志节选</summary>
                 <pre>{{ item.excerpt }}</pre>
               </details>
+              <div class="analysis-card__actions">
+                <button class="btn-secondary" type="button" @click="attachLogToAiChat(item)">
+                  <t-icon name="attach" /> 附加到 AI 对话
+                </button>
+              </div>
             </div>
           </article>
         </section>
@@ -692,6 +697,15 @@
                   <span>第 {{ item.startLine }}–{{ item.endLine }} 行 · 匹配 {{ item.score }}</span>
                   <!-- eslint-disable-next-line vue/no-v-html -- highlightKnowledge escapes document content before adding <mark> tags. -->
                   <pre v-html="highlightKnowledge(item.content, item.matchedTerms)"></pre>
+                  <div class="search-result__actions">
+                    <button
+                      class="btn-text"
+                      type="button"
+                      @click="attachKnowledgeToAiChat(item, index)"
+                    >
+                      <t-icon name="attach" /> 附加证据
+                    </button>
+                  </div>
                 </div>
               </div>
               <div v-else-if="searched" class="empty-mini">没有检索到匹配知识。</div>
@@ -747,29 +761,36 @@
                   :key="step.id || `${step.type}-${step.label}`"
                 >
                   <span class="step-icon"><t-icon :name="workflowStepIcon(step)" /></span>
-                  <span :class="['step-risk', step.risk]">{{
-                    step.risk === 'medium' ? '需注意' : '低风险'
-                  }}</span>
+                  <span :class="['step-risk', step.risk]">{{ workflowRiskLabel(step.risk) }}</span>
                   <div>
                     <strong>{{ step.description || step.label }}</strong>
-                    <p v-if="step.target">{{ step.target }}</p>
-                    <small v-if="step.requiresConfirmation">此步需要确认后才会执行。</small>
+                    <p v-if="step.target" class="workflow-step-target">{{ step.target }}</p>
+                    <div class="workflow-step-details">
+                      <span><b>影响</b>{{ step.impact || '仅执行预览中描述的安全动作。' }}</span>
+                      <span><b>回滚点</b>{{ step.rollbackPoint || '未产生系统变更。' }}</span>
+                      <span> <b>审批</b>{{ step.approval?.reason || '由用户主动触发。' }} </span>
+                      <span
+                        ><b>执行边界</b>{{ workflowExecutionLabel(step.allowedExecution) }}</span
+                      >
+                    </div>
+                    <small v-if="step.approval?.required">此步必须明确确认，并写入安全审计。</small>
+                    <small v-else>此步执行结果会写入安全审计。</small>
                   </div>
                   <button
                     v-if="step.type === 'navigate'"
                     class="btn-text"
                     type="button"
+                    :disabled="busy"
                     @click="navigateWorkflowStep(step)"
                   >
-                    前往
+                    {{ step.approval?.required ? '确认并前往' : '前往' }}
                   </button>
                 </li>
               </ol>
               <div v-if="workflowExecution" class="workflow-complete">
-                <t-icon name="check-circle" /> 已打开 {{ workflowExecution.opened }} 个外部链接；{{
-                  workflowExecution.navigation
-                }}
-                个页面步骤需点击“前往”。未执行发布、删除或回滚操作。
+                <t-icon name="check-circle" /> 已处理 {{ workflowExecution.handled }} 个步骤：打开
+                {{ workflowExecution.opened }} 个外部链接，确认 {{ workflowExecution.navigation }}
+                个页面导航。未执行发布、删除、回滚或进程操作；审批结果已写入安全审计。
               </div>
               <button
                 v-if="workflowExternalSteps.length"
@@ -845,6 +866,7 @@ import { computed, onActivated, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import MessagePlugin from 'tdesign-vue-next/es/message/plugin.mjs'
 import { useConfirm } from '../../composables/useConfirm'
+import { addAiContextAttachment } from '../../utils/ai-context.js'
 
 defineOptions({ name: 'AiOps' })
 
@@ -1088,8 +1110,34 @@ async function copyText(value, successMessage) {
 
 function workflowStepIcon(step) {
   if (/打开|网站|链接|浏览器/.test(`${step.type || ''} ${step.label || ''}`)) return 'link'
-  if (/发布|模型|日志|知识库|页面/.test(`${step.type || ''} ${step.label || ''}`)) return 'jump'
+  if (/发布|模型|日志|知识库|页面|进程|回滚/.test(`${step.type || ''} ${step.label || ''}`))
+    return 'jump'
   return 'check-circle'
+}
+
+function workflowRiskLabel(level) {
+  return { high: '高风险', medium: '需注意', low: '低风险' }[level] || '未知'
+}
+
+function workflowExecutionLabel(value) {
+  return (
+    {
+      'confirmed-external-open': '确认后仅打开外部链接',
+      'renderer-navigation-only': '仅允许应用内页面导航',
+      'guidance-only': '仅展示建议，不执行操作'
+    }[value] || '不允许自动执行'
+  )
+}
+
+function validWorkflowRoute(target) {
+  return [
+    '/system-release',
+    '/ai-models',
+    '/ai-operations',
+    '/knowledge-base',
+    '/ai-integrations',
+    '/node-services'
+  ].includes(String(target || '').split('?')[0])
 }
 
 async function loadState() {
@@ -1302,6 +1350,23 @@ async function analyzeLog() {
   }
 }
 
+function attachLogToAiChat(item) {
+  const findings = (item.findings || []).map(
+    (finding) => `${finding.type || '异常'}：${finding.count || 0} 条`
+  )
+  addAiContextAttachment({
+    source: '日志分析',
+    title: item.title || '日志分析结果',
+    content: [item.headline, ...findings, item.aiSummary, item.excerpt].filter(Boolean).join('\n'),
+    metadata: {
+      level: riskLabel(item.level),
+      lines: item.lineCount,
+      analyzedAt: formatTime(item.createdAt)
+    }
+  })
+  MessagePlugin.success({ content: '日志证据已附加到 AI 对话', placement: 'bottom-right' })
+}
+
 async function saveKnowledge() {
   busy.value = true
   try {
@@ -1383,6 +1448,20 @@ function highlightKnowledge(content, matchedTerms) {
     html = html.replace(new RegExp(escaped, 'gi'), (match) => `<mark>${match}</mark>`)
   }
   return html
+}
+
+function attachKnowledgeToAiChat(item, index) {
+  addAiContextAttachment({
+    source: '知识库检索',
+    title: item.title || `检索结果 ${index + 1}`,
+    content: item.content,
+    metadata: {
+      documentId: item.documentId,
+      lines: `${item.startLine || '—'}-${item.endLine || '—'}`,
+      score: item.score
+    }
+  })
+  MessagePlugin.success({ content: '知识库证据已附加到 AI 对话', placement: 'bottom-right' })
 }
 
 async function importKnowledge() {
@@ -1486,31 +1565,54 @@ function restoreWorkflow(plan) {
   workflowExecution.value = null
 }
 
-function navigateWorkflowStep(step) {
-  if (step?.type !== 'navigate' || !step.target) return
-  const target = String(step.target)
-  if (
-    ![
-      '/system-release',
-      '/ai-models',
-      '/ai-operations',
-      '/knowledge-base',
-      '/ai-integrations'
-    ].includes(target.split('?')[0])
-  ) {
+async function navigateWorkflowStep(step) {
+  if (step?.type !== 'navigate' || !step.target || !workflowPlan.value?.id) return
+  if (!validWorkflowRoute(step.target)) {
     MessagePlugin.error({ content: '该页面步骤无效，请重新生成工作流', placement: 'bottom-right' })
     return
   }
-  router.push(target)
+  let confirmed = false
+  if (step.approval?.required) {
+    confirmed = await confirm({
+      title: '确认进入高影响操作页面',
+      content: `${step.impact || '此步骤只会切换页面。'} ${step.rollbackPoint || ''} 进入后，任何真实操作仍需单独确认。`,
+      theme: 'warning'
+    })
+    if (!confirmed) return
+  }
+  busy.value = true
+  try {
+    const result = await opsApi.executeAiWorkflow({
+      planId: workflowPlan.value.id,
+      stepIds: [step.id],
+      confirmed
+    })
+    if (!notify(result, '审批页面步骤失败')) return
+    const completed = result.completed || []
+    const navigation = completed.find((item) => item.status === 'requires-user-navigation')
+    if (!navigation || !validWorkflowRoute(navigation.target)) {
+      MessagePlugin.error({ content: '页面步骤未通过主进程校验', placement: 'bottom-right' })
+      return
+    }
+    workflowExecution.value = {
+      handled: completed.length,
+      opened: 0,
+      navigation: 1,
+      audited: result.approval?.audited === true
+    }
+    await router.push(String(navigation.target))
+  } finally {
+    busy.value = false
+  }
 }
 
 async function executeWorkflow() {
-  if (!workflowPlan.value) return
+  if (!workflowPlan.value?.id || !workflowExternalSteps.value.length) return
   if (
-    workflowPlan.value.requiresConfirmation &&
     !(await confirm({
-      title: '确认执行工作流',
-      content: '工作流将仅执行预览中列出的外部打开步骤；不会自动发布、删除或回滚。确认继续吗？',
+      title: '确认打开外部链接',
+      content:
+        '只会打开预览中列出的外部地址，不会自动提交数据，也不会执行发布、删除、回滚或进程操作。确认继续吗？',
       theme: 'warning'
     }))
   )
@@ -1518,18 +1620,21 @@ async function executeWorkflow() {
   busy.value = true
   try {
     const result = await opsApi.executeAiWorkflow({
-      plan: workflowPlan.value,
+      planId: workflowPlan.value.id,
+      stepIds: workflowExternalSteps.value.map((step) => step.id),
       confirmed: true
     })
     if (notify(result, '执行工作流失败')) {
       const completed = result.completed || []
       workflowExecution.value = {
+        handled: completed.length,
         opened: completed.filter((step) => step.status === 'done').length,
-        navigation: completed.filter((step) => step.status === 'requires-user-navigation').length
+        navigation: completed.filter((step) => step.status === 'requires-user-navigation').length,
+        audited: result.approval?.audited === true
       }
       MessagePlugin.success({
         content: workflowExecution.value.opened
-          ? `已打开 ${workflowExecution.value.opened} 个外部链接`
+          ? `已打开 ${workflowExecution.value.opened} 个外部链接，审批已记录`
           : '此计划没有可执行的外部打开步骤',
         placement: 'bottom-right'
       })

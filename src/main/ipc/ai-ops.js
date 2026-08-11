@@ -6,6 +6,12 @@ const { readJsonFile } = require('../utils/json-store')
 const { readQuickLaunchState } = require('../utils/quicklaunch-storage')
 const { normalizeExternalUrl, openExternalUrl } = require('../utils/external-url')
 const {
+  getAiUsageState,
+  saveAiUsageSettings,
+  checkAiUsageBudget,
+  recordAiUsage
+} = require('../utils/ai-usage')
+const {
   redactSensitiveText,
   listProviderSources,
   listProviders,
@@ -27,6 +33,7 @@ const {
   deleteKnowledgeDocument,
   searchKnowledge,
   loadWorkflowState,
+  findWorkflowPlan,
   planWorkflow,
   saveWorkflowPlan
 } = require('../utils/ai-ops')
@@ -53,7 +60,45 @@ function success(value = {}) {
   return { ok: true, ...value }
 }
 function failure(error) {
-  return { ok: false, error: error instanceof Error ? error.message : 'AI 运维操作失败' }
+  const result = {
+    ok: false,
+    error: error instanceof Error ? error.message : 'AI 运维操作失败'
+  }
+  if (error?.code) result.code = String(error.code).slice(0, 120)
+  if (error?.budget) result.budget = error.budget
+  return result
+}
+
+function chatUsageInput(options = {}) {
+  return JSON.stringify({
+    messages: Array.isArray(options.messages) ? options.messages : [],
+    knowledgeResults: Array.isArray(options.knowledgeResults) ? options.knowledgeResults : [],
+    contextAttachments: Array.isArray(options.contextAttachments) ? options.contextAttachments : []
+  }).slice(0, 80_000)
+}
+
+function ensureChatBudget(provider, options = {}) {
+  const budget = checkAiUsageBudget(userDataPath(), {
+    providerId: provider.id,
+    model: provider.model,
+    override: options.budgetOverride === true
+  })
+  if (budget.allowed) return budget
+  const error = new Error(budget.reason)
+  error.code = budget.code
+  error.budget = budget
+  throw error
+}
+
+function recordChatUsage(provider, result, options = {}) {
+  return recordAiUsage(userDataPath(), {
+    providerId: provider.id,
+    providerName: provider.name,
+    model: result.model || provider.model,
+    usage: result.usage,
+    inputText: chatUsageInput(options),
+    outputText: result.content
+  })
 }
 
 async function safeState() {
@@ -143,6 +188,20 @@ function registerAiOpsHandlers() {
       return failure(error)
     }
   })
+  ipcMain.handle(IPC_CHANNELS.AI_USAGE_GET, async () => {
+    try {
+      return success({ usage: getAiUsageState(userDataPath()) })
+    } catch (error) {
+      return failure(error)
+    }
+  })
+  ipcMain.handle(IPC_CHANNELS.AI_USAGE_SETTINGS_SAVE, async (_event, settings = {}) => {
+    try {
+      return success({ usage: saveAiUsageSettings(userDataPath(), settings) })
+    } catch (error) {
+      return failure(error)
+    }
+  })
   ipcMain.handle(IPC_CHANNELS.AI_PROVIDER_SOURCE_ADD, async (_event, input) => {
     try {
       return success(await addProviderFromModelReliability({ userDataPath: userDataPath(), input }))
@@ -183,14 +242,20 @@ function registerAiOpsHandlers() {
 
   ipcMain.handle(IPC_CHANNELS.AI_CHAT_ASK, async (_event, options = {}) => {
     try {
-      return success(
-        await askAiChat({
-          userDataPath: userDataPath(),
-          providerId: options.providerId,
-          messages: options.messages,
-          knowledgeResults: options.knowledgeResults
-        })
-      )
+      const provider = await runtimeProvider({
+        userDataPath: userDataPath(),
+        providerId: options.providerId
+      })
+      ensureChatBudget(provider, options)
+      const result = await askAiChat({
+        userDataPath: userDataPath(),
+        providerId: options.providerId,
+        messages: options.messages,
+        knowledgeResults: options.knowledgeResults,
+        contextAttachments: options.contextAttachments,
+        provider
+      })
+      return success({ ...result, usageState: recordChatUsage(provider, result, options) })
     } catch (error) {
       return failure(error)
     }
@@ -211,11 +276,18 @@ function registerAiOpsHandlers() {
     sender.once?.('destroyed', onDestroyed)
 
     try {
+      const provider = await runtimeProvider({
+        userDataPath: userDataPath(),
+        providerId: options.providerId
+      })
+      ensureChatBudget(provider, options)
       const result = await askAiChatStream({
         userDataPath: userDataPath(),
         providerId: options.providerId,
         messages: options.messages,
         knowledgeResults: options.knowledgeResults,
+        contextAttachments: options.contextAttachments,
+        provider,
         signal: controller.signal,
         onDelta: (delta) => {
           if (entry.cancelled || controller.signal.aborted) return
@@ -231,13 +303,17 @@ function registerAiOpsHandlers() {
         requestId,
         type: 'done',
         model: result.model,
-        truncated: Boolean(result.truncated)
+        truncated: Boolean(result.truncated),
+        usage: result.usage
       })
+      const usageState = recordChatUsage(provider, result, options)
       return success({
         requestId,
         content: result.content,
         model: result.model,
-        truncated: result.truncated
+        truncated: result.truncated,
+        usage: result.usage,
+        usageState
       })
     } catch (error) {
       const cancelled = entry.cancelled || error?.code === 'AI_CHAT_CANCELLED'
@@ -422,25 +498,69 @@ function registerAiOpsHandlers() {
       return failure(error)
     }
   })
-  ipcMain.handle(IPC_CHANNELS.AI_WORKFLOW_EXECUTE, async (_event, options) => {
+  ipcMain.handle(IPC_CHANNELS.AI_WORKFLOW_EXECUTE, async (_event, options = {}) => {
     try {
-      const plan = options?.plan
-      if (!plan || !Array.isArray(plan.steps)) throw new Error('工作流预览无效，请重新生成')
-      if (plan.steps.some((step) => step.requiresConfirmation) && options?.confirmed !== true)
-        throw new Error('包含外部打开操作，请确认后再执行')
+      const planId = String(options.planId || options.plan?.id || '')
+        .trim()
+        .slice(0, 120)
+      const plan = findWorkflowPlan(userDataPath(), planId)
+      if (!plan || !Array.isArray(plan.steps)) throw new Error('工作流预览无效或已过期，请重新生成')
+      const requestedStepIds = Array.isArray(options.stepIds)
+        ? Array.from(
+            new Set(
+              options.stepIds
+                .map((value) =>
+                  String(value || '')
+                    .trim()
+                    .slice(0, 120)
+                )
+                .filter(Boolean)
+            )
+          ).slice(0, 20)
+        : []
+      const steps = requestedStepIds.length
+        ? plan.steps.filter((step) => requestedStepIds.includes(step.id))
+        : plan.steps
+      if (!steps.length || (requestedStepIds.length && steps.length !== requestedStepIds.length))
+        throw new Error('工作流步骤无效或已过期，请重新生成')
+      if (steps.some((step) => step.approval?.required) && options.confirmed !== true)
+        throw new Error('所选步骤需要明确确认后才能继续')
+      const allowedNavigationRoutes = new Set([
+        '/system-release',
+        '/ai-models',
+        '/ai-operations',
+        '/knowledge-base',
+        '/ai-integrations',
+        '/node-services'
+      ])
       const completed = []
-      for (const step of plan.steps.slice(0, 20)) {
-        if (step.type === 'open-url') {
+      for (const step of steps) {
+        if (step.type === 'open-url' && step.allowedExecution === 'confirmed-external-open') {
           const url = normalizeExternalUrl(step.target)
           await openExternalUrl(url, { shell })
           completed.push({ ...step, target: url, status: 'done' })
-        } else if (step.type === 'navigate') {
+        } else if (
+          step.type === 'navigate' &&
+          step.allowedExecution === 'renderer-navigation-only'
+        ) {
+          const routePath = String(step.target || '').split('?')[0]
+          if (!allowedNavigationRoutes.has(routePath))
+            throw new Error('工作流页面步骤无效，请重新生成')
           completed.push({ ...step, status: 'requires-user-navigation' })
         } else {
-          completed.push({ ...step, status: 'guided' })
+          completed.push({ ...step, target: '', status: 'guided' })
         }
       }
-      return success({ completed })
+      return success({
+        completed,
+        approval: {
+          planId: plan.id,
+          confirmed: options.confirmed === true,
+          approvedStepIds: completed.map((step) => step.id),
+          recordedAt: Date.now(),
+          audited: true
+        }
+      })
     } catch (error) {
       return failure(error)
     }

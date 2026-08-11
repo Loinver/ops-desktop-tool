@@ -802,7 +802,8 @@ button:disabled {
   font-size: 13px;
 }
 
-.risk.high {
+.risk.high,
+.step-risk.high {
   background: var(--danger-light);
   color: var(--danger);
 }
@@ -994,8 +995,31 @@ button:disabled {
   word-break: break-all;
 }
 
+.workflow-step-details {
+  display: grid;
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.workflow-step-details span {
+  display: grid;
+  grid-template-columns: 62px minmax(0, 1fr);
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.workflow-step-details b {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
 .workflow-plan li small {
+  display: block;
+  margin-top: 8px;
   color: #a16207;
+  line-height: 1.5;
 }
 
 .workflow-complete {
@@ -1258,5 +1282,22 @@ button:disabled {
   .search-row {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .workflow-plan li {
+    flex-wrap: wrap;
+  }
+
+  .workflow-plan li > div {
+    flex-basis: calc(100% - 86px);
+  }
+
+  .workflow-plan li > .btn-text {
+    margin-left: 38px;
+  }
+
+  .workflow-step-details span {
+    grid-template-columns: 1fr;
+    gap: 2px;
   }
 }

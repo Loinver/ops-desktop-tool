@@ -642,6 +642,19 @@
           </div>
 
           <div v-if="showLogPanel" id="release-log-panel" class="log-body">
+            <div v-if="lastPreflightContext" class="preflight-context-card">
+              <div class="preflight-context-card__body">
+                <strong>最近一次发布预检</strong>
+                <span
+                  >{{ lastPreflightContext.label }} ·
+                  {{ formatLogTime(lastPreflightContext.createdAt) }}</span
+                >
+                <p>{{ formatPreflightSummary(lastPreflightContext.summary) }}</p>
+              </div>
+              <button type="button" class="log-retry-btn" @click="attachPreflightToAiChat">
+                <t-icon name="attach" /> 附加到 AI 对话
+              </button>
+            </div>
             <div
               v-if="activeSyncTask || queuedSyncCount > 0 || syncHistory.length > 0"
               class="log-timeline"
@@ -722,6 +735,7 @@
 import { opsApi } from '../../api/opsApi.js'
 import { ref, reactive, shallowRef, computed, onMounted } from 'vue'
 import MessagePlugin from 'tdesign-vue-next/es/message/plugin.mjs'
+import { addAiContextAttachment } from '../../utils/ai-context.js'
 
 defineOptions({
   name: 'SystemRelease'
@@ -790,6 +804,7 @@ const syncErrors = ref([])
 const syncHistory = ref([])
 const syncProgress = ref({ current: 0, total: 0 })
 const showLogPanel = ref(true)
+const lastPreflightContext = ref(null)
 
 // 所有同步请求都经过同一个 FIFO 队列：用户可在 A 打包/上传期间继续选择 B，
 // B 会使用点击时的路径快照，在 A 完成后再执行，不会与 A 争用同一条 SFTP 连接。
@@ -813,6 +828,29 @@ function formatLogTime(timestamp) {
     second: '2-digit',
     hour12: false
   }).format(timestamp)
+}
+
+function formatPreflightSummary(summary = {}) {
+  return `共 ${summary.total || 0} 个文件：新增 ${summary.onlyLocal || 0}，修改 ${summary.modified || 0}，仅远程 ${summary.onlyRemote || 0}`
+}
+
+function attachPreflightToAiChat() {
+  const context = lastPreflightContext.value
+  if (!context) return
+  const summary = context.summary || {}
+  addAiContextAttachment({
+    source: '发布预检',
+    title: `${context.profile} · 发布前预检`,
+    content: formatPreflightSummary(summary),
+    metadata: {
+      total: summary.total,
+      onlyLocal: summary.onlyLocal,
+      modified: summary.modified,
+      onlyRemote: summary.onlyRemote,
+      checkedAt: formatLogTime(context.createdAt)
+    }
+  })
+  MessagePlugin.success({ content: '发布预检证据已附加到 AI 对话', placement: 'bottom-right' })
 }
 
 // 错误列表用于失败重试；最近记录则作为用户可见的任务日志，两者职责分开。
@@ -1708,7 +1746,18 @@ async function processSyncQueue() {
             )
             if (!preflight.success) throw new Error(`发布前预检失败：${preflight.error}`)
             const summary = preflight.data?.summary
-            syncMessage.value = `预检通过：${summary?.files || 0} 个文件，开始发布 ${task.label}`
+            lastPreflightContext.value = {
+              profile: activeReleaseProfileName.value,
+              label: task.label,
+              summary: {
+                total: Number(summary?.total) || 0,
+                onlyLocal: Number(summary?.onlyLocal) || 0,
+                modified: Number(summary?.modified) || 0,
+                onlyRemote: Number(summary?.onlyRemote) || 0
+              },
+              createdAt: Date.now()
+            }
+            syncMessage.value = `预检通过：${summary?.total || 0} 个文件，开始发布 ${task.label}`
           }
           success = await executeSyncTask(task)
         } catch (err) {

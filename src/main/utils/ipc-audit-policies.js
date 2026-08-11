@@ -350,9 +350,8 @@ function createIpcAuditPolicies() {
       action: 'ai-workflow.execute',
       category: 'ai-workflow',
       target: (args) => ({
-        stepCount: Array.isArray(objectArg(args).plan?.steps)
-          ? objectArg(args).plan.steps.length
-          : 0,
+        hasPlanId: hasValue(objectArg(args).planId || objectArg(args).plan?.id),
+        selectedStepCount: countArray(objectArg(args).stepIds),
         confirmed: objectArg(args).confirmed === true
       })
     },

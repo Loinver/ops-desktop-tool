@@ -16,7 +16,10 @@ const {
   analyzeLogText,
   saveKnowledgeDocument,
   searchKnowledge,
+  loadWorkflowState,
+  findWorkflowPlan,
   planWorkflow,
+  saveWorkflowPlan,
 } = require('../src/main/utils/ai-ops')
 
 function makeTempDir() {
@@ -184,7 +187,18 @@ test('知识库支持脱敏、按行号检索，本地工作流不会生成危�
     assert.ok(plan.steps.some(step => step.type === 'open-url' && step.requiresConfirmation))
     assert.ok(plan.steps.some(step => step.type === 'navigate' && step.target === '/system-release'))
     assert.ok(plan.steps.every(step => step.id && step.description === step.label))
+    assert.ok(plan.steps.every(step => step.impact && step.rollbackPoint && step.allowedExecution))
+    assert.ok(plan.steps.every(step => step.approval && typeof step.approval.required === 'boolean'))
     assert.ok(plan.steps.every(step => step.type !== 'shell' && step.type !== 'deploy' && step.type !== 'delete'))
+    const saved = saveWorkflowPlan(directory, plan)
+    assert.equal(findWorkflowPlan(directory, saved.id)?.id, saved.id)
+    assert.equal(loadWorkflowState(directory).version, 2)
+
+    const destructive = planWorkflow({ prompt: '回滚发布、删除旧数据并结束进程' })
+    assert.ok(destructive.steps.some(step => step.risk === 'high'))
+    assert.ok(destructive.steps.every(step => !['shell', 'deploy', 'delete'].includes(step.type)))
+    assert.ok(destructive.steps.some(step => step.allowedExecution === 'renderer-navigation-only'))
+    assert.ok(destructive.steps.some(step => step.allowedExecution === 'guidance-only'))
   } finally {
     cleanup(directory)
   }

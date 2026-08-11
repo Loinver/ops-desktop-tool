@@ -5,6 +5,44 @@
   color: var(--danger);
 }
 
+.preflight-context-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+  margin-bottom: var(--spacing-sm);
+  border: 1px solid color-mix(in srgb, var(--primary) 22%, var(--border));
+  border-radius: var(--radius-sm);
+  background: var(--primary-light);
+}
+
+.preflight-context-card__body {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.preflight-context-card__body strong {
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.preflight-context-card__body span,
+.preflight-context-card__body p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+@media (max-width: 760px) {
+  .preflight-context-card {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
 .btn-settings,
 .btn-refresh {
   display: inline-flex;

@@ -138,6 +138,8 @@ const IPC_CHANNELS = {
   AI_CHAT_STREAM_START: 'aiOps:startChatStream',
   AI_CHAT_STREAM_CANCEL: 'aiOps:cancelChatStream',
   AI_CHAT_STREAM_EVENT: 'aiOps:chatStreamEvent',
+  AI_USAGE_GET: 'aiOps:getUsage',
+  AI_USAGE_SETTINGS_SAVE: 'aiOps:saveUsageSettings',
   AI_EVALUATION_SAVE_CASES: 'aiOps:saveEvaluationCases',
   AI_EVALUATION_RUN: 'aiOps:runEvaluation',
   AI_LOG_ANALYZE: 'aiOps:analyzeLog',

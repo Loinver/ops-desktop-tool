@@ -2,6 +2,9 @@
   <div class="page page--workspace ai-chat-page">
     <PageHeader :title="title" :description="description">
       <template #actions>
+        <button class="btn-secondary" type="button" @click="usagePanelOpen = !usagePanelOpen">
+          <t-icon name="chart-bar" /> 用量与预算
+        </button>
         <button class="btn-secondary" type="button" :disabled="chatBusy" @click="newChat">
           <t-icon name="add" /> 新对话
         </button>
@@ -75,6 +78,103 @@
               检索
             </button>
           </div>
+
+          <section v-if="usagePanelOpen" class="ai-usage-panel" aria-label="AI 用量与预算">
+            <div class="ai-usage-summary">
+              <article>
+                <span>今日</span>
+                <strong>{{ formatTokenCount(usageState.summary.today.totalTokens) }} Token</strong>
+                <small
+                  >{{ usageState.summary.today.requests }} 次 · 约
+                  {{ formatUsd(usageState.summary.today.estimatedCostUsd) }}</small
+                >
+              </article>
+              <article>
+                <span>本月</span>
+                <strong>{{ formatTokenCount(usageState.summary.month.totalTokens) }} Token</strong>
+                <small
+                  >{{ usageState.summary.month.requests }} 次 · 约
+                  {{ formatUsd(usageState.summary.month.estimatedCostUsd) }}</small
+                >
+              </article>
+            </div>
+            <form class="ai-budget-form" @submit.prevent="saveUsageBudget">
+              <label>
+                <span>每日预算（USD）</span>
+                <input
+                  v-model.number="usageBudgetForm.dailyBudgetUsd"
+                  type="number"
+                  min="0"
+                  max="1000000"
+                  step="0.01"
+                />
+              </label>
+              <label>
+                <span>每月预算（USD）</span>
+                <input
+                  v-model.number="usageBudgetForm.monthlyBudgetUsd"
+                  type="number"
+                  min="0"
+                  max="1000000"
+                  step="0.01"
+                />
+              </label>
+              <label class="ai-budget-form__unknown checkbox-row">
+                <input v-model="usageBudgetForm.allowUnknownCost" type="checkbox" />
+                <span>预算启用时允许价格未知的模型</span>
+              </label>
+              <button class="btn-primary" type="submit" :disabled="savingUsageBudget">
+                {{ savingUsageBudget ? '保存中…' : '保存预算' }}
+              </button>
+            </form>
+            <p class="ai-usage-panel__note">
+              费用仅按内置公开单价估算，不代替 Provider 账单；设为 0 表示不限制。
+            </p>
+          </section>
+
+          <section class="ai-context-panel" aria-label="AI 对话上下文附件">
+            <div class="ai-context-panel__header">
+              <div class="ai-context-panel__label">
+                <t-icon name="attach" />
+                <span>已附加证据</span>
+                <span class="ai-context-panel__count"
+                  >{{ contextAttachments.length }} / {{ MAX_AI_CONTEXT_ATTACHMENTS }}</span
+                >
+              </div>
+              <button
+                v-if="contextAttachments.length"
+                class="btn-text ai-context-panel__clear"
+                type="button"
+                :disabled="chatBusy"
+                @click="clearContextAttachments"
+              >
+                清空
+              </button>
+            </div>
+            <div v-if="contextAttachments.length" class="ai-context-list">
+              <article v-for="item in contextAttachments" :key="item.id" class="ai-context-item">
+                <div class="ai-context-item__body">
+                  <div class="ai-context-item__meta">
+                    <span>{{ item.source }}</span>
+                    <strong>{{ item.title }}</strong>
+                  </div>
+                  <p>{{ previewContext(item.content) }}</p>
+                </div>
+                <button
+                  class="ai-context-item__remove"
+                  type="button"
+                  :disabled="chatBusy"
+                  :aria-label="`移除 ${item.title}`"
+                  @click="removeContextAttachment(item.id)"
+                >
+                  <t-icon name="close" />
+                </button>
+              </article>
+            </div>
+            <p v-else class="ai-context-panel__empty">
+              从日志分析、事件详情、发布预检或知识库结果添加证据；发送前会自动再次脱敏并限制长度。
+            </p>
+          </section>
 
           <div
             ref="chatHistory"
@@ -154,7 +254,16 @@
           <div v-if="chatError" class="form-error chat-error" role="alert">
             <span class="chat-error__content"><t-icon name="error-circle" /> {{ chatError }}</span>
             <button
-              v-if="retryableChatError && latestUserMessage"
+              v-if="budgetBlocked && latestUserMessage"
+              class="chat-error__retry"
+              type="button"
+              :disabled="chatBusy || !activeProviderReady"
+              @click="continueOverBudget"
+            >
+              本次手动继续
+            </button>
+            <button
+              v-else-if="retryableChatError && latestUserMessage"
               class="chat-error__retry"
               type="button"
               :disabled="chatBusy || !activeProviderReady"
@@ -234,6 +343,12 @@ import { computed, nextTick, onActivated, onBeforeUnmount, onMounted, ref, watch
 import { useRouter } from 'vue-router'
 import PageHeader from '../../components/common/PageHeader.vue'
 import { useConfirm } from '../../composables/useConfirm'
+import {
+  MAX_AI_CONTEXT_ATTACHMENTS,
+  clearAiContextAttachments,
+  readAiContextAttachments,
+  removeAiContextAttachment
+} from '../../utils/ai-context.js'
 import ChatSessionSidebar from './ChatSessionSidebar.vue'
 import {
   CHAT_SESSIONS_STORAGE_KEY,
@@ -267,6 +382,22 @@ const chatError = ref('')
 const retryableChatError = ref(false)
 const streamingReply = ref('')
 const cancelRequested = ref(false)
+const contextAttachments = ref([])
+const usagePanelOpen = ref(false)
+const savingUsageBudget = ref(false)
+const budgetOverrideOnce = ref(false)
+const budgetBlocked = ref(null)
+const usageState = ref({
+  settings: { dailyBudgetUsd: 0, monthlyBudgetUsd: 0, allowUnknownCost: false },
+  summary: {
+    today: { requests: 0, totalTokens: 0, estimatedCostUsd: 0, unknownCostRequests: 0 },
+    month: { requests: 0, totalTokens: 0, estimatedCostUsd: 0, unknownCostRequests: 0 },
+    byModel: [],
+    recent: []
+  },
+  records: []
+})
+const usageBudgetForm = ref({ dailyBudgetUsd: 0, monthlyBudgetUsd: 0, allowUnknownCost: false })
 
 const knowledgeQuery = ref('')
 const knowledgeUseAi = ref(false)
@@ -319,6 +450,72 @@ async function loadProviderState() {
   }
 }
 
+function applyUsageState(value) {
+  if (!value?.summary || !value?.settings) return
+  usageState.value = {
+    ...usageState.value,
+    ...value,
+    records: value.records || usageState.value.records
+  }
+  usageBudgetForm.value = { ...value.settings }
+}
+
+async function loadAiUsageState() {
+  try {
+    const result = await opsApi.getAiUsageState?.()
+    if (result?.ok) applyUsageState(result.usage)
+  } catch (error) {
+    console.error('加载 AI 用量失败', error)
+  }
+}
+
+async function saveUsageBudget() {
+  savingUsageBudget.value = true
+  try {
+    const result = await opsApi.saveAiUsageSettings?.({ ...usageBudgetForm.value })
+    if (!result?.ok) throw new Error(result?.error || '保存 AI 预算失败')
+    applyUsageState(result.usage)
+    budgetBlocked.value = null
+    MessagePlugin.success({ content: 'AI 预算设置已保存', placement: 'bottom-right' })
+  } catch (error) {
+    MessagePlugin.error({
+      content: error?.message || '保存 AI 预算失败',
+      placement: 'bottom-right'
+    })
+  } finally {
+    savingUsageBudget.value = false
+  }
+}
+
+function formatTokenCount(value) {
+  return Math.max(0, Number(value) || 0).toLocaleString('zh-CN')
+}
+
+function formatUsd(value) {
+  return `$${Math.max(0, Number(value) || 0).toFixed(4)}`
+}
+
+function loadContextAttachments() {
+  contextAttachments.value = readAiContextAttachments()
+}
+
+function removeContextAttachment(id) {
+  contextAttachments.value = removeAiContextAttachment(id)
+  MessagePlugin.info({ content: '已移除一条 AI 证据', placement: 'bottom-right' })
+}
+
+function clearContextAttachments() {
+  contextAttachments.value = clearAiContextAttachments()
+  MessagePlugin.info({ content: '已清空本次 AI 证据', placement: 'bottom-right' })
+}
+
+function previewContext(value) {
+  const text = String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return text.length > 180 ? `${text.slice(0, 180)}…` : text
+}
+
 function subscribeToChatStream() {
   const subscribe = opsApi.onAiChatStreamEvent
   if (typeof subscribe !== 'function') return
@@ -334,7 +531,8 @@ function subscribeToChatStream() {
 onMounted(async () => {
   subscribeToChatStream()
   loadHistory()
-  await loadProviderState()
+  loadContextAttachments()
+  await Promise.all([loadProviderState(), loadAiUsageState()])
   nextTick(scrollToBottom)
 })
 
@@ -345,7 +543,11 @@ onBeforeUnmount(() => {
     void Promise.resolve(opsApi.cancelAiChatStream?.(activeChatRequestId)).catch(() => {})
 })
 
-onActivated(loadProviderState)
+onActivated(() => {
+  loadProviderState()
+  loadAiUsageState()
+  loadContextAttachments()
+})
 
 function formatTime(timestamp) {
   if (!timestamp) return ''
@@ -508,8 +710,11 @@ async function requestAssistantReply() {
         role: message.role,
         content: message.content
       })),
-      knowledgeResults: searched.value && knowledgeUseAi.value ? knowledgeResults.value : []
+      knowledgeResults: searched.value && knowledgeUseAi.value ? knowledgeResults.value : [],
+      contextAttachments: contextAttachments.value,
+      budgetOverride: budgetOverrideOnce.value
     }
+    budgetOverrideOnce.value = false
     const result =
       typeof streamRequest === 'function'
         ? await streamRequest(requestOptions)
@@ -525,17 +730,24 @@ async function requestAssistantReply() {
     if (!result?.ok) {
       saveInterruptedReply('（响应中断）')
       chatError.value = result?.error || 'AI 对话失败'
-      retryableChatError.value = true
+      budgetBlocked.value = ['AI_USAGE_BUDGET_EXCEEDED', 'AI_USAGE_COST_UNKNOWN'].includes(
+        result?.code
+      )
+        ? result?.budget || { reason: chatError.value }
+        : null
+      retryableChatError.value = !budgetBlocked.value
       return
     }
 
     const content = String(result.content || streamingReply.value).trim()
     if (!content) throw new Error('AI 未返回可用文本')
     addMessage('assistant', content)
+    applyUsageState(result.usageState)
     if (result.truncated) {
       MessagePlugin.warning({ content: '回答过长，已安全截断', placement: 'bottom-right' })
     }
     retryableChatError.value = false
+    budgetBlocked.value = null
     completed = true
   } catch (error) {
     const cancelled = cancelRequested.value || error?.code === 'AI_CHAT_CANCELLED'
@@ -557,6 +769,14 @@ async function requestAssistantReply() {
     // 检索证据只用于下一次提问；请求失败时保留它，确保“重试”仍使用同一批证据。
     if (completed) searched.value = false
   }
+}
+
+async function continueOverBudget() {
+  if (chatBusy.value || !latestUserMessage.value) return
+  budgetOverrideOnce.value = true
+  budgetBlocked.value = null
+  chatError.value = ''
+  await requestAssistantReply()
 }
 
 async function cancelAiChat() {
@@ -866,6 +1086,12 @@ function configureProvider() {
 .knowledge-toolbar,
 .knowledge-toolbar__label,
 .knowledge-toggle,
+.ai-usage-summary,
+.ai-budget-form,
+.ai-budget-form__unknown,
+.ai-context-panel__header,
+.ai-context-panel__label,
+.ai-context-item__meta,
 .chat-welcome__eyebrow,
 .chat-message,
 .message-meta,
@@ -951,6 +1177,208 @@ function configureProvider() {
   min-height: var(--control-height-sm);
   padding: 0 12px;
   font-size: 12px;
+}
+
+.ai-usage-panel {
+  flex: 0 0 auto;
+  padding: 10px var(--panel-padding);
+  border-bottom: 1px solid var(--border-light);
+  background: color-mix(in srgb, var(--primary-light) 36%, var(--card-bg));
+}
+
+.ai-usage-summary {
+  gap: var(--spacing-sm);
+}
+
+.ai-usage-summary article {
+  display: grid;
+  flex: 1 1 0;
+  gap: 2px;
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid color-mix(in srgb, var(--primary) 16%, var(--border-light));
+  border-radius: var(--radius-sm);
+  background: var(--card-bg);
+}
+
+.ai-usage-summary span,
+.ai-usage-summary small,
+.ai-budget-form label > span,
+.ai-usage-panel__note {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.ai-usage-summary strong {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-budget-form {
+  align-items: flex-end;
+  gap: var(--spacing-sm);
+  margin-top: 8px;
+}
+
+.ai-budget-form label:not(.ai-budget-form__unknown) {
+  display: grid;
+  flex: 1 1 150px;
+  gap: 4px;
+}
+
+.ai-budget-form input[type='number'] {
+  width: 100%;
+  height: var(--control-height-sm);
+  padding: 0 var(--spacing-sm);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card-bg);
+  font: inherit;
+  font-size: 12px;
+}
+
+.ai-budget-form__unknown {
+  flex: 1 1 220px;
+  gap: 6px;
+  min-height: var(--control-height-sm);
+}
+
+.ai-budget-form__unknown input {
+  width: var(--checkbox-size);
+  height: var(--checkbox-size);
+}
+
+.ai-budget-form .btn-primary {
+  flex: 0 0 auto;
+  min-height: var(--control-height-sm);
+  padding-inline: 12px;
+  font-size: 12px;
+}
+
+.ai-usage-panel__note {
+  margin: 7px 0 0;
+  line-height: 16px;
+}
+
+.ai-context-panel {
+  flex: 0 0 auto;
+  padding: 9px var(--panel-padding) 10px;
+  border-bottom: 1px solid var(--border-light);
+  background: var(--card-bg);
+}
+
+.ai-context-panel__header {
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+}
+
+.ai-context-panel__label {
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ai-context-panel__label :deep(svg) {
+  color: var(--primary);
+}
+
+.ai-context-panel__count {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.ai-context-panel__clear {
+  min-height: 26px;
+  padding: 0 6px;
+  font-size: 11px;
+}
+
+.ai-context-list {
+  display: grid;
+  gap: 6px;
+  max-height: 132px;
+  padding-top: 7px;
+  overflow-y: auto;
+}
+
+.ai-context-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background: var(--bg-subtle);
+}
+
+.ai-context-item__body {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.ai-context-item__meta {
+  flex-wrap: wrap;
+  gap: 5px 8px;
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.ai-context-item__meta strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-context-item__body p,
+.ai-context-panel__empty {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.ai-context-item__body p {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.ai-context-item__remove {
+  display: grid;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.ai-context-item__remove:hover:not(:disabled) {
+  color: var(--danger);
+  background: var(--danger-light);
+}
+
+.ai-context-item__remove:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.ai-context-panel__empty {
+  margin-top: 6px;
 }
 
 .chat-history {
@@ -1496,6 +1924,27 @@ function configureProvider() {
     width: 100%;
   }
 
+  .ai-usage-panel {
+    padding-inline: var(--spacing-md);
+  }
+
+  .ai-budget-form {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .ai-budget-form label:not(.ai-budget-form__unknown) {
+    flex-basis: calc(50% - var(--spacing-sm));
+  }
+
+  .ai-budget-form .btn-primary {
+    flex: 1 1 120px;
+  }
+
+  .ai-context-panel {
+    padding-inline: var(--spacing-md);
+  }
+
   .knowledge-toggle {
     flex: 1;
   }
@@ -1539,6 +1988,17 @@ function configureProvider() {
   }
 
   .knowledge-toolbar input:not([type='checkbox']) {
+    flex-basis: 100%;
+  }
+
+  .ai-usage-summary {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ai-budget-form label:not(.ai-budget-form__unknown),
+  .ai-budget-form__unknown,
+  .ai-budget-form .btn-primary {
     flex-basis: 100%;
   }
 
