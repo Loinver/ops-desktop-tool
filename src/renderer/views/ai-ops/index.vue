@@ -561,7 +561,18 @@
               >
                 <t-icon name="upload" /> 导入本地文档
               </button>
+              <button
+                class="btn-secondary"
+                type="button"
+                :disabled="busy"
+                @click="importKnowledgeDirectory"
+              >
+                <t-icon name="folder-open" /> 增量导入目录
+              </button>
             </div>
+            <p v-if="knowledgeImportSummary" class="inline-hint">
+              <t-icon name="info-circle" /> {{ knowledgeImportSummary }}
+            </p>
             <div v-if="knowledgeAllTags.length" class="knowledge-tag-filter">
               <button
                 :class="['tag-chip', { active: !knowledgeTagFilter }]"
@@ -590,7 +601,7 @@
                   <strong>{{ doc.title }}</strong>
                   <p>
                     {{ doc.tags?.join(' · ') || '无标签' }} ·
-                    {{ doc.source?.type === 'file' ? `来源：${doc.source.name}` : '手动录入' }} ·
+                    {{ knowledgeSourceLabel(doc.source) }} ·
                     {{ formatTime(doc.updatedAt) }}
                   </p>
                 </div>
@@ -651,7 +662,9 @@
               <div class="panel-title">
                 <div>
                   <h3>检索与问答</h3>
-                  <p>默认仅返回本地证据片段；开启 AI 后会要求答案标注来源编号。</p>
+                  <p>
+                    默认使用关键词、短语和文本相似度混合排序；开启 AI 后会要求答案标注来源编号。
+                  </p>
                 </div>
               </div>
               <div class="search-row">
@@ -694,7 +707,10 @@
                   class="search-result"
                 >
                   <strong>[{{ index + 1 }}] {{ item.title }}</strong>
-                  <span>第 {{ item.startLine }}–{{ item.endLine }} 行 · 匹配 {{ item.score }}</span>
+                  <span>
+                    第 {{ item.startLine }}–{{ item.endLine }} 行 · {{ item.matchReason }} · 评分
+                    {{ item.score }} · 更新于 {{ formatTime(item.updatedAt) }}
+                  </span>
                   <!-- eslint-disable-next-line vue/no-v-html -- highlightKnowledge escapes document content before adding <mark> tags. -->
                   <pre v-html="highlightKnowledge(item.content, item.matchedTerms)"></pre>
                   <div class="search-result__actions">
@@ -956,6 +972,7 @@ const knowledgeUseAi = ref(false)
 const knowledgeResults = ref([])
 const knowledgeAnswer = ref('')
 const searched = ref(false)
+const knowledgeImportSummary = ref('')
 const knowledgeEditingId = ref('')
 const knowledgeReadingDoc = ref(null)
 const knowledgeTagFilter = ref('')
@@ -1416,6 +1433,13 @@ function closeReader() {
   knowledgeReadingDoc.value = null
 }
 
+function knowledgeSourceLabel(source = {}) {
+  if (source.type === 'directory')
+    return `目录：${source.collection ? `${source.collection}/` : ''}${source.name || '文档'}`
+  if (source.type === 'file') return `来源：${source.name || '本地文件'}`
+  return '手动录入'
+}
+
 async function exportKnowledge(doc) {
   busy.value = true
   try {
@@ -1484,6 +1508,24 @@ async function importKnowledge() {
         placement: 'bottom-right'
       })
     }
+  } finally {
+    busy.value = false
+  }
+}
+
+async function importKnowledgeDirectory() {
+  busy.value = true
+  try {
+    const result = await opsApi.importAiKnowledgeDirectory()
+    if (result?.canceled) return
+    if (!notify(result, '导入知识目录失败')) return
+    knowledgeState.value = result.state || knowledgeState.value
+    const summary = result.summary || {}
+    knowledgeImportSummary.value = `${summary.collection || '知识目录'}：新增 ${summary.imported || 0}，更新 ${summary.updated || 0}，未变化 ${summary.unchanged || 0}，跳过 ${summary.skipped || 0}${summary.truncated ? '；已达到安全扫描上限' : ''}`
+    MessagePlugin.success({
+      content: '目录已完成脱敏增量导入，未变化文档不会重复写入',
+      placement: 'bottom-right'
+    })
   } finally {
     busy.value = false
   }

@@ -1,6 +1,7 @@
 const path = require('node:path')
 const crypto = require('node:crypto')
 const os = require('node:os')
+const fs = require('node:fs')
 const { readJsonFile, writeJsonFile } = require('./json-store')
 const { loadProviders } = require('./ccswitch')
 const {
@@ -24,6 +25,16 @@ const MAX_KNOWLEDGE_CONTEXT_LENGTH = 12_000
 const MAX_AI_CONTEXT_ATTACHMENTS = 8
 const MAX_AI_CONTEXT_ITEM_LENGTH = 8_000
 const MAX_AI_CONTEXT_TOTAL_LENGTH = 32_000
+const KNOWLEDGE_INDEX_VERSION = 2
+const KNOWLEDGE_IMPORT_EXTENSIONS = new Set([
+  '.md',
+  '.txt',
+  '.log',
+  '.json',
+  '.yml',
+  '.yaml',
+  '.conf'
+])
 
 function filePath(userDataPath, fileName) {
   return path.join(userDataPath, fileName)
@@ -1159,15 +1170,80 @@ function terms(text) {
   return Array.from(new Set(items)).slice(0, 500)
 }
 
+function knowledgeFingerprint(value) {
+  return crypto
+    .createHash('sha256')
+    .update(String(value || ''))
+    .digest('hex')
+}
+
+function knowledgeIndex(value = {}) {
+  const title = String(value.title || '')
+  const tags = Array.isArray(value.tags) ? value.tags.join(' ') : String(value.tags || '')
+  const content = String(value.content || '')
+  return {
+    version: KNOWLEDGE_INDEX_VERSION,
+    fingerprint: knowledgeFingerprint(`${title}\n${tags}\n${content}`),
+    lineCount: content ? content.split(/\r?\n/).length : 0,
+    charCount: content.length,
+    terms: terms(`${title}\n${tags}\n${content}`).slice(0, 300)
+  }
+}
+
+function normalizeSearchText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function characterBigrams(value) {
+  const normalized = normalizeSearchText(value).replace(/\s/g, '')
+  if (!normalized) return []
+  if (normalized.length === 1) return [normalized]
+  const grams = []
+  for (let index = 0; index < normalized.length - 1; index += 1)
+    grams.push(normalized.slice(index, index + 2))
+  return grams
+}
+
+function diceSimilarity(first, second) {
+  const firstGrams = characterBigrams(first)
+  const secondGrams = characterBigrams(second)
+  if (!firstGrams.length || !secondGrams.length) return 0
+  const counts = new Map()
+  for (const gram of firstGrams) counts.set(gram, (counts.get(gram) || 0) + 1)
+  let overlap = 0
+  for (const gram of secondGrams) {
+    const count = counts.get(gram) || 0
+    if (!count) continue
+    overlap += 1
+    counts.set(gram, count - 1)
+  }
+  return (2 * overlap) / (firstGrams.length + secondGrams.length)
+}
+
+function blockSimilarity(query, title, tags, block) {
+  const candidates = [title, tags, ...String(block || '').split(/\r?\n/)]
+    .map(normalizeSearchText)
+    .filter(Boolean)
+  return candidates.reduce((best, candidate) => Math.max(best, diceSimilarity(query, candidate)), 0)
+}
+
 function normalizeKnowledgeSource(value = {}) {
   const source = value && typeof value === 'object' ? value : {}
-  const type = ['manual', 'file'].includes(source.type) ? source.type : 'manual'
+  const type = ['manual', 'file', 'directory'].includes(source.type) ? source.type : 'manual'
+  const fallbackName =
+    type === 'manual' ? '手动录入' : type === 'directory' ? '目录文档' : '本地文件'
   return {
     type,
-    name:
-      redactSensitiveText(string(source.name, 180)) || (type === 'file' ? '本地文件' : '手动录入'),
+    name: redactSensitiveText(string(source.name, 240)) || fallbackName,
+    collection: redactSensitiveText(string(source.collection, 120)),
+    collectionId: string(source.collectionId, 80),
+    fingerprint: string(source.fingerprint, 80),
+    modifiedAt: type === 'manual' ? 0 : Number(source.modifiedAt) || 0,
     // 不保存本地绝对路径，避免知识库导出时泄露用户目录结构。
-    importedAt: type === 'file' ? Number(source.importedAt) || Date.now() : 0
+    importedAt: type === 'manual' ? 0 : Number(source.importedAt) || Date.now()
   }
 }
 
@@ -1185,20 +1261,23 @@ function normalizeKnowledgeDocument(value = {}) {
         .filter(Boolean)
     )
   ).slice(0, 20)
-  return {
+  const normalized = {
     id: string(value.id || crypto.randomUUID(), 100),
     title: redactSensitiveText(string(value.title || '未命名知识', 160)) || '未命名知识',
     content,
     tags,
     source: normalizeKnowledgeSource(value.source),
+    createdAt: Number(value.createdAt) || Date.now(),
     updatedAt: Date.now()
   }
+  normalized.index = knowledgeIndex(normalized)
+  return normalized
 }
 
 function loadKnowledgeState(userDataPath) {
   const value = readJsonFile(knowledgeStatePath(userDataPath), { version: 1, documents: [] })
   return {
-    version: 1,
+    version: Number(value?.version) || 1,
     documents: Array.isArray(value?.documents)
       ? value.documents.slice(0, MAX_KNOWLEDGE_DOCUMENTS)
       : []
@@ -1207,10 +1286,18 @@ function loadKnowledgeState(userDataPath) {
 
 function saveKnowledgeDocument(userDataPath, value) {
   const state = loadKnowledgeState(userDataPath)
-  const document = normalizeKnowledgeDocument(value)
+  const existing = value?.id
+    ? state.documents.find((item) => item.id === String(value.id || ''))
+    : null
+  const document = normalizeKnowledgeDocument({
+    ...existing,
+    ...value,
+    source: value?.source || existing?.source
+  })
   const index = state.documents.findIndex((item) => item.id === document.id)
   if (index >= 0) state.documents[index] = document
   else state.documents.unshift(document)
+  state.version = KNOWLEDGE_INDEX_VERSION
   state.documents = state.documents.slice(0, MAX_KNOWLEDGE_DOCUMENTS)
   if (!writeJsonFile(knowledgeStatePath(userDataPath), state)) throw new Error('保存知识文档失败')
   return document
@@ -1223,8 +1310,167 @@ function deleteKnowledgeDocument(userDataPath, id) {
   return state.documents
 }
 
+function collectKnowledgeFiles(rootPath, options = {}) {
+  const root = fs.realpathSync(String(rootPath || ''))
+  const stat = fs.statSync(root)
+  if (!stat.isDirectory()) throw new Error('请选择知识文档目录')
+  const maxFiles = Math.min(100, Math.max(1, Number(options.maxFiles) || 50))
+  const maxDepth = Math.min(10, Math.max(1, Number(options.maxDepth) || 6))
+  const maxFileBytes = Math.min(2_000_000, Math.max(1, Number(options.maxFileBytes) || 1_000_000))
+  const maxTotalBytes = Math.min(
+    20_000_000,
+    Math.max(maxFileBytes, Number(options.maxTotalBytes) || 5_000_000)
+  )
+  const files = []
+  const skipped = []
+  let totalBytes = 0
+  const queue = [{ directory: root, depth: 0 }]
+  while (queue.length && files.length < maxFiles && totalBytes < maxTotalBytes) {
+    const current = queue.shift()
+    let entries = []
+    try {
+      entries = fs
+        .readdirSync(current.directory, { withFileTypes: true })
+        .sort((first, second) => first.name.localeCompare(second.name))
+    } catch (error) {
+      skipped.push({
+        name: path.basename(current.directory),
+        reason: error.message || '目录不可读'
+      })
+      continue
+    }
+    for (const entry of entries) {
+      if (files.length >= maxFiles || totalBytes >= maxTotalBytes) break
+      if (entry.isSymbolicLink()) {
+        skipped.push({ name: entry.name, reason: '跳过符号链接' })
+        continue
+      }
+      const candidate = path.join(current.directory, entry.name)
+      if (entry.isDirectory()) {
+        if (current.depth < maxDepth) queue.push({ directory: candidate, depth: current.depth + 1 })
+        else skipped.push({ name: entry.name, reason: '超过目录深度限制' })
+        continue
+      }
+      if (!entry.isFile()) continue
+      const extension = path.extname(entry.name).toLowerCase()
+      if (!KNOWLEDGE_IMPORT_EXTENSIONS.has(extension)) continue
+      let fileStat
+      try {
+        fileStat = fs.statSync(candidate)
+      } catch (error) {
+        skipped.push({ name: entry.name, reason: error.message || '文件不可读' })
+        continue
+      }
+      if (fileStat.size > maxFileBytes) {
+        skipped.push({ name: entry.name, reason: '单个文件超过 1 MB' })
+        continue
+      }
+      if (totalBytes + fileStat.size > maxTotalBytes) {
+        skipped.push({ name: entry.name, reason: '目录导入总量超过 5 MB' })
+        break
+      }
+      files.push({
+        path: candidate,
+        relativePath: path.relative(root, candidate).split(path.sep).join('/'),
+        extension,
+        size: fileStat.size,
+        modifiedAt: fileStat.mtimeMs
+      })
+      totalBytes += fileStat.size
+    }
+  }
+  return {
+    root,
+    collection: path.basename(root) || '知识目录',
+    collectionId: knowledgeFingerprint(root).slice(0, 24),
+    files,
+    skipped,
+    totalBytes,
+    truncated: queue.length > 0 || files.length >= maxFiles || totalBytes >= maxTotalBytes
+  }
+}
+
+function importKnowledgeDirectory(userDataPath, rootPath, options = {}) {
+  const scan = collectKnowledgeFiles(rootPath, options)
+  const state = loadKnowledgeState(userDataPath)
+  const documents = state.documents.slice()
+  const importedDocuments = []
+  const summary = {
+    scanned: scan.files.length,
+    imported: 0,
+    updated: 0,
+    unchanged: 0,
+    skipped: scan.skipped.length,
+    truncated: scan.truncated,
+    totalBytes: scan.totalBytes,
+    collection: scan.collection
+  }
+  for (const file of scan.files) {
+    let content
+    try {
+      content = fs.readFileSync(file.path, 'utf8')
+    } catch (error) {
+      summary.skipped += 1
+      scan.skipped.push({ name: file.relativePath, reason: error.message || '文件读取失败' })
+      continue
+    }
+    const fingerprint = knowledgeFingerprint(content)
+    const existingIndex = documents.findIndex(
+      (document) =>
+        document?.source?.type === 'directory' &&
+        document?.source?.collectionId === scan.collectionId &&
+        document?.source?.name === file.relativePath
+    )
+    const existing = existingIndex >= 0 ? documents[existingIndex] : null
+    if (existing?.source?.fingerprint === fingerprint) {
+      summary.unchanged += 1
+      continue
+    }
+    if (!existing && documents.length >= MAX_KNOWLEDGE_DOCUMENTS) {
+      summary.skipped += 1
+      scan.skipped.push({ name: file.relativePath, reason: '知识库容量已满' })
+      continue
+    }
+    const document = normalizeKnowledgeDocument({
+      id: existing?.id,
+      createdAt: existing?.createdAt,
+      title: path.basename(file.relativePath, file.extension) || path.basename(file.relativePath),
+      tags: Array.from(
+        new Set([
+          ...(Array.isArray(existing?.tags) ? existing.tags : []),
+          '目录导入',
+          file.extension.replace('.', '')
+        ])
+      ),
+      content,
+      source: {
+        type: 'directory',
+        name: file.relativePath,
+        collection: scan.collection,
+        collectionId: scan.collectionId,
+        fingerprint,
+        modifiedAt: file.modifiedAt,
+        importedAt: Date.now()
+      }
+    })
+    if (existingIndex >= 0) {
+      documents.splice(existingIndex, 1, document)
+      summary.updated += 1
+    } else {
+      documents.unshift(document)
+      summary.imported += 1
+    }
+    importedDocuments.push(document)
+  }
+  state.version = KNOWLEDGE_INDEX_VERSION
+  state.documents = documents.slice(0, MAX_KNOWLEDGE_DOCUMENTS)
+  if (!writeJsonFile(knowledgeStatePath(userDataPath), state)) throw new Error('保存目录知识失败')
+  return { documents: importedDocuments, state, summary, skipped: scan.skipped.slice(0, 30) }
+}
+
 function searchKnowledge(userDataPath, query, limit = 8) {
-  const keywords = terms(query)
+  const normalizedQuery = normalizeSearchText(redactSensitiveText(query)).slice(0, 1000)
+  const keywords = terms(normalizedQuery).slice(0, 120)
   if (!keywords.length) return []
   const docs = loadKnowledgeState(userDataPath).documents
   const matches = []
@@ -1236,34 +1482,52 @@ function searchKnowledge(userDataPath, query, limit = 8) {
     const titleLower = title.toLowerCase()
     const tagsLower = tags.map((item) => item.toLowerCase()).join(' ')
     const lines = redactSensitiveText(String(doc.content || '')).split(/\r?\n/)
-    for (let i = 0; i < lines.length; i += 12) {
+    for (let i = 0; i < lines.length; i += 8) {
       const block = lines.slice(i, i + 12).join('\n')
       const lower = `${title}\n${tags.join(' ')}\n${block}`.toLowerCase()
       const matched = []
-      let score = 0
+      let keywordScore = 0
       for (const keyword of keywords) {
         if (!lower.includes(keyword)) continue
         matched.push(keyword)
-        // 标题命中加权 3 倍、标签命中加权 2 倍、正文命中计 1 分。
-        if (titleLower.includes(keyword)) score += 3
-        else if (tagsLower.includes(keyword)) score += 2
-        else score += 1
+        const weight = Math.min(4, Math.max(1, keyword.length / 2))
+        if (titleLower.includes(keyword)) keywordScore += 6 * weight
+        else if (tagsLower.includes(keyword)) keywordScore += 4 * weight
+        else {
+          const occurrences = lower.split(keyword).length - 1
+          keywordScore += Math.min(3, Math.max(1, occurrences)) * weight
+        }
       }
-      if (score)
+      const exactPhrase = Boolean(normalizedQuery && lower.includes(normalizedQuery))
+      const similarity = blockSimilarity(normalizedQuery, title, tagsLower, block)
+      const coverage = matched.length / Math.max(1, keywords.length)
+      const score = keywordScore + (exactPhrase ? 18 : 0) + coverage * 12 + similarity * 20
+      if (score >= 2.5 || similarity >= 0.28)
         matches.push({
           documentId: doc.id,
           title,
           tags,
           startLine: i + 1,
           endLine: Math.min(lines.length, i + 12),
-          score,
+          score: Number(score.toFixed(2)),
+          keywordScore: Number(keywordScore.toFixed(2)),
+          similarity: Number(similarity.toFixed(3)),
+          matchReason: exactPhrase
+            ? '短语命中'
+            : keywordScore > 0 && similarity >= 0.28
+              ? '关键词 + 相似度'
+              : keywordScore > 0
+                ? '关键词命中'
+                : '文本相似度',
           matchedTerms: Array.from(new Set(matched)).slice(0, 20),
-          content: block.slice(0, 2200)
+          content: block.slice(0, 2200),
+          updatedAt: Number(doc.updatedAt) || 0,
+          source: normalizeKnowledgeSource(doc.source)
         })
     }
   }
   return matches
-    .sort((a, b) => b.score - a.score)
+    .sort((a, b) => b.score - a.score || b.updatedAt - a.updatedAt)
     .slice(0, Math.max(1, Math.min(20, Number(limit) || 8)))
 }
 
@@ -1540,10 +1804,13 @@ module.exports = {
   loadKnowledgeState,
   saveKnowledgeDocument,
   deleteKnowledgeDocument,
+  collectKnowledgeFiles,
+  importKnowledgeDirectory,
   searchKnowledge,
   loadWorkflowState,
   findWorkflowPlan,
   planWorkflow,
   saveWorkflowPlan,
-  readMcpSnapshot
+  readMcpSnapshot,
+  __testables: { diceSimilarity, knowledgeFingerprint, knowledgeIndex, normalizeKnowledgeSource }
 }

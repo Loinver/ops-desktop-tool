@@ -656,6 +656,50 @@
               </button>
             </div>
             <div
+              v-if="releaseRisk"
+              class="release-risk-card"
+              :class="`release-risk-card--${releaseRisk.level}`"
+            >
+              <div class="release-risk-card__heading">
+                <div>
+                  <strong>发布风险摘要 · {{ releaseRisk.levelLabel }}</strong>
+                  <p>{{ releaseRisk.summary }}</p>
+                </div>
+                <span>{{ releaseRisk.score }}/100</span>
+              </div>
+              <ul v-if="releaseRisk.factors?.length" class="release-risk-factors">
+                <li v-for="factor in releaseRisk.factors.slice(0, 5)" :key="factor.id">
+                  <strong>{{ factor.title }}</strong>
+                  <span>{{ factor.detail }}</span>
+                  <small>{{ factor.recommendation }}</small>
+                </li>
+              </ul>
+              <details class="release-risk-checklists">
+                <summary>查看发布验证与回滚检查项</summary>
+                <div>
+                  <section>
+                    <strong>发布验证</strong>
+                    <ol>
+                      <li v-for="item in releaseRisk.verificationChecklist" :key="item">
+                        {{ item }}
+                      </li>
+                    </ol>
+                  </section>
+                  <section>
+                    <strong>回滚准备</strong>
+                    <ol>
+                      <li v-for="item in releaseRisk.rollbackChecklist" :key="item">
+                        {{ item }}
+                      </li>
+                    </ol>
+                  </section>
+                </div>
+              </details>
+              <button type="button" class="log-retry-btn" @click="attachReleaseRiskToAiChat">
+                <t-icon name="attach" /> 附加风险摘要
+              </button>
+            </div>
+            <div
               v-if="activeSyncTask || queuedSyncCount > 0 || syncHistory.length > 0"
               class="log-timeline"
             >
@@ -805,6 +849,7 @@ const syncHistory = ref([])
 const syncProgress = ref({ current: 0, total: 0 })
 const showLogPanel = ref(true)
 const lastPreflightContext = ref(null)
+const releaseRisk = ref(null)
 
 // 所有同步请求都经过同一个 FIFO 队列：用户可在 A 打包/上传期间继续选择 B，
 // B 会使用点击时的路径快照，在 A 完成后再执行，不会与 A 争用同一条 SFTP 连接。
@@ -851,6 +896,62 @@ function attachPreflightToAiChat() {
     }
   })
   MessagePlugin.success({ content: '发布预检证据已附加到 AI 对话', placement: 'bottom-right' })
+}
+
+async function analyzeReleaseRisk() {
+  const context = lastPreflightContext.value
+  const activeProfile = releaseProfiles.value.find((item) => item.id === activeProfileId.value)
+  if (!context || !activeProfile || typeof opsApi?.analyzeAiReleaseRisk !== 'function') {
+    releaseRisk.value = null
+    return
+  }
+  const result = await opsApi.analyzeAiReleaseRisk({
+    preflight: context.summary,
+    profile: {
+      id: activeProfile.id,
+      name: activeProfile.name,
+      hostFingerprint: activeProfile.hostFingerprint || '',
+      healthCheck: activeProfile.healthCheck || {}
+    }
+  })
+  if (!result?.ok) {
+    releaseRisk.value = null
+    return
+  }
+  releaseRisk.value = result.risk || null
+  if (releaseRisk.value?.level === 'high') {
+    MessagePlugin.warning({
+      content: `发布预检识别为高风险（${releaseRisk.value.score}/100），请核对风险摘要与回滚准备`,
+      placement: 'bottom-right',
+      duration: 5000
+    })
+  }
+}
+
+function attachReleaseRiskToAiChat() {
+  const risk = releaseRisk.value
+  if (!risk) return
+  addAiContextAttachment({
+    source: '发布风险摘要',
+    title: `${risk.profileName || activeReleaseProfileName.value} · ${risk.levelLabel}`,
+    content: [
+      risk.summary,
+      ...risk.factors.map(
+        (factor) => `${factor.title}：${factor.detail} 建议：${factor.recommendation}`
+      ),
+      '发布验证：',
+      ...risk.verificationChecklist.map((item) => `- ${item}`),
+      '回滚准备：',
+      ...risk.rollbackChecklist.map((item) => `- ${item}`)
+    ].join('\n'),
+    metadata: {
+      level: risk.levelLabel,
+      score: risk.score,
+      total: risk.preflight?.total || 0,
+      generatedAt: formatLogTime(risk.generatedAt)
+    }
+  })
+  MessagePlugin.success({ content: '发布风险摘要已附加到 AI 对话', placement: 'bottom-right' })
 }
 
 // 错误列表用于失败重试；最近记录则作为用户可见的任务日志，两者职责分开。
@@ -1111,6 +1212,8 @@ async function switchReleaseProfile() {
   activeIgnoreRules.value = result.data.ignoreRules || []
   // 发布历史与环境绑定；切换环境后不能继续显示或回滚旧环境的记录。
   releaseHistory.value = []
+  releaseRisk.value = null
+  lastPreflightContext.value = null
   showReleaseHistory.value = false
   connectionStatus.value = null
   await refresh()
@@ -1757,6 +1860,7 @@ async function processSyncQueue() {
               },
               createdAt: Date.now()
             }
+            await analyzeReleaseRisk()
             syncMessage.value = `预检通过：${summary?.total || 0} 个文件，开始发布 ${task.label}`
           }
           success = await executeSyncTask(task)

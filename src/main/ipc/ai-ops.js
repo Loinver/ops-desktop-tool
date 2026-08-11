@@ -5,6 +5,15 @@ const { IPC_CHANNELS } = require('../../shared/ipc-channels')
 const { readJsonFile } = require('../utils/json-store')
 const { readQuickLaunchState } = require('../utils/quicklaunch-storage')
 const { normalizeExternalUrl, openExternalUrl } = require('../utils/external-url')
+const { listNodeServiceHistory } = require('../utils/node-service-monitor')
+const { listRunbookHistory } = require('../utils/ops-runbook')
+const { loadReleaseHistory } = require('../utils/release-store')
+const {
+  buildCopilotTimeline,
+  buildReleaseRiskSummary,
+  formatCopilotTimeline
+} = require('../utils/ai-insights')
+const { buildIncidentPostmortem, buildOpsReport } = require('../utils/ai-reports')
 const {
   getAiUsageState,
   saveAiUsageSettings,
@@ -31,6 +40,7 @@ const {
   loadKnowledgeState,
   saveKnowledgeDocument,
   deleteKnowledgeDocument,
+  importKnowledgeDirectory,
   searchKnowledge,
   loadWorkflowState,
   findWorkflowPlan,
@@ -143,11 +153,22 @@ function copilotContext(prompt) {
   const knowledge = searchKnowledge(userDataPath(), prompt, 5)
   const events = listOpsEvents(userDataPath(), { limit: 12 })
   const logs = loadLogState(userDataPath()).items.slice(0, 5)
+  const timeline = buildCopilotTimeline({
+    events,
+    logs,
+    releases: loadReleaseHistory().slice(0, 20),
+    nodeHistory: listNodeServiceHistory(userDataPath(), { limit: 200 }),
+    runbooks: listRunbookHistory(userDataPath(), { limit: 20 }),
+    redact: redactSensitiveText,
+    limit: 60
+  })
   return {
     knowledge,
+    timeline,
     text: [
       `近期事件：${events.map((item) => `[${item.level}/${item.status}] ${item.title}：${item.description}`).join('\n') || '无'}`,
       `近期日志分析：${logs.map((item) => `[${item.level}] ${item.title}：${item.headline}`).join('\n') || '无'}`,
+      formatCopilotTimeline(timeline),
       `知识证据：${knowledge.map((item, index) => `[${index + 1}] ${item.title}（第 ${item.startLine}-${item.endLine} 行）\n${item.content}`).join('\n\n') || '无'}`
     ]
       .join('\n\n')
@@ -424,6 +445,20 @@ function registerAiOpsHandlers() {
     }
   })
 
+  ipcMain.handle(IPC_CHANNELS.AI_KNOWLEDGE_IMPORT_DIRECTORY, async () => {
+    try {
+      const focused = BrowserWindow.getFocusedWindow()
+      const selection = await dialog.showOpenDialog(focused, {
+        title: '选择知识文档目录',
+        properties: ['openDirectory']
+      })
+      if (selection.canceled || !selection.filePaths?.[0]) return { ok: false, canceled: true }
+      return success(importKnowledgeDirectory(userDataPath(), selection.filePaths[0]))
+    } catch (error) {
+      return failure(error)
+    }
+  })
+
   ipcMain.handle(IPC_CHANNELS.AI_KNOWLEDGE_EXPORT, async (_event, document) => {
     try {
       const title = String(document?.title || '未命名知识').trim() || '未命名知识'
@@ -587,7 +622,7 @@ function registerAiOpsHandlers() {
           prompt: `用户问题：${prompt}\n\n请仅依据以下本地材料回答。输出：1. 已确认事实；2. 推测（明确标注）；3. 建议的只读检查；4. 如有工作流，提醒用户确认后执行。每个知识结论标注 [编号]。\n\n${context.text}`
         })
       } else {
-        answer = `已收集 ${context.knowledge.length} 条知识证据、${listOpsEvents(userDataPath(), { limit: 12 }).length} 条近期事件。请查看下方证据和确认式工作流；配置 Provider 后可生成 AI 总结。`
+        answer = `已收集 ${context.knowledge.length} 条知识证据和 ${context.timeline.summary.total} 条关联时间线记录，其中严重 ${context.timeline.summary.critical} 条、警告 ${context.timeline.summary.warning} 条。请查看下方证据和确认式工作流；配置 Provider 后可生成 AI 总结。`
       }
       addOpsEvent(userDataPath(), {
         sourceKey: `copilot:${plan.id}`,
@@ -598,7 +633,90 @@ function registerAiOpsHandlers() {
         description: prompt.slice(0, 300),
         relatedId: plan.id
       })
-      return success({ answer, sources: context.knowledge, plan })
+      return success({ answer, sources: context.knowledge, timeline: context.timeline, plan })
+    } catch (error) {
+      return failure(error)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.AI_RELEASE_RISK_ANALYZE, async (_event, options = {}) => {
+    try {
+      const profile = options.profile && typeof options.profile === 'object' ? options.profile : {}
+      const profileId = String(profile.id || options.profileId || '')
+        .trim()
+        .slice(0, 120)
+      return success({
+        risk: buildReleaseRiskSummary({
+          preflight: options.preflight,
+          profile,
+          profileId,
+          history: loadReleaseHistory({ profileId })
+        })
+      })
+    } catch (error) {
+      return failure(error)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.AI_POSTMORTEM_GENERATE, async (_event, options = {}) => {
+    try {
+      const eventId = String(options.eventId || '')
+        .trim()
+        .slice(0, 100)
+      if (!eventId) throw new Error('请选择需要复盘的事件')
+      const event = listOpsEvents(userDataPath(), { limit: 500 }).find(
+        (item) => item.id === eventId
+      )
+      if (!event) throw new Error('事件不存在或已被移除')
+      const since = Math.max(
+        0,
+        Number(event.firstOccurredAt || event.createdAt || event.updatedAt) - 6 * 60 * 60_000
+      )
+      const timeline = buildCopilotTimeline({
+        events: [event],
+        logs: loadLogState(userDataPath()).items.slice(0, 20),
+        releases: loadReleaseHistory().slice(0, 50),
+        nodeHistory: listNodeServiceHistory(userDataPath(), { since, limit: 500 }),
+        runbooks: listRunbookHistory(userDataPath(), { limit: 50 }),
+        redact: redactSensitiveText,
+        limit: 100
+      })
+      return success({
+        postmortem: buildIncidentPostmortem({
+          event,
+          timeline,
+          redact: redactSensitiveText
+        })
+      })
+    } catch (error) {
+      return failure(error)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.AI_OPS_REPORT_GENERATE, async (_event, options = {}) => {
+    try {
+      const kind = ['daily', 'weekly', 'handoff'].includes(options.kind) ? options.kind : 'daily'
+      const now = Date.now()
+      const to = Math.min(now, Math.max(0, Number(options.to) || now))
+      const requestedFrom = Math.max(0, Number(options.from) || 0)
+      const from = requestedFrom ? Math.max(to - 31 * 24 * 60 * 60_000, requestedFrom) : 0
+      return success({
+        report: buildOpsReport({
+          kind,
+          from,
+          to,
+          events: listOpsEvents(userDataPath(), { limit: 500 }),
+          releases: loadReleaseHistory().slice(0, 200),
+          nodeHistory: listNodeServiceHistory(userDataPath(), {
+            since: from || Math.max(0, to - 31 * 24 * 60 * 60_000),
+            limit: 2000
+          }),
+          runbooks: listRunbookHistory(userDataPath(), { limit: 100 }),
+          logs: loadLogState(userDataPath()).items,
+          redact: redactSensitiveText,
+          generatedAt: now
+        })
+      })
     } catch (error) {
       return failure(error)
     }

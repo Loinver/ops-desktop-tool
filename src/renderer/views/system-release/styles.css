@@ -1305,3 +1305,132 @@
     display: none;
   }
 }
+
+.release-risk-card {
+  display: grid;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-sm);
+  padding: var(--spacing-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card-bg);
+}
+
+.release-risk-card--high {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--border));
+  background: color-mix(in srgb, var(--danger) 5%, var(--card-bg));
+}
+
+.release-risk-card--medium {
+  border-color: color-mix(in srgb, var(--warning) 45%, var(--border));
+  background: color-mix(in srgb, var(--warning) 6%, var(--card-bg));
+}
+
+.release-risk-card--low {
+  border-color: color-mix(in srgb, var(--success) 35%, var(--border));
+  background: color-mix(in srgb, var(--success) 5%, var(--card-bg));
+}
+
+.release-risk-card__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+}
+
+.release-risk-card__heading div {
+  min-width: 0;
+}
+
+.release-risk-card__heading strong {
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.release-risk-card__heading p {
+  margin: 3px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.release-risk-card__heading > span {
+  flex: none;
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  color: var(--text-secondary);
+  font: 600 12px/1 var(--font-mono);
+}
+
+.release-risk-factors {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.release-risk-factors li {
+  display: grid;
+  gap: 2px;
+  padding-top: 7px;
+  border-top: 1px solid var(--border);
+}
+
+.release-risk-factors strong,
+.release-risk-factors span,
+.release-risk-factors small {
+  overflow-wrap: anywhere;
+}
+
+.release-risk-factors strong {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.release-risk-factors span,
+.release-risk-factors small {
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.release-risk-checklists summary {
+  color: var(--primary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.release-risk-checklists > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-sm);
+}
+
+.release-risk-checklists section {
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.release-risk-checklists ol {
+  display: grid;
+  gap: 4px;
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.release-risk-card > .log-retry-btn {
+  justify-self: start;
+}
+
+@media (max-width: 760px) {
+  .release-risk-card__heading {
+    flex-direction: column;
+  }
+
+  .release-risk-checklists > div {
+    grid-template-columns: 1fr;
+  }
+}

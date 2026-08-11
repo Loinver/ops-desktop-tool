@@ -74,6 +74,37 @@
           <div v-if="copilotResult" class="copilot-result">
             <h4>建议与结论</h4>
             <pre>{{ copilotResult.answer }}</pre>
+            <div v-if="copilotResult.timeline?.items?.length" class="copilot-timeline-card">
+              <div class="copilot-timeline-heading">
+                <div>
+                  <strong>关联时间线</strong>
+                  <p>
+                    共 {{ copilotResult.timeline.summary?.total || 0 }} 条，严重
+                    {{ copilotResult.timeline.summary?.critical || 0 }} 条，警告
+                    {{ copilotResult.timeline.summary?.warning || 0 }} 条
+                  </p>
+                </div>
+                <button type="button" class="btn-text" @click="attachCopilotTimelineToAiChat">
+                  <t-icon name="attach" /> 附加时间线
+                </button>
+              </div>
+              <ol class="copilot-timeline">
+                <li
+                  v-for="item in copilotResult.timeline.items.slice(0, 12)"
+                  :key="item.id"
+                  :class="item.severity"
+                >
+                  <span class="copilot-timeline-dot" aria-hidden="true"></span>
+                  <div>
+                    <strong>{{ item.title }}</strong>
+                    <p v-if="item.detail">{{ item.detail }}</p>
+                    <small
+                      >{{ sourceName(item.sourceType) }} · {{ formatTime(item.timestamp) }}</small
+                    >
+                  </div>
+                </li>
+              </ol>
+            </div>
             <div v-if="copilotResult.sources?.length" class="citation-list">
               <strong>本地证据</strong>
               <button
@@ -231,6 +262,15 @@
                   <t-icon name="attach" /> 附加证据
                 </button>
                 <button
+                  type="button"
+                  class="btn-text"
+                  :disabled="postmortemBusy && postmortemEventId === item.id"
+                  @click="generatePostmortem(item)"
+                >
+                  <t-icon name="file-text" />
+                  {{ postmortemBusy && postmortemEventId === item.id ? '生成中…' : '复盘草稿' }}
+                </button>
+                <button
                   v-if="item.status === 'open'"
                   type="button"
                   class="btn-text"
@@ -256,6 +296,129 @@
             </div>
           </div>
         </article>
+      </section>
+
+      <section v-if="postmortem" class="surface-panel page-section ai-document-panel">
+        <div class="section-toolbar">
+          <div class="section-heading">
+            <h3 class="section-title">{{ postmortem.title }}</h3>
+            <p class="section-desc">
+              基于主进程中的事件与关联时间线生成；根因、影响与负责人仍需人工复核。
+            </p>
+          </div>
+          <div class="document-actions">
+            <button class="btn-text" type="button" @click="attachPostmortemToAiChat">
+              <t-icon name="attach" /> 附加到 AI 对话
+            </button>
+            <button
+              class="btn-primary"
+              type="button"
+              :disabled="postmortemBusy"
+              @click="savePostmortem"
+            >
+              <t-icon name="save" /> 确认并保存知识库
+            </button>
+            <button class="btn-text" type="button" @click="postmortem = null">关闭</button>
+          </div>
+        </div>
+        <div class="document-summary-grid">
+          <div>
+            <span>严重级别</span>
+            <strong>{{ levelName(postmortem.severity) }}</strong>
+          </div>
+          <div>
+            <span>持续时间</span>
+            <strong>{{ postmortem.period?.duration || '待补充' }}</strong>
+          </div>
+          <div>
+            <span>证据条目</span>
+            <strong>{{ postmortem.evidence?.length || 0 }}</strong>
+          </div>
+          <div>
+            <span>后续行动</span>
+            <strong>{{ postmortem.actions?.length || 0 }}</strong>
+          </div>
+        </div>
+        <pre class="ai-document-preview">{{ postmortem.markdown }}</pre>
+      </section>
+
+      <section class="surface-panel page-section ai-document-panel report-panel">
+        <div class="section-toolbar">
+          <div class="section-heading">
+            <h3 class="section-title">运维报告与交接</h3>
+            <p class="section-desc">
+              汇总本地事件、发布、Node 监控、Runbook 与日志分析，生成可导出、可附加的报告。
+            </p>
+          </div>
+          <div class="report-controls">
+            <TSelect
+              v-model="reportKind"
+              class="report-kind-select"
+              size="medium"
+              :options="reportKindOptions"
+              :input-props="{ 'aria-label': '报告类型' }"
+            />
+            <button
+              class="btn-primary"
+              type="button"
+              :disabled="reportBusy"
+              @click="generateReport"
+            >
+              <t-icon
+                :name="reportBusy ? 'loading' : 'file-text'"
+                :class="{ spinning: reportBusy }"
+              />
+              {{ reportBusy ? '生成中…' : '生成报告' }}
+            </button>
+          </div>
+        </div>
+        <template v-if="opsReport">
+          <div class="document-summary-grid report-summary-grid">
+            <div>
+              <span>事件</span>
+              <strong>{{ opsReport.metrics?.events?.total || 0 }}</strong>
+              <small>当前活跃 {{ opsReport.metrics?.events?.active || 0 }}</small>
+            </div>
+            <div>
+              <span>发布</span>
+              <strong>{{ opsReport.metrics?.releases?.total || 0 }}</strong>
+              <small>失败 {{ opsReport.metrics?.releases?.failed || 0 }}</small>
+            </div>
+            <div>
+              <span>离线服务</span>
+              <strong>{{ opsReport.metrics?.nodes?.offlineServices || 0 }}</strong>
+              <small>采样 {{ opsReport.metrics?.nodes?.checks || 0 }} 次</small>
+            </div>
+            <div>
+              <span>异常线索</span>
+              <strong>{{ opsReport.metrics?.logs?.findings || 0 }}</strong>
+              <small>日志 {{ opsReport.metrics?.logs?.analyses || 0 }} 份</small>
+            </div>
+          </div>
+          <div class="report-risk-list">
+            <strong>风险与关注项</strong>
+            <ul>
+              <li v-for="item in opsReport.risks" :key="item">{{ item }}</li>
+            </ul>
+          </div>
+          <pre class="ai-document-preview">{{ opsReport.markdown }}</pre>
+          <div class="document-footer-actions">
+            <button
+              class="btn-secondary"
+              type="button"
+              :disabled="reportBusy"
+              @click="exportReport"
+            >
+              <t-icon name="download" /> 导出 Markdown
+            </button>
+            <button class="btn-secondary" type="button" @click="attachReportToAiChat">
+              <t-icon name="attach" /> 附加到 AI 对话
+            </button>
+          </div>
+        </template>
+        <div v-else class="empty-mini">
+          选择报告类型后生成，本地数据不会自动发送给 AI Provider。
+        </div>
       </section>
 
       <section class="surface-panel page-section automation-panel">
@@ -388,6 +551,12 @@ const sourceFilter = ref('')
 const copilotPrompt = ref('')
 const copilotUseAi = ref(true)
 const copilotResult = ref(null)
+const postmortem = ref(null)
+const postmortemBusy = ref(false)
+const postmortemEventId = ref('')
+const reportKind = ref('daily')
+const reportBusy = ref(false)
+const opsReport = ref(null)
 const taskForm = ref(newTask())
 const eventFilterOptions = Object.freeze([
   { label: '活跃事件', value: 'active' },
@@ -395,6 +564,11 @@ const eventFilterOptions = Object.freeze([
   { label: '已确认', value: 'acknowledged' },
   { label: '已解决', value: 'resolved' },
   { label: '全部状态', value: '' }
+])
+const reportKindOptions = Object.freeze([
+  { label: '每日运维报告', value: 'daily' },
+  { label: '每周运维报告', value: 'weekly' },
+  { label: '交接班报告', value: 'handoff' }
 ])
 
 const activeProvider = computed(() =>
@@ -653,6 +827,132 @@ function attachEventToAiChat(item) {
   })
   MessagePlugin.success({ content: '事件证据已附加到 AI 对话', placement: 'bottom-right' })
 }
+
+function attachCopilotTimelineToAiChat() {
+  const timeline = copilotResult.value?.timeline
+  const items = Array.isArray(timeline?.items) ? timeline.items.slice(0, 30) : []
+  if (!items.length) return
+  addAiContextAttachment({
+    source: 'Copilot 时间线',
+    title: '运维关联时间线',
+    content: items
+      .map(
+        (item) =>
+          `[${formatTime(item.timestamp)}][${sourceName(item.sourceType)}][${levelName(item.severity)}] ${item.title}${item.detail ? `：${item.detail}` : ''}`
+      )
+      .join('\n'),
+    metadata: {
+      total: timeline.summary?.total || items.length,
+      critical: timeline.summary?.critical || 0,
+      warning: timeline.summary?.warning || 0,
+      generatedAt: formatTime(timeline.generatedAt)
+    }
+  })
+  MessagePlugin.success({ content: '关联时间线已附加到 AI 对话', placement: 'bottom-right' })
+}
+
+async function generatePostmortem(item) {
+  postmortemBusy.value = true
+  postmortemEventId.value = item.id
+  try {
+    const result = await opsApi.generateAiPostmortem(item.id)
+    if (!notify(result, '生成事件复盘失败')) return
+    postmortem.value = result.postmortem
+    await nextTick()
+    document
+      .querySelector('.ai-document-panel')
+      ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  } finally {
+    postmortemBusy.value = false
+    postmortemEventId.value = ''
+  }
+}
+
+function attachPostmortemToAiChat() {
+  if (!postmortem.value?.markdown) return
+  addAiContextAttachment({
+    source: '事件复盘',
+    title: postmortem.value.title,
+    content: postmortem.value.markdown,
+    metadata: {
+      eventId: postmortem.value.eventId,
+      severity: levelName(postmortem.value.severity),
+      generatedAt: formatTime(postmortem.value.generatedAt)
+    }
+  })
+  MessagePlugin.success({ content: '事件复盘已附加到 AI 对话', placement: 'bottom-right' })
+}
+
+async function savePostmortem() {
+  if (!postmortem.value?.markdown) return
+  const approved = await confirm({
+    title: '确认保存事件复盘',
+    content: '请确认已复核根因、影响范围和后续负责人。保存后会作为本地知识文档供检索使用。',
+    theme: 'warning'
+  })
+  if (!approved) return
+  postmortemBusy.value = true
+  try {
+    const result = await opsApi.saveAiKnowledge({
+      title: postmortem.value.title,
+      tags: [
+        '事件复盘',
+        sourceName(postmortem.value.sourceType),
+        levelName(postmortem.value.severity)
+      ],
+      content: postmortem.value.markdown
+    })
+    if (notify(result, '保存事件复盘失败'))
+      MessagePlugin.success({ content: '事件复盘已保存到本地知识库', placement: 'bottom-right' })
+  } finally {
+    postmortemBusy.value = false
+  }
+}
+
+async function generateReport() {
+  reportBusy.value = true
+  try {
+    const result = await opsApi.generateAiOpsReport({ kind: reportKind.value })
+    if (notify(result, '生成运维报告失败')) opsReport.value = result.report
+  } finally {
+    reportBusy.value = false
+  }
+}
+
+async function exportReport() {
+  if (!opsReport.value?.markdown) return
+  reportBusy.value = true
+  try {
+    const result = await opsApi.exportAiKnowledge({
+      title: `${opsReport.value.title}-${new Date(opsReport.value.generatedAt).toISOString().slice(0, 10)}`,
+      tags: [
+        '运维报告',
+        reportKindOptions.find((item) => item.value === opsReport.value.kind)?.label
+      ],
+      content: opsReport.value.markdown
+    })
+    if (result?.ok) MessagePlugin.success({ content: '运维报告已导出', placement: 'bottom-right' })
+    else if (!result?.canceled) notify(result, '导出运维报告失败')
+  } finally {
+    reportBusy.value = false
+  }
+}
+
+function attachReportToAiChat() {
+  if (!opsReport.value?.markdown) return
+  addAiContextAttachment({
+    source: '运维报告',
+    title: opsReport.value.title,
+    content: opsReport.value.markdown,
+    metadata: {
+      kind: opsReport.value.kind,
+      from: formatTime(opsReport.value.period?.from),
+      to: formatTime(opsReport.value.period?.to)
+    }
+  })
+  MessagePlugin.success({ content: '运维报告已附加到 AI 对话', placement: 'bottom-right' })
+}
+
 async function updateEvent(item, status) {
   const result = await opsApi.updateOpsEvent(item.id, status)
   if (notify(result, '更新事件失败')) await load()
@@ -824,6 +1124,74 @@ onActivated(() => {
   margin-top: 12px;
   font-size: 12px;
 }
+.copilot-timeline-card {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card-bg);
+}
+.copilot-timeline-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.copilot-timeline-heading p {
+  margin: 3px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.copilot-timeline {
+  display: grid;
+  gap: 8px;
+  max-height: 330px;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+.copilot-timeline li {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  gap: 9px;
+  align-items: start;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+}
+.copilot-timeline li:first-child {
+  border-top: 0;
+}
+.copilot-timeline-dot {
+  width: 8px;
+  height: 8px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--primary);
+}
+.copilot-timeline li.warning .copilot-timeline-dot {
+  background: var(--warning);
+}
+.copilot-timeline li.critical .copilot-timeline-dot {
+  background: var(--danger);
+}
+.copilot-timeline strong,
+.copilot-timeline p,
+.copilot-timeline small {
+  overflow-wrap: anywhere;
+}
+.copilot-timeline p {
+  margin: 3px 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.copilot-timeline small {
+  color: var(--text-muted);
+  font-size: 11px;
+}
 .citation {
   border: 1px solid #c7d2fe;
   border-radius: 999px;
@@ -896,6 +1264,78 @@ onActivated(() => {
 .plan-card em.high {
   background: var(--danger-light);
   color: var(--danger);
+}
+
+.ai-document-panel {
+  min-width: 0;
+}
+.document-actions,
+.report-controls,
+.document-footer-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.report-kind-select {
+  width: 168px;
+}
+.document-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.document-summary-grid > div {
+  min-width: 0;
+  padding: 11px;
+  border: 1px solid var(--border-light);
+  border-radius: 9px;
+  background: var(--bg-subtle);
+}
+.document-summary-grid span,
+.document-summary-grid small {
+  display: block;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.document-summary-grid strong {
+  display: block;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+  font-size: 15px;
+}
+.ai-document-preview {
+  max-height: 520px;
+  overflow: auto;
+  margin: 0;
+  padding: 14px;
+  border-radius: 9px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font: 12px/1.65 var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.report-risk-list {
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg-subtle);
+}
+.report-risk-list ul {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.document-footer-actions {
+  margin-top: 12px;
 }
 
 .event-panel {
@@ -1156,11 +1596,15 @@ onActivated(() => {
   .task-form {
     grid-template-columns: repeat(2, 1fr);
   }
+  .document-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 @media (max-width: 640px) {
   .summary-grid,
   .task-form,
-  .event-detail dl {
+  .event-detail dl,
+  .document-summary-grid {
     grid-template-columns: 1fr;
   }
   .section-toolbar,
@@ -1177,6 +1621,13 @@ onActivated(() => {
     min-width: 0;
     width: auto;
     flex: 1 1 0;
+  }
+  .document-actions,
+  .report-controls,
+  .document-footer-actions,
+  .report-kind-select {
+    width: 100%;
+    justify-content: flex-start;
   }
   .event-actions,
   .task-actions {
