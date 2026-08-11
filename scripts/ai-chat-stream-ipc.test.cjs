@@ -106,6 +106,13 @@ test('AI 对话流式 IPC 会向同一 Renderer 推送增量并支持按请求�
     }
   ])
 
+  const otherSender = makeSender(43)
+  assert.deepEqual(await cancel({ sender: otherSender }, { requestId }), {
+    ok: true,
+    requestId,
+    cancelled: false
+  })
+
   const cancelled = await cancel({ sender }, { requestId })
   assert.deepEqual(cancelled, { ok: true, requestId, cancelled: true })
   assert.deepEqual(await pending, {

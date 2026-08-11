@@ -151,3 +151,40 @@ test('外部 AbortSignal 会中止在途请求并返回可识别的取消错误'
     return true
   })
 })
+
+test('流式完成事件会立即停止读取，并支持仅在 Responses 完成事件返回正文', async () => {
+  let readPastDone = false
+  global.fetch = async () => ({
+    ok: true,
+    status: 200,
+    body: (async function* () {
+      yield new TextEncoder().encode(
+        'event: response.completed\ndata: {"type":"response.completed","response":{"model":"responses-model","output":[{"content":[{"type":"output_text","text":"完成正文"}]}]}}\n\n'
+      )
+      readPastDone = true
+      yield new TextEncoder().encode('data: {"choices":[{"delta":{"content":"不应读取"}}]}\n\n')
+    })(),
+    text: async () => ''
+  })
+
+  const result = await requestCompletionStream(provider({ wireApi: 'responses' }), {
+    messages: [{ role: 'user', content: '完成事件' }]
+  })
+
+  assert.equal(readPastDone, false)
+  assert.equal(result.content, '完成正文')
+  assert.equal(result.model, 'responses-model')
+})
+
+test('Gemini finishReason 会作为流结束信号处理', () => {
+  assert.deepEqual(
+    parseCompletionStreamEvent(
+      provider({ protocol: 'gemini' }),
+      '',
+      JSON.stringify({
+        candidates: [{ content: { parts: [{ text: '最后一段' }] }, finishReason: 'STOP' }]
+      })
+    ),
+    { delta: '最后一段', model: undefined, usage: undefined, done: true }
+  )
+})

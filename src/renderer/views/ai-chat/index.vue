@@ -183,11 +183,12 @@
                   v-if="chatBusy"
                   class="send-button send-button--stop"
                   type="button"
-                  aria-label="停止生成"
+                  :aria-label="cancelRequested ? '正在停止生成' : '停止生成'"
+                  :disabled="cancelRequested"
                   @click="cancelAiChat"
                 >
-                  <t-icon name="stop-circle" />
-                  <span>停止</span>
+                  <t-icon name="stop-circle" :class="{ spinning: cancelRequested }" />
+                  <span>{{ cancelRequested ? '停止中…' : '停止' }}</span>
                 </button>
                 <button
                   v-else
@@ -291,7 +292,7 @@ function subscribeToChatStream() {
   const subscribe = opsApi.onAiChatStreamEvent
   if (typeof subscribe !== 'function') return
   unsubscribeChatStream = subscribe((payload) => {
-    if (!payload || payload.requestId !== activeChatRequestId) return
+    if (!payload || payload.requestId !== activeChatRequestId || cancelRequested.value) return
     if (payload.type === 'delta' && payload.delta) {
       streamingReply.value = `${streamingReply.value}${String(payload.delta)}`.slice(0, 20_000)
       nextTick(scrollToBottom)
@@ -309,7 +310,8 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   unsubscribeChatStream?.()
   unsubscribeChatStream = null
-  if (activeChatRequestId) void opsApi.cancelAiChatStream?.(activeChatRequestId)
+  if (activeChatRequestId)
+    void Promise.resolve(opsApi.cancelAiChatStream?.(activeChatRequestId)).catch(() => {})
 })
 
 onActivated(loadProviderState)
