@@ -300,6 +300,22 @@ test('AI 对话、图像生成与备份恢复关键页面可在真实 Electron �
   ]
 
   for (const route of routes) {
+    if (route.hash === '#/ai-chat') {
+      await page.evaluate(() => {
+        localStorage.removeItem('aiChatSessionsV1')
+        localStorage.setItem(
+          'aiChatHistory',
+          JSON.stringify([
+            {
+              role: 'user',
+              content: '迁移验证：检查生产环境配置',
+              createdAt: 1_754_800_000_000
+            }
+          ])
+        )
+      })
+    }
+
     await page.evaluate((hash) => {
       window.location.hash = hash
     }, route.hash)
@@ -309,6 +325,32 @@ test('AI 对话、图像生成与备份恢复关键页面可在真实 Electron �
       route.title
     )
     await page.locator(route.marker).waitFor({ state: 'visible' })
+
+    if (route.hash === '#/ai-chat') {
+      const sessionSidebar = page.locator('[aria-label="AI 对话会话列表"]')
+      await sessionSidebar.waitFor({ state: 'visible' })
+      assert.equal(await sessionSidebar.getByText('会话', { exact: true }).count(), 1)
+      assert.equal(await sessionSidebar.locator('input[placeholder="搜索会话"]').count(), 1)
+      assert.equal(
+        await sessionSidebar.locator('.chat-session-select strong').first().textContent(),
+        '迁移验证：检查生产环境配置'
+      )
+      assert.match(
+        await page.locator('.chat-message--user').first().textContent(),
+        /迁移验证：检查生产环境配置/
+      )
+
+      const persistedHistory = await page.evaluate(() => ({
+        sessions: localStorage.getItem('aiChatSessionsV1'),
+        legacy: localStorage.getItem('aiChatHistory')
+      }))
+      assert.ok(persistedHistory.sessions)
+      assert.equal(persistedHistory.legacy, null)
+
+      const exportJsonButton = page.getByRole('button', { name: '导出 JSON', exact: true })
+      await exportJsonButton.waitFor({ state: 'visible' })
+      assert.equal(await exportJsonButton.isDisabled(), false)
+    }
   }
 
   assertNoFatalRendererDiagnostics(diagnosticsStart, 'AI and backup critical routes')

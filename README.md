@@ -18,6 +18,12 @@
 | 本机工具  | 本地数据管理 | 按功能分类导出 AES-256-GCM 加密备份，支持定时保留、执行历史和本机恢复点回滚                                                            |
 | 实验功能  | AI 图像实验  | 对接 OpenAI 兼容的模型与图片生成接口，保存配置、生成记录和图片文件                                                                     |
 
+## AI 对话会话
+
+AI 对话支持本机多会话管理。会话最多保留 24 个，达到上限后按总量自动清理较旧会话；升级时会自动把旧版 `aiChatHistory` 消息数组迁移为一个活动会话。会话侧栏支持搜索会话标题和消息内容、选择会话、重命名及删除。
+
+当前会话可以在页面内导出为 Markdown（MD）或 JSON。会话数据只做本机暂存，不进入本地数据管理生成的加密备份；本地持久化和两种导出都会对常见 API Key、Bearer Token、密码、`secret` 和 `authorization` 字段做脱敏。需要跨设备或长期保存时，请在 AI 对话页主动导出。
+
 ## 环境要求
 
 - Node.js `>= 22.12`（CI 使用 Node.js 24）
@@ -151,7 +157,7 @@ export SFTP_HOST_FINGERPRINT='SHA256:服务器公钥指纹'
 | `ai-log-analysis.json`          | 脱敏日志的本地规则分析和可选 AI 总结                      |
 | `ai-knowledge.json`             | 本地运维知识库，保存前会脱敏                              |
 | `ai-workflows.json`             | 自然语言工作流预览历史                                    |
-| Renderer `aiChatHistory`        | AI 对话本机暂存；支持页面内 Markdown 导出，不纳入加密备份 |
+| Renderer `aiChatSessionsV1`     | AI 对话本机多会话暂存，最多 24 个；旧 `aiChatHistory` 会自动迁移；支持页面内 MD/JSON 导出，不纳入加密备份 |
 | `ops-backup-restore-points/`    | 导入或回滚前自动保留的本机恢复点，最多保留最近 3 次       |
 | `ops-auto-backup-settings.json` | 自动备份的目录、周期、保留策略与 safeStorage 加密后的密码 |
 | `ops-auto-backup-history.json`  | 自动备份成功或失败的本机执行历史（最多 50 条）            |
