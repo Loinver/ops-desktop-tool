@@ -1,5 +1,5 @@
 <template>
-  <div class="page page--workspace">
+  <div class="page page--workspace gpt-image-page">
     <div class="page-header">
       <div class="page-heading header-left">
         <div class="page-eyebrow"><t-icon name="image" /> AI IMAGE LAB</div>
@@ -27,7 +27,7 @@
       </div>
     </div>
 
-    <div class="workspace">
+    <div class="image-workspace">
       <section class="chat-pane">
         <div ref="messagesEl" class="messages">
           <div v-if="messages.length === 0" class="empty-state">
@@ -494,6 +494,7 @@ function normalizeHistoryItem(item = {}) {
     id: String(item.id || '').trim(),
     prompt: String(item.prompt || '').trim(),
     fullPrompt: String(item.fullPrompt || '').trim(),
+    assetId: String(item.assetId || '').trim(),
     imageUrl: String(item.imageUrl || '').trim(),
     revisedPrompt: String(item.revisedPrompt || '').trim(),
     model: String(item.model || '').trim(),
@@ -508,7 +509,7 @@ function normalizeHistory(history) {
   if (!Array.isArray(history)) return []
   return history
     .map(normalizeHistoryItem)
-    .filter((item) => item.id && item.prompt && item.imageUrl)
+    .filter((item) => item.id && item.prompt && item.assetId && item.imageUrl)
     .slice(0, MAX_HISTORY_ITEMS)
 }
 
@@ -523,6 +524,7 @@ function formatDuration(ms) {
 }
 
 function imageToUrl(image) {
+  if (image?.previewUrl) return image.previewUrl
   if (image?.b64Json) {
     return `data:image/png;base64,${image.b64Json}`
   }
@@ -591,7 +593,9 @@ async function persistHistory() {
   if (typeof opsApi?.saveGptImageHistory === 'function') {
     // nextHistory 虽来自 normalizeHistory，但赋值到 ref 后会再次成为 Vue Proxy；
     // 再次规范化，确保 IPC 始终接收结构化克隆支持的普通对象。
-    await opsApi.saveGptImageHistory(normalizeHistory(nextHistory))
+    const result = await opsApi.saveGptImageHistory(normalizeHistory(nextHistory))
+    if (result?.ok === false) throw new Error(result.error || '历史记录保存失败')
+    if (Array.isArray(result?.history)) historyItems.value = normalizeHistory(result.history)
     return
   }
 
@@ -747,6 +751,7 @@ async function sendMessage() {
     time: nowTime(),
     loading: true,
     error: '',
+    assetId: '',
     imageUrl: '',
     revisedPrompt: '',
     elapsedMs: 0,
@@ -776,12 +781,26 @@ async function sendMessage() {
       return
     }
 
+    const removedAssetIds = new Set(
+      (Array.isArray(result.image?.removedAssetIds) ? result.image.removedAssetIds : []).map((id) =>
+        String(id || '').trim()
+      )
+    )
+    if (removedAssetIds.size > 0) {
+      historyItems.value = historyItems.value.filter((item) => !removedAssetIds.has(item.assetId))
+    }
+
+    assistantMessage.assetId = String(result.image?.assetId || '').trim()
     assistantMessage.imageUrl = imageToUrl(result.image)
+    if (!assistantMessage.assetId || !assistantMessage.imageUrl) {
+      throw new Error('生成结果未能安全保存到本地')
+    }
     assistantMessage.revisedPrompt = result.image?.revisedPrompt || ''
     await appendHistoryItem({
       id: createId(),
       prompt: text,
       fullPrompt: prompt,
+      assetId: assistantMessage.assetId,
       imageUrl: assistantMessage.imageUrl,
       revisedPrompt: assistantMessage.revisedPrompt,
       model: config.model,
@@ -807,8 +826,9 @@ function isDownloading(messageId) {
 }
 
 async function downloadImage(message) {
+  const assetId = String(message?.assetId || '').trim()
   const imageUrl = String(message?.imageUrl || '').trim()
-  if (!imageUrl) {
+  if (!assetId && !imageUrl) {
     MessagePlugin.warning({ content: '没有可下载的图片', placement: 'bottom-right' })
     return
   }
@@ -827,6 +847,7 @@ async function downloadImage(message) {
 
   try {
     const result = await opsApi.saveGptImage({
+      assetId,
       imageUrl,
       fileName: `gpt-image-${Date.now()}`
     })
@@ -875,14 +896,24 @@ function clearConversation() {
 
 async function clearHistory() {
   if (historyItems.value.length === 0) return
-  historyItems.value = []
+  const previousHistory = historyItems.value
 
-  if (typeof opsApi?.clearGptImageHistory === 'function') {
-    await opsApi.clearGptImageHistory()
-    return
+  try {
+    if (typeof opsApi?.clearGptImageHistory === 'function') {
+      const result = await opsApi.clearGptImageHistory()
+      if (result?.ok === false) throw new Error(result.error || '历史记录清理失败')
+    } else {
+      localStorage.removeItem(HISTORY_STORAGE_KEY)
+    }
+    historyItems.value = []
+    MessagePlugin.success({ content: '历史记录已清空', placement: 'bottom-right' })
+  } catch (error) {
+    historyItems.value = previousHistory
+    MessagePlugin.error({
+      content: error?.message || '历史记录清理失败',
+      placement: 'bottom-right'
+    })
   }
-
-  localStorage.removeItem(HISTORY_STORAGE_KEY)
 }
 
 async function openHistory() {
@@ -909,6 +940,7 @@ function openHistoryItem(item) {
       time: formatHistoryTime(item.createdAt),
       loading: false,
       error: '',
+      assetId: item.assetId,
       imageUrl: item.imageUrl,
       revisedPrompt: item.revisedPrompt,
       elapsedMs: item.durationMs || 0,

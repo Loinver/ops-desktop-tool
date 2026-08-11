@@ -17,8 +17,22 @@ export const useClipboardStore = defineStore('clipboard', () => {
   }
 
   async function saveHistory() {
-    const serializableHistory = toRaw(history.value).map((item) => ({ ...toRaw(item) }))
-    await opsApi.saveClipboardHistory(serializableHistory)
+    try {
+      const rawHistory = toRaw(history.value)
+      const serializableHistory = Array.isArray(rawHistory)
+        ? rawHistory.map((item) => ({ ...toRaw(item) }))
+        : []
+      const result = await opsApi.saveClipboardHistory(serializableHistory)
+      if (result === false || result?.ok === false) {
+        console.error(result?.error || '保存剪贴板历史失败')
+        return false
+      }
+      if (Array.isArray(result?.history)) history.value = result.history
+      return true
+    } catch (err) {
+      console.error('保存剪贴板历史失败:', err)
+      return false
+    }
   }
 
   async function checkClipboard() {
@@ -39,7 +53,7 @@ export const useClipboardStore = defineStore('clipboard', () => {
       history.value = history.value.slice(0, maxItems)
     }
 
-    saveHistory()
+    void saveHistory()
   }
 
   async function copyToClipboard(item) {
@@ -48,12 +62,12 @@ export const useClipboardStore = defineStore('clipboard', () => {
 
   function deleteItem(id) {
     history.value = history.value.filter((i) => i.id !== id)
-    saveHistory()
+    void saveHistory()
   }
 
   function clearAll() {
     history.value = []
-    saveHistory()
+    void saveHistory()
   }
 
   return {

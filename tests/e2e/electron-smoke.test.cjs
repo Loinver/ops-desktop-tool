@@ -290,6 +290,30 @@ test('navigates through the sidebar without a renderer error', async () => {
   assertNoFatalRendererDiagnostics(diagnosticsStart, 'Sidebar navigation')
 })
 
+test('AI 对话、图像生成与备份恢复关键页面可在真实 Electron 中加载', async () => {
+  const page = await electronApp.firstWindow()
+  const diagnosticsStart = rendererDiagnostics.length
+  const routes = [
+    { hash: '#/ai-chat', title: 'AI 对话', marker: '.ai-chat-page' },
+    { hash: '#/gpt-image', title: '图像生成', marker: '.gpt-image-page' },
+    { hash: '#/data-management', title: '本地数据管理', marker: '.data-management-page' }
+  ]
+
+  for (const route of routes) {
+    await page.evaluate((hash) => {
+      window.location.hash = hash
+    }, route.hash)
+    await page.waitForURL(new RegExp(`${route.hash.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`))
+    await page.waitForFunction(
+      (title) => document.querySelector('.page-title')?.textContent?.trim() === title,
+      route.title
+    )
+    await page.locator(route.marker).waitFor({ state: 'visible' })
+  }
+
+  assertNoFatalRendererDiagnostics(diagnosticsStart, 'AI and backup critical routes')
+})
+
 test('通知设置保持紧凑按钮和 checkbox 垂直对齐', async () => {
   const page = await electronApp.firstWindow()
   await page.locator('.notification-trigger').click()

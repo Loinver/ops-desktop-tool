@@ -1,6 +1,6 @@
 const path = require('node:path')
 const fs = require('node:fs/promises')
-const { app, BrowserWindow, dialog, ipcMain, safeStorage } = require('electron')
+const { app, BrowserWindow, dialog, ipcMain, nativeImage, safeStorage } = require('electron')
 const { IPC_CHANNELS } = require('../../shared/ipc-channels')
 const { readJsonFile, writeJsonFile } = require('../utils/json-store')
 const { encryptSecret, maskSecret, readSecretField } = require('../utils/secure-secret')
@@ -9,16 +9,29 @@ const { loadProviders } = require('../utils/ccswitch')
 const {
   MAX_IMAGE_BYTES,
   buildImageFileName,
+  detectImageExtension,
   decodeDataImageUrl,
   ensureImageExtension,
   extensionForContentType,
   normalizeContentType
 } = require('../utils/gpt-image-file')
+const {
+  MAX_PREVIEW_DATA_URL_CHARS,
+  findImageAsset,
+  normalizeAssetId,
+  removeImageAssets,
+  removeOrphanImageAssets,
+  storeImageAsset
+} = require('../utils/gpt-image-assets')
+const { fetchPublicResource } = require('../utils/safe-remote-resource')
 
 const userDataPath = app.getPath('userData')
 const configFile = path.join(userDataPath, 'gpt-image-config.json')
 const historyFile = path.join(userDataPath, 'gpt-image-history.json')
+const assetsDir = path.join(userDataPath, 'gpt-image-assets')
 const MAX_HISTORY_ITEMS = 80
+const MAX_HISTORY_FILE_BYTES = 8 * 1024 * 1024
+const MAX_PROMPT_CHARS = 12_000
 
 const DEFAULT_CONFIG = {
   sourceMode: 'manual',
@@ -182,17 +195,31 @@ async function resolveRequestConfig(config = {}, options = {}) {
   return resolveModelReliabilityConfig(merged, options)
 }
 
+function limitText(value, maxLength) {
+  return String(value || '')
+    .trim()
+    .slice(0, maxLength)
+}
+
+function sanitizePreviewUrl(value) {
+  const previewUrl = String(value || '').trim()
+  if (!previewUrl || previewUrl.length > MAX_PREVIEW_DATA_URL_CHARS) return ''
+  if (!/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/i.test(previewUrl)) return ''
+  return previewUrl
+}
+
 function sanitizeHistoryItem(item = {}) {
   return {
-    id: String(item.id || '').trim(),
-    prompt: String(item.prompt || '').trim(),
-    fullPrompt: String(item.fullPrompt || '').trim(),
-    imageUrl: String(item.imageUrl || '').trim(),
-    revisedPrompt: String(item.revisedPrompt || '').trim(),
-    model: String(item.model || '').trim(),
-    size: String(item.size || '').trim(),
-    quality: String(item.quality || '').trim(),
-    durationMs: Number(item.durationMs) || 0,
+    id: limitText(item.id, 128),
+    prompt: limitText(item.prompt, 4_000),
+    fullPrompt: limitText(item.fullPrompt, MAX_PROMPT_CHARS),
+    assetId: normalizeAssetId(item.assetId),
+    imageUrl: sanitizePreviewUrl(item.imageUrl || item.previewUrl),
+    revisedPrompt: limitText(item.revisedPrompt, 4_000),
+    model: limitText(item.model, 200),
+    size: limitText(item.size, 64),
+    quality: limitText(item.quality, 64),
+    durationMs: Math.max(0, Math.min(Number(item.durationMs) || 0, 24 * 60 * 60 * 1000)),
     createdAt: Number(item.createdAt) || Date.now()
   }
 }
@@ -201,8 +228,84 @@ function sanitizeHistory(history) {
   if (!Array.isArray(history)) return []
   return history
     .map(sanitizeHistoryItem)
-    .filter((item) => item.id && item.prompt && item.imageUrl)
+    .filter((item) => item.id && item.prompt && item.assetId && item.imageUrl)
     .slice(0, MAX_HISTORY_ITEMS)
+}
+
+function isValidHistoryItem(item) {
+  return Boolean(item.id && item.prompt && item.assetId && item.imageUrl)
+}
+
+async function normalizeStoredHistory(rawHistory, storeAsset) {
+  if (!Array.isArray(rawHistory)) return { history: [], changed: false }
+
+  const persistAsset =
+    storeAsset ||
+    ((decoded) =>
+      storeImageAsset({
+        assetsDir,
+        buffer: decoded.buffer,
+        extension: decoded.extension,
+        nativeImage
+      }))
+  let changed = rawHistory.length > MAX_HISTORY_ITEMS
+  let normalized = []
+  const removedAssetIds = new Set()
+
+  // 1.0.6 及更早版本可能把完整 Base64 图片写入 JSON。逐项保留新格式记录并迁移
+  // 旧格式 data URL；远程 URL 不会在读取历史时自动访问，避免后台网络请求与 SSRF。
+  for (const item of rawHistory.slice(0, MAX_HISTORY_ITEMS)) {
+    const safeItem = sanitizeHistoryItem(item)
+    if (isValidHistoryItem(safeItem)) {
+      if (!removedAssetIds.has(safeItem.assetId)) normalized.push(safeItem)
+      continue
+    }
+
+    changed = true
+    const source = String(item?.imageUrl || item?.previewUrl || '').trim()
+    if (!source.startsWith('data:')) continue
+
+    try {
+      const decoded = decodeDataImageUrl(source)
+      const stored = await persistAsset(decoded)
+      for (const removedAssetId of stored.removedAssetIds || []) {
+        removedAssetIds.add(removedAssetId)
+      }
+      if (removedAssetIds.size > 0) {
+        normalized = normalized.filter((entry) => !removedAssetIds.has(entry.assetId))
+      }
+      const migrated = sanitizeHistoryItem({
+        ...item,
+        assetId: stored.assetId,
+        imageUrl: stored.previewUrl
+      })
+      if (isValidHistoryItem(migrated) && !removedAssetIds.has(migrated.assetId)) {
+        normalized.push(migrated)
+      }
+    } catch (error) {
+      console.warn('迁移旧版 AI 生图历史失败:', error?.message || error)
+    }
+  }
+
+  return { history: sanitizeHistory(normalized), changed }
+}
+
+async function readHistoryFile() {
+  try {
+    const stat = await fs.stat(historyFile)
+    if (stat.size > MAX_HISTORY_FILE_BYTES) {
+      console.warn('AI 生图历史文件过大，已重置以避免应用内存异常')
+      writeJsonFile(historyFile, [])
+      return []
+    }
+  } catch (error) {
+    if (error?.code !== 'ENOENT') console.error('读取 AI 生图历史大小失败:', error)
+  }
+
+  const rawHistory = readJsonFile(historyFile, [])
+  const result = await normalizeStoredHistory(rawHistory)
+  if (result.changed) writeJsonFile(historyFile, result.history)
+  return result.history
 }
 
 function buildErrorMessage(status, data) {
@@ -245,60 +348,53 @@ async function parseResponse(response) {
 }
 
 async function readRemoteImage(imageUrl) {
-  const url = new URL(String(imageUrl || '').trim())
-  if (!['http:', 'https:'].includes(url.protocol)) {
-    throw new Error('图片下载地址仅支持 http 或 https')
+  const { response, buffer } = await fetchPublicResource(imageUrl, { maxBytes: MAX_IMAGE_BYTES })
+  const contentType = normalizeContentType(response.headers.get('content-type'))
+  if (contentType && !contentType.startsWith('image/')) {
+    throw new Error('下载地址未返回图片文件')
   }
-
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 60_000)
-
-  try {
-    const response = await fetch(url, { signal: controller.signal })
-    if (!response.ok) {
-      throw new Error(`下载图片失败，HTTP ${response.status}`)
-    }
-
-    const contentType = normalizeContentType(response.headers.get('content-type'))
-    if (contentType && !contentType.startsWith('image/')) {
-      throw new Error('下载地址未返回图片文件')
-    }
-
-    const contentLength = Number(response.headers.get('content-length'))
-    if (Number.isFinite(contentLength) && contentLength > MAX_IMAGE_BYTES) {
-      throw new Error('图片文件超过 50 MB，无法保存')
-    }
-
-    const buffer = Buffer.from(await response.arrayBuffer())
-    if (buffer.length === 0) {
-      throw new Error('下载到的图片数据为空')
-    }
-    if (buffer.length > MAX_IMAGE_BYTES) {
-      throw new Error('图片文件超过 50 MB，无法保存')
-    }
-
-    return {
-      buffer,
-      contentType,
-      extension: extensionForContentType(contentType)
-    }
-  } catch (err) {
-    if (err?.name === 'AbortError') {
-      throw new Error('下载图片超时，请稍后重试', { cause: err })
-    }
-    throw err
-  } finally {
-    clearTimeout(timeout)
+  const declaredExtension = contentType ? extensionForContentType(contentType) : ''
+  return {
+    buffer,
+    contentType,
+    extension: detectImageExtension(buffer, declaredExtension)
   }
 }
 
-async function resolveImageForSave(imageUrl) {
-  const source = String(imageUrl || '').trim()
-  if (!source) {
-    throw new Error('没有可保存的图片')
+async function resolveImageForSave(payload = {}) {
+  const assetId = normalizeAssetId(payload.assetId)
+  if (assetId) {
+    const asset = await findImageAsset(assetsDir, assetId)
+    return {
+      buffer: await fs.readFile(asset.filePath),
+      extension: path.extname(asset.filePath).slice(1) || 'png'
+    }
   }
 
+  const source = String(payload.imageUrl || '').trim()
+  if (!source) throw new Error('没有可保存的图片')
   return source.startsWith('data:') ? decodeDataImageUrl(source) : readRemoteImage(source)
+}
+
+async function persistGeneratedImage(image) {
+  const decoded = image?.b64_json
+    ? decodeDataImageUrl(`data:image/png;base64,${image.b64_json}`)
+    : await readRemoteImage(image?.url)
+  const stored = await storeImageAsset({
+    assetsDir,
+    buffer: decoded.buffer,
+    extension: decoded.extension,
+    nativeImage
+  })
+
+  if (stored.removedAssetIds.length > 0) {
+    const removed = new Set(stored.removedAssetIds)
+    const retainedHistory = sanitizeHistory(readJsonFile(historyFile, [])).filter(
+      (item) => !removed.has(item.assetId)
+    )
+    writeJsonFile(historyFile, retainedHistory)
+  }
+  return stored
 }
 
 function registerGptImageHandlers() {
@@ -327,20 +423,36 @@ function registerGptImageHandlers() {
   })
 
   ipcMain.handle(IPC_CHANNELS.GPT_IMAGE_HISTORY_GET, async () => {
-    return sanitizeHistory(readJsonFile(historyFile, []))
+    return readHistoryFile()
   })
 
   ipcMain.handle(IPC_CHANNELS.GPT_IMAGE_HISTORY_SAVE, async (_event, history) => {
-    return writeJsonFile(historyFile, sanitizeHistory(history))
+    try {
+      const nextHistory = sanitizeHistory(history)
+      if (!writeJsonFile(historyFile, nextHistory)) throw new Error('历史记录保存失败')
+      await removeOrphanImageAssets(
+        assetsDir,
+        nextHistory.map((item) => item.assetId)
+      )
+      return { ok: true, history: nextHistory }
+    } catch (error) {
+      return { ok: false, error: error?.message || '历史记录保存失败' }
+    }
   })
 
   ipcMain.handle(IPC_CHANNELS.GPT_IMAGE_HISTORY_CLEAR, async () => {
-    return writeJsonFile(historyFile, [])
+    try {
+      if (!writeJsonFile(historyFile, [])) throw new Error('历史记录清理失败')
+      await removeImageAssets(assetsDir)
+      return { ok: true }
+    } catch (error) {
+      return { ok: false, error: error?.message || '历史记录清理失败' }
+    }
   })
 
   ipcMain.handle(IPC_CHANNELS.GPT_IMAGE_SAVE, async (event, payload = {}) => {
     try {
-      const image = await resolveImageForSave(payload.imageUrl)
+      const image = await resolveImageForSave(payload)
       const defaultName = buildImageFileName(payload.fileName, image.extension)
       const ownerWindow = BrowserWindow.fromWebContents(event.sender)
       const result = await dialog.showSaveDialog(ownerWindow, {
@@ -427,6 +539,9 @@ function registerGptImageHandlers() {
     if (!prompt) {
       return { ok: false, error: '请输入绘图描述' }
     }
+    if (prompt.length > MAX_PROMPT_CHARS) {
+      return { ok: false, error: `绘图描述不能超过 ${MAX_PROMPT_CHARS} 个字符` }
+    }
 
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 120000)
@@ -467,11 +582,14 @@ function registerGptImageHandlers() {
         return { ok: false, error: '接口未返回图片数据' }
       }
 
+      const storedImage = await persistGeneratedImage(image)
+
       return {
         ok: true,
         image: {
-          b64Json: image.b64_json || '',
-          url: image.url || '',
+          assetId: storedImage.assetId,
+          previewUrl: storedImage.previewUrl,
+          removedAssetIds: storedImage.removedAssetIds,
           revisedPrompt: image.revised_prompt || ''
         },
         usage: data?.usage || null
@@ -497,6 +615,10 @@ module.exports = {
     modelId,
     reliabilityModelKey,
     resolveModelReliabilityConfig,
-    resolveRequestConfig
+    resolveRequestConfig,
+    normalizeStoredHistory,
+    sanitizeHistory,
+    sanitizeHistoryItem,
+    sanitizePreviewUrl
   }
 }

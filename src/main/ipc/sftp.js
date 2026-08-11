@@ -20,7 +20,8 @@ const {
   deleteReleaseProfile,
   loadReleaseHistory,
   appendReleaseHistory,
-  markReleaseRolledBack
+  markReleaseRolledBack,
+  normalizeHostFingerprint
 } = require('../utils/release-store')
 const { addOpsEvent, runHttpHealthCheck } = require('../utils/ops-automation')
 
@@ -357,15 +358,36 @@ function shellQuote(value) {
 function getSshConfig() {
   if (!sftpConfig) loadSftpConfig()
   if (!sftpConfig) throw new Error('SFTP 配置未配置，请在设置中配置 SFTP 连接信息')
-  return { ...sftpConfig }
+  if (!sftpConfig.hostFingerprint) {
+    throw createHostFingerprintError({
+      code: 'SFTP_HOST_FINGERPRINT_REQUIRED',
+      expectedFingerprint: ''
+    })
+  }
+  return createSftpConnectionConfig(sftpConfig)
 }
 
 function execRemoteCommand(command) {
   const { Client } = require('ssh2')
   const ssh = new Client()
-  const config = getSshConfig()
+  const { config, getObservedFingerprint } = getSshConfig()
 
   return new Promise((resolve, reject) => {
+    const rejectWithFingerprintError = (error) => {
+      const observedFingerprint = getObservedFingerprint()
+      if (observedFingerprint && observedFingerprint !== sftpConfig.hostFingerprint) {
+        error.code = 'SFTP_HOST_FINGERPRINT_MISMATCH'
+        error.expectedFingerprint = sftpConfig.hostFingerprint
+        error.observedFingerprint = observedFingerprint
+        error.fingerprint = observedFingerprint
+        error.message = createHostFingerprintError({
+          code: error.code,
+          expectedFingerprint: sftpConfig.hostFingerprint,
+          observedFingerprint
+        }).message
+      }
+      reject(error)
+    }
     let stdout = ''
     let stderr = ''
 
@@ -394,8 +416,12 @@ function execRemoteCommand(command) {
       })
     })
 
-    ssh.on('error', reject)
-    ssh.connect(config)
+    ssh.on('error', rejectWithFingerprintError)
+    try {
+      ssh.connect(config)
+    } catch (error) {
+      rejectWithFingerprintError(error)
+    }
   })
 }
 
@@ -685,7 +711,8 @@ const DEFAULT_SFTP_CONFIG = {
   host: '',
   port: 22,
   username: '',
-  password: ''
+  password: '',
+  hostFingerprint: ''
 }
 
 const DEFAULT_SFTP_PATHS = {
@@ -744,7 +771,50 @@ function sanitizeSftpConfig(config = {}) {
     host: String(config.host || '').trim(),
     port: Number.isInteger(port) && port >= 1 && port <= 65535 ? port : DEFAULT_SFTP_CONFIG.port,
     username: String(config.username || '').trim(),
-    password: String(config.password || '')
+    password: String(config.password || ''),
+    hostFingerprint: normalizeHostFingerprint(config.hostFingerprint)
+  }
+}
+
+function createHostFingerprintError({
+  code,
+  expectedFingerprint = '',
+  observedFingerprint = ''
+} = {}) {
+  let message
+  if (code === 'SFTP_HOST_FINGERPRINT_MISMATCH') {
+    message = `SSH 主机指纹不匹配，已拒绝连接。配置值：${expectedFingerprint || '未配置'}；观测值：${observedFingerprint || '未获取'}`
+  } else {
+    message = observedFingerprint
+      ? `未配置 SSH 主机指纹，已拒绝自动接受主机密钥。请确认观测指纹：${observedFingerprint}`
+      : '未配置 SSH 主机指纹，已拒绝自动接受主机密钥。请先执行连接测试并确认指纹。'
+  }
+  const error = new Error(message)
+  error.code = code || 'SFTP_HOST_FINGERPRINT_REQUIRED'
+  error.expectedFingerprint = expectedFingerprint
+  error.observedFingerprint = observedFingerprint
+  error.fingerprint = observedFingerprint
+  return error
+}
+
+function createSftpConnectionConfig(config, { onObserved } = {}) {
+  const normalized = sanitizeSftpConfig(config)
+  let observedFingerprint = ''
+  const connectionConfig = { ...normalized }
+  delete connectionConfig.hostFingerprint
+  connectionConfig.hostHash = 'sha256'
+  connectionConfig.hostVerifier = (keyHash) => {
+    try {
+      observedFingerprint = normalizeHostFingerprint(keyHash)
+    } catch {
+      observedFingerprint = ''
+    }
+    if (observedFingerprint && typeof onObserved === 'function') onObserved(observedFingerprint)
+    return Boolean(normalized.hostFingerprint) && observedFingerprint === normalized.hostFingerprint
+  }
+  return {
+    config: connectionConfig,
+    getObservedFingerprint: () => observedFingerprint
   }
 }
 
@@ -766,6 +836,7 @@ function serializeSftpConfigForStorage(config) {
     host: normalized.host,
     port: normalized.port,
     username: normalized.username,
+    hostFingerprint: normalized.hostFingerprint,
     passwordEncrypted: encryptSecret(safeStorage, normalized.password)
   }
 }
@@ -807,7 +878,8 @@ function loadSftpConfig() {
         host: process.env.SFTP_HOST,
         port: process.env.SFTP_PORT || DEFAULT_SFTP_CONFIG.port,
         username: process.env.SFTP_USERNAME,
-        password: process.env.SFTP_PASSWORD
+        password: process.env.SFTP_PASSWORD,
+        hostFingerprint: process.env.SFTP_HOST_FINGERPRINT
       },
       'environment'
     )
@@ -848,16 +920,22 @@ function getSftpConfigDetails() {
             ...DEFAULT_SFTP_CONFIG,
             host: effectiveConfig?.host || '',
             port: effectiveConfig?.port || 22,
-            username: effectiveConfig?.username || ''
+            username: effectiveConfig?.username || '',
+            hostFingerprint: effectiveConfig?.hostFingerprint || ''
           }
+  const {
+    password: _password,
+    passwordEncrypted: _passwordEncrypted,
+    ...safeConfig
+  } = visibleConfig || {}
   return {
     configured: Boolean(effectiveConfig),
     source: sftpConfigSource,
     config: {
-      ...visibleConfig,
+      ...safeConfig,
       password: '',
-      hasPassword: Boolean(visibleConfig.password),
-      passwordMasked: maskSecret(visibleConfig.password)
+      hasPassword: Boolean(visibleConfig?.password || visibleConfig?.passwordEncrypted),
+      passwordMasked: maskSecret(visibleConfig?.password)
     }
   }
 }
@@ -865,24 +943,63 @@ function getSftpConfigDetails() {
 /**
  * 获取或创建 SFTP 连接
  */
-async function getSftpClient() {
+async function getSftpClient({ probeFingerprint = false } = {}) {
   const Client = require('ssh2-sftp-client')
 
-  if (sftpClient) {
+  if (!sftpConfig) loadSftpConfig()
+  if (!sftpConfig) throw new Error('SFTP 配置未配置，请在设置中配置 SFTP 连接信息')
+  if (!probeFingerprint && !sftpConfig.hostFingerprint) {
+    throw createHostFingerprintError({
+      code: 'SFTP_HOST_FINGERPRINT_REQUIRED',
+      expectedFingerprint: ''
+    })
+  }
+
+  if (sftpClient && sftpConfig.hostFingerprint) {
     try {
       await sftpClient.list('/')
       return sftpClient
     } catch {
       sftpClient = null
     }
+  } else if (sftpClient) {
+    await closeSftpConnection()
   }
 
-  if (!sftpConfig) loadSftpConfig()
-  if (!sftpConfig) throw new Error('SFTP 配置未配置，请在设置中配置 SFTP 连接信息')
-
-  sftpClient = new Client()
-  await sftpClient.connect(sftpConfig)
-  return sftpClient
+  const { config, getObservedFingerprint } = createSftpConnectionConfig(sftpConfig)
+  const client = new Client()
+  try {
+    await client.connect(config)
+    const observedFingerprint = getObservedFingerprint()
+    if (!sftpConfig.hostFingerprint) {
+      await client.end().catch(() => undefined)
+      throw createHostFingerprintError({
+        code: 'SFTP_HOST_FINGERPRINT_REQUIRED',
+        observedFingerprint
+      })
+    }
+    sftpClient = client
+    return client
+  } catch (error) {
+    await client.end().catch(() => undefined)
+    const observedFingerprint = getObservedFingerprint()
+    if (observedFingerprint) {
+      error.observedFingerprint = observedFingerprint
+      error.fingerprint = observedFingerprint
+      if (!sftpConfig.hostFingerprint) {
+        error.code = 'SFTP_HOST_FINGERPRINT_REQUIRED'
+      } else if (observedFingerprint !== sftpConfig.hostFingerprint) {
+        error.code = 'SFTP_HOST_FINGERPRINT_MISMATCH'
+        error.expectedFingerprint = sftpConfig.hostFingerprint
+        error.message = createHostFingerprintError({
+          code: error.code,
+          expectedFingerprint: sftpConfig.hostFingerprint,
+          observedFingerprint
+        }).message
+      }
+    }
+    throw error
+  }
 }
 
 /**
@@ -977,15 +1094,44 @@ function registerSftpHandlers() {
 
   ipcMain.handle(IPC_CHANNELS.SFTP_TEST, async () => {
     try {
-      await getSftpClient()
+      await getSftpClient({ probeFingerprint: true })
       return {
         success: true,
         message: `已连接到 ${sftpConfig.host}:${sftpConfig.port}`,
-        config: { host: sftpConfig.host, port: sftpConfig.port, username: sftpConfig.username }
+        fingerprint: sftpConfig.hostFingerprint,
+        config: {
+          host: sftpConfig.host,
+          port: sftpConfig.port,
+          username: sftpConfig.username,
+          hostFingerprint: sftpConfig.hostFingerprint
+        }
       }
     } catch (err) {
       console.error('SFTP 连接测试失败:', err)
-      return { success: false, error: err.message }
+      const observedFingerprint = err?.observedFingerprint || err?.fingerprint || ''
+      const expectedFingerprint = sftpConfig?.hostFingerprint || err?.expectedFingerprint || ''
+      const code = !sftpConfig
+        ? err?.code || 'SFTP_CONNECTION_FAILED'
+        : expectedFingerprint
+          ? observedFingerprint && observedFingerprint !== expectedFingerprint
+            ? 'SFTP_HOST_FINGERPRINT_MISMATCH'
+            : err?.code || 'SFTP_CONNECTION_FAILED'
+          : 'SFTP_HOST_FINGERPRINT_REQUIRED'
+      const fingerprintError =
+        code === 'SFTP_HOST_FINGERPRINT_REQUIRED'
+          ? createHostFingerprintError({ code, observedFingerprint })
+          : code === 'SFTP_HOST_FINGERPRINT_MISMATCH'
+            ? createHostFingerprintError({ code, expectedFingerprint, observedFingerprint })
+            : err
+      return {
+        success: false,
+        code,
+        error: fingerprintError?.message || err.message,
+        fingerprint: observedFingerprint,
+        observedFingerprint,
+        expectedFingerprint,
+        canConfirm: code === 'SFTP_HOST_FINGERPRINT_REQUIRED' && Boolean(observedFingerprint)
+      }
     }
   })
 
@@ -1681,6 +1827,8 @@ module.exports = {
     normalizeRemoteDir,
     sanitizeSftpPaths,
     validateSftpPaths,
+    createHostFingerprintError,
+    createSftpConnectionConfig,
     createZipArchive,
     buildRollbackFailureHistoryRecord
   }

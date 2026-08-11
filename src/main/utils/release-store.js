@@ -7,6 +7,32 @@ const { DEFAULT_RELEASE_IGNORE_RULES, normalizeRuleLines } = require('./release-
 
 const MAX_RELEASE_HISTORY = 100
 
+function normalizeHostFingerprint(value = '') {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+
+  const hex = raw.replace(/[\s:]/g, '')
+  if (/^[0-9a-f]{64}$/i.test(hex)) {
+    return `SHA256:${Buffer.from(hex, 'hex').toString('base64').replace(/=+$/, '')}`
+  }
+
+  const match = raw.replace(/\s+/g, '').match(/^sha256:([a-z0-9+/]+={0,2})$/i)
+  if (!match) {
+    throw new Error('SSH 主机指纹格式无效，请使用 SHA256:<base64> 或 64 位 hex（可含冒号）')
+  }
+
+  const encoded = match[1]
+  if (encoded.length % 4 === 1) {
+    throw new Error('SSH 主机指纹格式无效，请使用 SHA256:<base64> 或 64 位 hex（可含冒号）')
+  }
+  const digest = Buffer.from(encoded, 'base64')
+  if (digest.length !== 32) {
+    throw new Error('SSH 主机指纹格式无效，请使用 SHA256:<base64> 或 64 位 hex（可含冒号）')
+  }
+
+  return `SHA256:${digest.toString('base64').replace(/=+$/, '')}`
+}
+
 function profilesPath() {
   return path.join(app.getPath('userData'), 'release-profiles.json')
 }
@@ -61,6 +87,7 @@ function normalizeProfileRecord(profile = {}) {
     username: String(profile.username || '')
       .trim()
       .slice(0, 128),
+    hostFingerprint: normalizeHostFingerprint(profile.hostFingerprint),
     passwordEncrypted: String(profile.passwordEncrypted || ''),
     localDir: String(profile.localDir || '')
       .trim()
@@ -107,7 +134,8 @@ function readProfilePassword(profile) {
 }
 
 function safeProfile(profile = {}) {
-  const { passwordEncrypted, password: legacyPassword, ...rest } = profile
+  const hasHostFingerprint = Object.prototype.hasOwnProperty.call(profile, 'hostFingerprint')
+  const { passwordEncrypted, password: legacyPassword, hostFingerprint, ...rest } = profile
   const legacyValue = String(legacyPassword || '')
   const hasEncryptedPassword = Boolean(passwordEncrypted)
   const hasPassword = hasEncryptedPassword || Boolean(legacyValue)
@@ -116,6 +144,7 @@ function safeProfile(profile = {}) {
   // 真正建立 SFTP 连接时才由 getActiveReleaseProfile({ includePassword: true }) 读取明文。
   return {
     ...rest,
+    ...(hasHostFingerprint ? { hostFingerprint: normalizeHostFingerprint(hostFingerprint) } : {}),
     hasPassword,
     passwordMasked: hasEncryptedPassword ? '••••••••' : maskSecret(legacyValue)
   }
@@ -238,6 +267,7 @@ function markReleaseRolledBack(releaseId) {
 }
 
 module.exports = {
+  normalizeHostFingerprint,
   listReleaseProfiles,
   getActiveReleaseProfile,
   saveReleaseProfile,
@@ -246,5 +276,11 @@ module.exports = {
   loadReleaseHistory,
   appendReleaseHistory,
   markReleaseRolledBack,
-  __testables: { filterReleaseHistoryByProfile, normalizeHealthCheck, safeProfile }
+  __testables: {
+    filterReleaseHistoryByProfile,
+    normalizeHealthCheck,
+    normalizeHostFingerprint,
+    normalizeProfileRecord,
+    safeProfile
+  }
 }

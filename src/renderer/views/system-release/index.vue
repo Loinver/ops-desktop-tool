@@ -162,6 +162,42 @@
                   <span>清除已保存密码</span>
                 </div>
               </label>
+              <label class="sftp-form-field sftp-field-ignore">
+                <span>SSH 主机指纹</span>
+                <input
+                  v-model.trim="sftpSettings.hostFingerprint"
+                  type="text"
+                  placeholder="SHA256:<base64> 或 64 位 hex（可含冒号）"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+                <small class="sftp-secret-hint"
+                  >用于校验 SSH
+                  主机身份；首次连接留空时，系统只会返回观测指纹供你确认，不会自动信任。</small
+                >
+              </label>
+              <div v-if="pendingHostFingerprint" class="sftp-form-field sftp-field-ignore">
+                <span>首次信任确认</span>
+                <p class="sftp-settings-hint">
+                  服务器返回了尚未配置的 SSH 主机指纹。请确认它来自可信服务器，再保存并重试连接。
+                </p>
+                <div class="sftp-path-field">
+                  <input
+                    :value="pendingHostFingerprint"
+                    type="text"
+                    readonly
+                    aria-label="观测到的 SSH 主机指纹"
+                  />
+                  <button
+                    type="button"
+                    class="sftp-btn-secondary"
+                    :disabled="savingSftpSettings"
+                    @click="confirmSftpHostFingerprint"
+                  >
+                    确认并重试
+                  </button>
+                </div>
+              </div>
               <div class="sftp-settings-section-title">发布目录</div>
               <label class="sftp-form-field sftp-field-local-dir">
                 <span>本地目录 <em>*</em></span>
@@ -711,6 +747,7 @@ const connectionStatus = ref(null)
 const showSftpSettings = ref(false)
 const savingSftpSettings = ref(false)
 const sftpConfigSource = ref(null)
+const pendingHostFingerprint = ref('')
 const releaseProfiles = ref([])
 const activeProfileId = ref('')
 const showReleaseHistory = ref(false)
@@ -736,6 +773,7 @@ const sftpSettings = reactive({
   port: 22,
   username: '',
   password: '',
+  hostFingerprint: '',
   hasPassword: false,
   passwordMasked: '',
   clearPassword: false
@@ -1091,6 +1129,7 @@ async function startNewReleaseProfile() {
   })
   Object.assign(sftpSettings, {
     password: '',
+    hostFingerprint: '',
     hasPassword: false,
     passwordMasked: '',
     clearPassword: false
@@ -1122,6 +1161,7 @@ async function openExistingSftpSettings() {
 }
 
 async function openSftpSettings() {
+  pendingHostFingerprint.value = ''
   Object.assign(sftpPathSettings, {
     localDir: localDir.value,
     remoteDir: currentPath.value
@@ -1148,6 +1188,7 @@ async function openSftpSettings() {
         port: Number(config.port) || 22,
         username: config.username || '',
         password: '',
+        hostFingerprint: config.hostFingerprint || '',
         hasPassword: Boolean(config.hasPassword),
         passwordMasked: config.passwordMasked || '',
         clearPassword: false
@@ -1187,6 +1228,32 @@ async function browseSettingsLocalDir() {
   }
 }
 
+function handleSftpFingerprintTestFailure(testResult) {
+  const observedFingerprint = String(
+    testResult?.observedFingerprint || testResult?.fingerprint || ''
+  ).trim()
+  if (testResult?.code === 'SFTP_HOST_FINGERPRINT_REQUIRED' && observedFingerprint) {
+    pendingHostFingerprint.value = observedFingerprint
+    connectionStatus.value = {
+      success: false,
+      message: '首次连接需要确认 SSH 主机指纹'
+    }
+    MessagePlugin.warning({
+      content: '已获取服务器指纹，请确认后保存并重试连接',
+      placement: 'bottom-right'
+    })
+    return true
+  }
+  pendingHostFingerprint.value = ''
+  return false
+}
+
+async function confirmSftpHostFingerprint() {
+  if (!pendingHostFingerprint.value || savingSftpSettings.value) return
+  sftpSettings.hostFingerprint = pendingHostFingerprint.value
+  await saveSftpSettings()
+}
+
 async function saveSftpSettings() {
   savingSftpSettings.value = true
   try {
@@ -1198,6 +1265,7 @@ async function saveSftpSettings() {
       host: String(sftpSettings.host || ''),
       port: Number(sftpSettings.port) || 22,
       username: String(sftpSettings.username || ''),
+      hostFingerprint: String(sftpSettings.hostFingerprint || ''),
       password: String(sftpSettings.password || ''),
       clearPassword: Boolean(sftpSettings.clearPassword),
       localDir: String(sftpPathSettings.localDir || ''),
@@ -1221,6 +1289,7 @@ async function saveSftpSettings() {
             host: profilePayload.host,
             port: profilePayload.port,
             username: profilePayload.username,
+            hostFingerprint: profilePayload.hostFingerprint,
             password: profilePayload.password,
             clearPassword: profilePayload.clearPassword
           })
@@ -1238,6 +1307,7 @@ async function saveSftpSettings() {
     }
     Object.assign(sftpSettings, {
       password: '',
+      hostFingerprint: result.data?.hostFingerprint || profilePayload.hostFingerprint,
       hasPassword: Boolean(result.data?.hasPassword),
       passwordMasked: result.data?.passwordMasked || '',
       clearPassword: false
@@ -1249,6 +1319,7 @@ async function saveSftpSettings() {
 
     const testResult = await opsApi.sftpTest()
     if (!testResult.success) {
+      if (handleSftpFingerprintTestFailure(testResult)) return
       connectionStatus.value = { success: false, message: testResult.error }
       MessagePlugin.error({
         content: `配置已保存，但连接失败：${testResult.error}`,
@@ -1257,6 +1328,7 @@ async function saveSftpSettings() {
       return
     }
 
+    pendingHostFingerprint.value = ''
     connectionStatus.value = { success: true, message: testResult.message }
     showSftpSettings.value = false
     creatingProfile.value = false

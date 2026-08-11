@@ -75,7 +75,7 @@ pnpm test:sftp
 pnpm mcp
 ```
 
-测试覆盖安全凭证迁移、IPC 通道一致性、Renderer IPC 边界、路径边界、SFTP 部署安全、AI 图片文件处理、AI 运维核心能力和端口解析；`pnpm test:e2e` 会启动临时 Vite 服务与 Electron，验证桌面壳及关键路由可用。
+测试覆盖安全凭证迁移、IPC 通道一致性、Renderer IPC 边界、路径边界、SFTP 主机指纹与部署安全、AI 图片资源及 SSRF 防护、AI 对话、备份恢复、AI 运维核心能力和端口解析；`pnpm test:e2e` 会构建渲染页面并启动 Electron，验证桌面壳、AI 对话、图像生成、本地数据管理及其他关键路由可用。
 
 ## 构建与打包
 
@@ -124,9 +124,10 @@ export SFTP_HOST=example.com
 export SFTP_PORT=22
 export SFTP_USERNAME=deploy
 export SFTP_PASSWORD='your-password'
+export SFTP_HOST_FINGERPRINT='SHA256:服务器公钥指纹'
 ```
 
-环境变量和应用内保存的配置会作为运行时配置来源，不会在设置页回显完整密码。远程路径必须为绝对路径；应用拒绝路径穿越以及对远程根目录 `/` 的上传、部署、删除和创建目录等破坏性操作。
+环境变量和应用内保存的配置会作为运行时配置来源，不会在设置页回显完整密码。所有 SSH/SFTP 操作都要求 SHA-256 主机指纹；设置页首次测试连接时会展示观测到的指纹，必须由用户核对并明确确认后才能保存并继续。远程路径必须为绝对路径；应用拒绝路径穿越以及对远程根目录 `/` 的上传、部署、删除和创建目录等破坏性操作。
 
 ## 本地数据与凭证安全
 
@@ -143,12 +144,14 @@ export SFTP_PASSWORD='your-password'
 | `model-test-history.json`       | 手动测试与定时巡检历史                                    |
 | `model-monitor-settings.json`   | 巡检间隔、通知开关和巡检目标                              |
 | `gpt-image-config.json`         | AI 图像实验配置，API Key 为加密字段                       |
-| `gpt-image-history.json`        | AI 图像实验历史                                           |
+| `gpt-image-history.json`        | AI 图像实验历史，只保存受限预览和本地资源标识             |
+| `gpt-image-assets/`             | AI 生图原始图片，单图与目录总容量均受限制                 |
 | `ai-providers.json`             | AI Provider 配置，API Key 为加密字段                      |
 | `ai-evaluations.json`           | 模型语义评测用例与运行结果，回答会先脱敏                  |
 | `ai-log-analysis.json`          | 脱敏日志的本地规则分析和可选 AI 总结                      |
 | `ai-knowledge.json`             | 本地运维知识库，保存前会脱敏                              |
 | `ai-workflows.json`             | 自然语言工作流预览历史                                    |
+| Renderer `aiChatHistory`         | AI 对话本机暂存；支持页面内 Markdown 导出，不纳入加密备份 |
 | `ops-backup-restore-points/`    | 导入或回滚前自动保留的本机恢复点，最多保留最近 3 次       |
 | `ops-auto-backup-settings.json` | 自动备份的目录、周期、保留策略与 safeStorage 加密后的密码 |
 | `ops-auto-backup-history.json`  | 自动备份成功或失败的本机执行历史（最多 50 条）            |
@@ -159,7 +162,7 @@ JSON 数据采用临时文件加原子替换方式写入，并尽量将文件权
 
 ## 本地数据备份与恢复
 
-在 **本地数据管理** 中可按运维、发布、模型可靠性、AI 与知识、本机工具和实验功能分类导出 `.opsbackup` 加密备份。备份使用用户设置的密码和 AES-256-GCM 加密，应用不会保存或找回手动备份密码。恢复前会验证密码、加密完整性、文件白名单和 JSON 格式；恢复仅覆盖备份中已有的文件，未包含的数据不会被删除，并会在本机创建恢复点后重启应用。
+在 **本地数据管理** 中可按运维、发布、模型可靠性、AI 与知识、本机工具和实验功能分类导出 `.opsbackup` 加密备份。备份使用用户设置的密码和 AES-256-GCM 加密，应用不会保存或找回手动备份密码。恢复前会验证密码、加密完整性、文件白名单和 JSON 格式；恢复仅覆盖备份中已有的文件，未包含的数据不会被删除，并会在本机创建恢复点后重启应用。 实验功能备份会保留 AI 生图配置、历史元数据和小尺寸预览，但不包含 `gpt-image-assets/` 中的原始图片；跨设备恢复后仍可查看预览，原图需在原设备另行保存或迁移。AI 对话暂存位于 Renderer 的本机存储，不进入 `.opsbackup`，需要长期留存时请在 AI 对话页使用“导出”。
 
 也可指定专用目录，启用每日或每周自动备份，设置保留 1–30 个自动备份文件，并在页面查看最近执行历史。页面提供健康检查，可核验计划状态、目录读写权限、最近执行结果、缺失备份文件和可用磁盘空间。自动备份密码仅通过 Electron `safeStorage` 加密保存在本机；页面只显示是否已保存。每条成功历史会保留当次受系统安全存储保护的密码引用，因此即使后来更换计划密码，仍可直接校验或一键恢复旧备份；密码及其密文都不会传给渲染层。历史条目还可打开所在目录、删除备份；外部删除的文件会标记为缺失并可清理记录。保留策略仅会清理本应用创建的 `ops-desktop-auto-*.opsbackup` 文件。任意恢复点回滚前都会再创建当前数据的恢复点，因此回滚操作本身可撤销。
 
@@ -199,11 +202,11 @@ MCP 服务通过 stdio 提供严格只读的 `get_release_history`、`get_model_
 
 ### 版本管理
 
-先使用 `npm version patch/minor/major` 或手动修改 `package.json` 中的版本，再创建与版本完全一致的 `v*` tag。例如版本为 `1.0.4` 时，推送 `v1.0.4`：
+先使用 `npm version patch/minor/major` 或手动修改 `package.json` 中的版本，再创建与版本完全一致的 `v*` tag。例如版本为 `1.0.7` 时，推送 `v1.0.7`：
 
 ```bash
-git tag v1.0.4
-git push origin v1.0.4
+git tag v1.0.7
+git push origin v1.0.7
 ```
 
 推送匹配 `package.json` 版本的 `v*` tag 会触发完整 CI，并自动创建或更新对应的 GitHub Release，上传现有的 macOS `.dmg`/`.zip` 和 Windows `.exe`/`.zip` 产物。`main` push 和针对 `main` 的 PR 只构建与验证，不发布 Release；tag 与 `package.json` 版本不一致时，CI 会直接失败。
@@ -219,7 +222,7 @@ CI 仍会检查每个安装包的目标架构，并直接启动打包后的 `.ap
 
 应用更新页从 GitHub Releases 获取当前平台的安装包。当前仓库为私有仓库，首次使用前需要配置一个对该仓库具有只读内容访问权限的 GitHub Token；Token 只在 Electron 主进程中使用，并通过系统 `safeStorage` 加密保存在本机，不会传给 Renderer。更新检查会选择匹配当前平台和架构的安装包，并使用 Release 中的 `SHA256SUMS.txt` 校验下载内容。
 
-`v1.0.6` 已于 2026 年 8 月 10 日正式发布，包含 macOS arm64/x64 与 Windows arm64/x64 的 DMG、ZIP、EXE 资产。Windows 下载完成后可以确认安装；macOS 因未签名和未公证，下载完成后需要手动替换应用并按系统提示允许首次打开。
+当前代码版本为 `1.0.7`。完成本地发布门禁并推送匹配的 `v1.0.7` tag 后，CI 会生成 macOS arm64/x64 与 Windows arm64/x64 的 DMG、ZIP、EXE 资产。Windows 下载完成后可以确认安装；macOS 因未签名和未公证，下载完成后需要手动替换应用并按系统提示允许首次打开。
 
 CI 分别使用 `macos-15`（Apple Silicon）和 `macos-15-intel`（Intel）Runner 构建，并在每个架构上直接启动打包后的 `.app`，确认主进程与渲染页面能够正常加载后才上传产物。
 
