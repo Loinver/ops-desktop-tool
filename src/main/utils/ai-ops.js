@@ -3,6 +3,11 @@ const crypto = require('node:crypto')
 const os = require('node:os')
 const { readJsonFile, writeJsonFile } = require('./json-store')
 const { loadProviders } = require('./ccswitch')
+const {
+  createSafeTextEmitter,
+  readServerSentEvents,
+  parseCompletionStreamEvent
+} = require('./ai-chat-stream')
 
 const MAX_PROVIDERS = 20
 const MAX_EVALUATION_CASES = 50
@@ -496,6 +501,29 @@ async function askAiChat({
   return { content: redactSensitiveText(response.content), model: response.model }
 }
 
+async function askAiChatStream({
+  userDataPath,
+  providerId,
+  messages,
+  knowledgeResults,
+  signal,
+  onDelta,
+  providerLoader = loadProviders
+}) {
+  const provider = await runtimeProvider({ userDataPath, providerId, providerLoader })
+  const response = await requestCompletionStream(provider, {
+    messages: buildAiChatMessages(messages, knowledgeResults),
+    temperature: 0.2,
+    signal,
+    onDelta
+  })
+  return {
+    content: redactSensitiveText(response.content),
+    model: response.model,
+    truncated: response.truncated
+  }
+}
+
 function providerRequestError(data, raw, status) {
   const error = data?.error
   const message = redactSensitiveText(
@@ -702,6 +730,129 @@ function completionRequests(provider, options) {
   )
   const responses = openAiResponsesRequest(provider, options.messages, options.temperature)
   return provider.wireApi === 'responses' ? [responses, chat] : [chat, responses]
+}
+
+function streamingRequest(request, streamType) {
+  const options = { ...request.options, headers: { ...request.options.headers } }
+  const body = JSON.parse(options.body)
+  body.stream = true
+  options.body = JSON.stringify(body)
+  options.headers.accept = 'text/event-stream'
+  let url = request.url
+  if (streamType === 'gemini') {
+    url = url.replace(/:generateContent(?=\?|$)/, ':streamGenerateContent')
+    url += `${url.includes('?') ? '&' : '?'}alt=sse`
+  }
+  return { ...request, url, options, streamType }
+}
+
+function completionStreamRequests(provider, options) {
+  return completionRequests(provider, options).map((request) =>
+    streamingRequest(
+      request,
+      provider.protocol === 'anthropic'
+        ? 'anthropic'
+        : provider.protocol === 'gemini'
+          ? 'gemini'
+          : request.url.endsWith('/responses')
+            ? 'openai-responses'
+            : 'openai-chat'
+    )
+  )
+}
+
+function parseStreamError(provider, result, payload) {
+  const raw = typeof payload === 'string' ? payload : JSON.stringify(payload || {})
+  const error = new Error(providerRequestError(payload, raw, result.response.status || 0))
+  error.providerPayload = payload
+  return error
+}
+
+async function requestCompletionStream(
+  provider,
+  { messages = [], temperature = 0.2, responseFormat, signal, onDelta } = {}
+) {
+  const controller = new AbortController()
+  let timedOut = false
+  const timer = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, 60_000)
+  const abortExternal = () => controller.abort()
+  if (signal?.aborted) controller.abort()
+  else signal?.addEventListener('abort', abortExternal, { once: true })
+
+  try {
+    const requests = completionStreamRequests(provider, { messages, temperature, responseFormat })
+    let lastResult
+    for (let index = 0; index < requests.length; index += 1) {
+      const request = requests[index]
+      const response = await fetch(request.url, { ...request.options, signal: controller.signal })
+      lastResult = { response, raw: '', data: null }
+      if (!response.ok) {
+        const failedStream = await readServerSentEvents(response, () => true)
+        lastResult.raw = failedStream.fallbackBody
+        try {
+          lastResult.data = JSON.parse(lastResult.raw)
+        } catch {
+          lastResult.data = null
+        }
+        if (index < requests.length - 1 && [404, 405].includes(response.status)) continue
+        throw new Error(providerRequestError(lastResult.data, lastResult.raw, response.status))
+      }
+
+      let model = provider.model
+      let usage = {}
+      let finalContent = ''
+      const emitter = createSafeTextEmitter({ onDelta, redact: redactSensitiveText })
+      const streamResult = await readServerSentEvents(response, ({ event, data }) => {
+        const parsed = parseCompletionStreamEvent(provider, event, data)
+        if (parsed.error) throw parseStreamError(provider, { response }, parsed.error)
+        if (parsed.model) model = string(parsed.model, 160) || model
+        if (parsed.usage) usage = parsed.usage
+        if (parsed.finalContent) finalContent = parsed.finalContent
+        if (parsed.delta && !emitter.push(parsed.delta)) return false
+        return !parsed.done
+      })
+
+      if (streamResult.sawEvents && !emitter.raw && finalContent) emitter.push(finalContent)
+
+      if (!streamResult.sawEvents) {
+        let data
+        try {
+          data = JSON.parse(streamResult.fallbackBody)
+        } catch {
+          data = null
+        }
+        if (data?.error) throw parseStreamError(provider, { response }, data)
+        const content = request.extract(data)
+        if (!content) throw new Error('AI 未返回可用文本')
+        emitter.push(content)
+        usage = data?.usage || data?.usageMetadata || usage
+        model = string(data?.model || data?.modelVersion, 160) || model
+      }
+
+      const result = emitter.finish()
+      if (!result.content.trim()) throw new Error('AI 未返回可用文本')
+      return { content: result.content.trim(), usage, model, truncated: result.truncated }
+    }
+    throw new Error(
+      providerRequestError(lastResult?.data, lastResult?.raw, lastResult?.response?.status || 0)
+    )
+  } catch (error) {
+    if (signal?.aborted) {
+      const cancelled = new Error('AI 请求已取消')
+      cancelled.code = 'AI_CHAT_CANCELLED'
+      cancelled.cause = error
+      throw cancelled
+    }
+    if (timedOut || error?.name === 'AbortError')
+      throw new Error('AI 请求超时（60 秒）', { cause: error })
+    throw error
+  } finally {
+    clearTimeout(timer)
+    signal?.removeEventListener('abort', abortExternal)
+  }
 }
 
 async function requestCompletion(
@@ -1209,7 +1360,9 @@ module.exports = {
   buildKnowledgeContext,
   buildAiChatMessages,
   askAiChat,
+  askAiChatStream,
   requestCompletion,
+  requestCompletionStream,
   loadEvaluationState,
   saveEvaluationCases,
   runEvaluation,

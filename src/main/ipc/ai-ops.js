@@ -14,6 +14,7 @@ const {
   activateProvider,
   runtimeProvider,
   askAiChat,
+  askAiChatStream,
   requestCompletion,
   loadEvaluationState,
   saveEvaluationCases,
@@ -43,6 +44,7 @@ const {
 } = require('../utils/ops-automation')
 
 let automationTimer = null
+const activeChatStreams = new Map()
 
 function userDataPath() {
   return app.getPath('userData')
@@ -75,6 +77,21 @@ function startAutomationTimer() {
     runDueAutomationTasks(userDataPath()).catch((error) => console.error('自动化巡检失败:', error))
   }, 60_000)
   automationTimer.unref?.()
+}
+
+function normalizeChatStreamRequestId(value) {
+  const requestId = String(value || '').trim()
+  if (!/^[a-zA-Z0-9:_-]{8,120}$/.test(requestId)) throw new Error('AI 对话请求标识无效')
+  return requestId
+}
+
+function chatStreamKey(sender, requestId) {
+  return `${sender?.id || 'renderer'}:${requestId}`
+}
+
+function sendChatStreamEvent(sender, payload) {
+  if (!sender || sender.isDestroyed?.()) return
+  sender.send(IPC_CHANNELS.AI_CHAT_STREAM_EVENT, payload)
 }
 
 function copilotContext(prompt) {
@@ -177,6 +194,69 @@ function registerAiOpsHandlers() {
     } catch (error) {
       return failure(error)
     }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.AI_CHAT_STREAM_START, async (event, options = {}) => {
+    const requestId = normalizeChatStreamRequestId(options.requestId)
+    const sender = event.sender
+    const key = chatStreamKey(sender, requestId)
+    if (activeChatStreams.has(key)) throw new Error('AI 对话请求已存在')
+    const controller = new AbortController()
+    const entry = { controller, cancelled: false }
+    activeChatStreams.set(key, entry)
+    const onDestroyed = () => {
+      entry.cancelled = true
+      controller.abort()
+    }
+    sender.once?.('destroyed', onDestroyed)
+
+    try {
+      const result = await askAiChatStream({
+        userDataPath: userDataPath(),
+        providerId: options.providerId,
+        messages: options.messages,
+        knowledgeResults: options.knowledgeResults,
+        signal: controller.signal,
+        onDelta: (delta) => {
+          if (entry.cancelled || controller.signal.aborted) return
+          sendChatStreamEvent(sender, { requestId, type: 'delta', delta })
+        }
+      })
+      if (entry.cancelled || controller.signal.aborted) {
+        const cancelled = new Error('AI 请求已取消')
+        cancelled.code = 'AI_CHAT_CANCELLED'
+        throw cancelled
+      }
+      sendChatStreamEvent(sender, {
+        requestId,
+        type: 'done',
+        model: result.model,
+        truncated: Boolean(result.truncated)
+      })
+      return success({
+        requestId,
+        content: result.content,
+        model: result.model,
+        truncated: result.truncated
+      })
+    } catch (error) {
+      const cancelled = entry.cancelled || error?.code === 'AI_CHAT_CANCELLED'
+      if (cancelled) return { ok: false, cancelled: true, requestId, error: '已停止生成' }
+      return { ...failure(error), requestId, retryable: true }
+    } finally {
+      sender.removeListener?.('destroyed', onDestroyed)
+      activeChatStreams.delete(key)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.AI_CHAT_STREAM_CANCEL, async (event, options = {}) => {
+    const requestId = normalizeChatStreamRequestId(options.requestId)
+    const key = chatStreamKey(event.sender, requestId)
+    const entry = activeChatStreams.get(key)
+    if (!entry) return success({ requestId, cancelled: false })
+    entry.cancelled = true
+    entry.controller.abort()
+    return success({ requestId, cancelled: true })
   })
 
   ipcMain.handle(IPC_CHANNELS.AI_EVALUATION_SAVE_CASES, async (_event, cases) => {

@@ -5,15 +5,23 @@
         <button
           class="btn-secondary"
           type="button"
-          :disabled="chatMessages.length === 0"
+          :disabled="chatBusy || chatMessages.length === 0"
           @click="newChat"
         >
           <t-icon name="add" /> 新对话
         </button>
         <button
+          class="btn-secondary"
+          type="button"
+          :disabled="chatBusy || chatMessages.length === 0"
+          @click="exportChat"
+        >
+          <t-icon name="download" /> 导出
+        </button>
+        <button
           class="btn-text"
           type="button"
-          :disabled="chatMessages.length === 0"
+          :disabled="chatBusy || chatMessages.length === 0"
           @click="clearChat"
         >
           <t-icon name="trash" /> 清空
@@ -118,8 +126,13 @@
             <div class="message-avatar" aria-hidden="true"><t-icon name="chat" /></div>
             <div class="message-stack">
               <div class="message-meta"><strong>智能助手</strong></div>
-              <div class="message-bubble message-bubble--thinking">
-                <t-icon name="loading" class="spinning" /> 正在思考，请稍候…
+              <div :class="['message-bubble', { 'message-bubble--thinking': !streamingReply }]">
+                <template v-if="streamingReply">
+                  <p class="message-content message-content--streaming">{{ streamingReply }}</p>
+                </template>
+                <template v-else>
+                  <t-icon name="loading" class="spinning" /> 正在思考，请稍候…
+                </template>
               </div>
             </div>
           </article>
@@ -161,22 +174,31 @@
                   v-if="activeProvider"
                   class="provider-switch"
                   type="button"
+                  :disabled="chatBusy"
                   @click="switchProvider"
                 >
                   <t-icon name="refresh" /> 切换模型
                 </button>
                 <button
+                  v-if="chatBusy"
+                  class="send-button send-button--stop"
+                  type="button"
+                  aria-label="停止生成"
+                  @click="cancelAiChat"
+                >
+                  <t-icon name="stop-circle" />
+                  <span>停止</span>
+                </button>
+                <button
+                  v-else
                   class="send-button"
                   type="button"
                   aria-label="发送问题"
-                  :disabled="chatBusy || !activeProviderReady || !chatInput.trim()"
+                  :disabled="!activeProviderReady || !chatInput.trim()"
                   @click="sendAiChat"
                 >
-                  <t-icon
-                    :name="chatBusy ? 'loading' : 'arrow-up'"
-                    :class="{ spinning: chatBusy }"
-                  />
-                  <span>{{ chatBusy ? '发送中' : '发送' }}</span>
+                  <t-icon name="arrow-up" />
+                  <span>发送</span>
                 </button>
               </div>
             </div>
@@ -193,9 +215,14 @@
 
 <script setup>
 import { opsApi } from '../../api/opsApi.js'
-import { computed, nextTick, onActivated, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onActivated, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import PageHeader from '../../components/common/PageHeader.vue'
+import {
+  chatHistoryToMarkdown,
+  normalizeChatHistory,
+  serializeChatHistory
+} from './chat-history.js'
 import MessagePlugin from 'tdesign-vue-next/es/message/plugin.mjs'
 
 defineOptions({ name: 'AiChat' })
@@ -209,6 +236,8 @@ const chatInput = ref('')
 const chatBusy = ref(false)
 const chatError = ref('')
 const retryableChatError = ref(false)
+const streamingReply = ref('')
+const cancelRequested = ref(false)
 
 const knowledgeQuery = ref('')
 const knowledgeUseAi = ref(false)
@@ -241,6 +270,9 @@ const examplePrompts = [
 
 const chatHistory = ref(null)
 const composerInput = ref(null)
+let historyStorageWarningShown = false
+let activeChatRequestId = ''
+let unsubscribeChatStream = null
 
 async function loadProviderState() {
   try {
@@ -255,10 +287,29 @@ async function loadProviderState() {
   }
 }
 
+function subscribeToChatStream() {
+  const subscribe = opsApi.onAiChatStreamEvent
+  if (typeof subscribe !== 'function') return
+  unsubscribeChatStream = subscribe((payload) => {
+    if (!payload || payload.requestId !== activeChatRequestId) return
+    if (payload.type === 'delta' && payload.delta) {
+      streamingReply.value = `${streamingReply.value}${String(payload.delta)}`.slice(0, 20_000)
+      nextTick(scrollToBottom)
+    }
+  })
+}
+
 onMounted(async () => {
+  subscribeToChatStream()
   loadHistory()
   await loadProviderState()
   nextTick(scrollToBottom)
+})
+
+onBeforeUnmount(() => {
+  unsubscribeChatStream?.()
+  unsubscribeChatStream = null
+  if (activeChatRequestId) void opsApi.cancelAiChatStream?.(activeChatRequestId)
 })
 
 onActivated(loadProviderState)
@@ -279,63 +330,140 @@ watch(knowledgeQuery, () => {
 })
 
 function loadHistory() {
-  const saved = localStorage.getItem('aiChatHistory')
-  if (!saved) return
-
   try {
-    const messages = JSON.parse(saved)
-    chatMessages.value = Array.isArray(messages)
-      ? messages.map((message) => ({ ...message, createdAt: message.createdAt || null }))
-      : []
+    const saved = localStorage.getItem('aiChatHistory')
+    chatMessages.value = saved ? normalizeChatHistory(JSON.parse(saved)) : []
   } catch {
     chatMessages.value = []
   }
 }
 
 function saveHistory() {
-  localStorage.setItem('aiChatHistory', JSON.stringify(chatMessages.value))
+  try {
+    localStorage.setItem('aiChatHistory', serializeChatHistory(chatMessages.value))
+    return true
+  } catch {
+    // localStorage 可能被系统策略禁用或被其他页面占满，不能阻断提问流程。
+    try {
+      localStorage.removeItem('aiChatHistory')
+      localStorage.setItem('aiChatHistory', serializeChatHistory(chatMessages.value.slice(-20)))
+    } catch {
+      // 内存中的当前会话仍然可用，仅不再持久化。
+    }
+    if (!historyStorageWarningShown) {
+      historyStorageWarningShown = true
+      MessagePlugin.warning({
+        content: '本机暂存空间不足，当前对话仍可使用但可能无法持久化',
+        placement: 'bottom-right'
+      })
+    }
+    return false
+  }
 }
 
 function addMessage(role, content) {
-  chatMessages.value.push({
-    id: `${role}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-    role,
-    content,
-    createdAt: Date.now()
-  })
+  chatMessages.value = normalizeChatHistory([
+    ...chatMessages.value,
+    {
+      id: `${role}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      role,
+      content,
+      createdAt: Date.now()
+    }
+  ])
   saveHistory()
 }
 
+function createChatRequestId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `chat-${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
+function saveInterruptedReply(suffix) {
+  const partial = streamingReply.value.trim()
+  if (!partial) return
+  addMessage('assistant', `${partial}\n\n${suffix}`)
+}
+
 async function requestAssistantReply() {
+  const requestId = createChatRequestId()
+  activeChatRequestId = requestId
+  streamingReply.value = ''
+  cancelRequested.value = false
   chatBusy.value = true
   let completed = false
   try {
-    const result = await opsApi.askAiChat({
+    const streamRequest = opsApi.askAiChatStream
+    const requestOptions = {
+      requestId,
       providerId: providerState.value.activeProviderId,
       messages: chatMessages.value.map((message) => ({
         role: message.role,
         content: message.content
       })),
       knowledgeResults: searched.value && knowledgeUseAi.value ? knowledgeResults.value : []
-    })
+    }
+    const result =
+      typeof streamRequest === 'function'
+        ? await streamRequest(requestOptions)
+        : await opsApi.askAiChat(requestOptions)
+
+    if (result?.cancelled) {
+      saveInterruptedReply('（已停止生成）')
+      chatError.value = '已停止生成，可以重试上一条问题'
+      retryableChatError.value = true
+      return
+    }
 
     if (!result?.ok) {
+      saveInterruptedReply('（响应中断）')
       chatError.value = result?.error || 'AI 对话失败'
       retryableChatError.value = true
       return
     }
 
-    addMessage('assistant', result.content || '')
+    const content = String(result.content || streamingReply.value).trim()
+    if (!content) throw new Error('AI 未返回可用文本')
+    addMessage('assistant', content)
+    if (result.truncated) {
+      MessagePlugin.warning({ content: '回答过长，已安全截断', placement: 'bottom-right' })
+    }
     retryableChatError.value = false
     completed = true
   } catch (error) {
-    chatError.value = error?.message || 'AI 对话失败，请重试'
-    retryableChatError.value = true
-    MessagePlugin.error({ content: chatError.value, placement: 'bottom-right' })
+    const cancelled = cancelRequested.value || error?.code === 'AI_CHAT_CANCELLED'
+    if (cancelled) {
+      saveInterruptedReply('（已停止生成）')
+      chatError.value = '已停止生成，可以重试上一条问题'
+      retryableChatError.value = true
+    } else {
+      saveInterruptedReply('（响应中断）')
+      chatError.value = error?.message || 'AI 对话失败，请重试'
+      retryableChatError.value = true
+      MessagePlugin.error({ content: chatError.value, placement: 'bottom-right' })
+    }
   } finally {
+    if (activeChatRequestId === requestId) activeChatRequestId = ''
+    streamingReply.value = ''
+    cancelRequested.value = false
     chatBusy.value = false
     // 检索证据只用于下一次提问；请求失败时保留它，确保“重试”仍使用同一批证据。
     if (completed) searched.value = false
+  }
+}
+
+async function cancelAiChat() {
+  if (!chatBusy.value || !activeChatRequestId || cancelRequested.value) return
+  cancelRequested.value = true
+  try {
+    const result = await opsApi.cancelAiChatStream?.(activeChatRequestId)
+    if (result?.ok === false) throw new Error(result.error || '停止生成失败')
+  } catch (error) {
+    cancelRequested.value = false
+    chatError.value = error?.message || '停止生成失败'
+    MessagePlugin.error({ content: chatError.value, placement: 'bottom-right' })
   }
 }
 
@@ -404,11 +532,26 @@ async function copyMessage(message) {
 }
 
 function clearChat() {
+  if (chatBusy.value) return
   chatMessages.value = []
   chatInput.value = ''
   chatError.value = ''
   retryableChatError.value = false
   saveHistory()
+}
+
+function exportChat() {
+  if (chatMessages.value.length === 0) return
+  const blob = new Blob([chatHistoryToMarkdown(chatMessages.value)], {
+    type: 'text/markdown;charset=utf-8'
+  })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `ai-chat-${new Date().toISOString().replace(/[:.]/g, '-')}.md`
+  link.click()
+  URL.revokeObjectURL(url)
+  MessagePlugin.success({ content: '对话已导出', placement: 'bottom-right' })
 }
 
 function newChat() {
@@ -845,6 +988,17 @@ function configureProvider() {
   word-break: break-word;
 }
 
+.message-content--streaming::after {
+  display: inline-block;
+  width: 6px;
+  height: 1.1em;
+  margin-left: 3px;
+  vertical-align: -0.18em;
+  background: var(--primary);
+  content: '';
+  animation: stream-caret 0.9s steps(1, end) infinite;
+}
+
 .message-actions {
   gap: 4px;
   margin-top: 4px;
@@ -1040,6 +1194,16 @@ function configureProvider() {
   transform: translateY(-1px);
 }
 
+.send-button--stop {
+  color: var(--danger);
+  background: var(--danger-light);
+}
+
+.send-button--stop:hover:not(:disabled) {
+  filter: none;
+  background: color-mix(in srgb, var(--danger-light) 78%, var(--card-bg));
+}
+
 .send-button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
@@ -1064,6 +1228,12 @@ function configureProvider() {
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@keyframes stream-caret {
+  50% {
+    opacity: 0;
   }
 }
 
