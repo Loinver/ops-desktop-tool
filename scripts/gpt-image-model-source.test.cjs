@@ -129,9 +129,13 @@ test('旧版手动配置会迁移加密并继续用于请求', async () => {
     assert.equal(resolved.baseUrl, 'https://legacy.example.com/v1')
     assert.equal(resolved.apiKey, 'sk-legacy-manual-secret')
     assert.equal(resolved.model, 'legacy-image-model')
+    assert.equal(resolved.count, 1)
+    assert.equal(resolved.retryCount, 1)
 
     const migrated = JSON.parse(fs.readFileSync(configFile, 'utf8'))
     assert.equal(migrated.sourceMode, 'manual')
+    assert.equal(migrated.count, 1)
+    assert.equal(migrated.retryCount, 1)
     assert.equal('apiKey' in migrated, false)
     assert.match(migrated.apiKeyEncrypted, /^safe-storage:v1:/)
   } finally {

@@ -753,3 +753,102 @@
     min-width: 78px;
   }
 }
+
+/* AI 生图批量任务、参考图与重试交互 */
+.btn-inline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--primary);
+  background: #fff;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.btn-inline.danger {
+  color: var(--danger);
+  border-color: #fecaca;
+}
+
+.btn-inline:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.error-box {
+  flex-wrap: wrap;
+}
+
+.image-results {
+  width: min(900px, 100%);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.image-results .image-result {
+  width: 100%;
+  min-width: 0;
+}
+
+.image-results .image-result:only-child {
+  grid-column: 1 / -1;
+  width: min(520px, 100%);
+}
+
+.composer-reference {
+  grid-column: 1 / -1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--primary) 24%, var(--border));
+  border-radius: var(--radius);
+  background: var(--primary-light);
+}
+
+.composer-reference img {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  background: #fff;
+}
+
+.composer-reference div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.composer-reference strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.composer-reference span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+@media (max-width: 700px) {
+  .image-results {
+    grid-template-columns: 1fr;
+  }
+
+  .image-results .image-result:only-child {
+    grid-column: auto;
+  }
+}

@@ -59,7 +59,6 @@ test('AI 生图历史会限制字符串和预览体积，避免巨大 JSON 再�
   assert.equal(item.durationMs, 24 * 60 * 60 * 1000)
 })
 
-
 test('AI 生图混合历史会保留新格式记录并逐项迁移旧版 Base64 图片', async () => {
   const migratedAssetId = '223e4567-e89b-42d3-a456-426614174000'
   const legacyImageUrl = `data:image/png;base64,${Buffer.from('legacy-image').toString('base64')}`
@@ -96,5 +95,30 @@ test('迁移旧历史触发配额淘汰时会同步移除对应历史记录', as
     async () => ({ assetId: migratedAssetId, previewUrl, removedAssetIds: [assetId] })
   )
 
-  assert.deepEqual(result.history.map((item) => item.id), ['legacy'])
+  assert.deepEqual(
+    result.history.map((item) => item.id),
+    ['legacy']
+  )
+})
+
+test('AI 生图历史会保存批量、编辑来源和重试元数据并限制边界', () => {
+  const item = __testables.sanitizeHistoryItem({
+    id: 'batch-item',
+    prompt: '编辑图片',
+    assetId,
+    imageUrl: previewUrl,
+    mode: 'edit',
+    parentAssetId: assetId,
+    batchId: 'batch-1',
+    batchIndex: 99,
+    batchSize: 99,
+    attempts: 99
+  })
+
+  assert.equal(item.mode, 'edit')
+  assert.equal(item.parentAssetId, assetId)
+  assert.equal(item.batchId, 'batch-1')
+  assert.equal(item.batchIndex, 3)
+  assert.equal(item.batchSize, 4)
+  assert.equal(item.attempts, 3)
 })

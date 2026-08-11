@@ -11,6 +11,7 @@
           <span>{{ config.model || '未设置模型' }}</span>
           <span>{{ config.size }}</span>
           <span>{{ config.quality }}</span>
+          <span>{{ config.count }} 张/批</span>
         </div>
         <button type="button" class="btn-ghost" @click="openHistory">
           <t-icon name="history" />
@@ -65,48 +66,99 @@
 
             <div v-if="message.loading" class="generating">
               <span class="spinner"></span>
-              <span>生成中...</span>
+              <span>生成中，可自动重试临时故障...</span>
+              <button type="button" class="btn-inline danger" @click="cancelGeneration">
+                <t-icon name="stop-circle" />
+                停止
+              </button>
             </div>
 
             <div v-if="message.error" class="error-box">
-              {{ message.error }}
+              <span>{{ message.error }}</span>
+              <button
+                v-if="message.retryable"
+                type="button"
+                class="btn-inline"
+                :disabled="generating"
+                @click="retryMessage(message)"
+              >
+                <t-icon name="refresh" />
+                重试
+              </button>
             </div>
 
-            <figure v-if="message.imageUrl" class="image-result">
-              <img :src="message.imageUrl" alt="AI 生图 生成结果" />
-              <figcaption v-if="message.revisedPrompt">{{ message.revisedPrompt }}</figcaption>
-              <div class="image-actions">
-                <button type="button" class="btn-download" @click="continueFromMessage(message)">
-                  <t-icon name="edit" />
-                  <span>继续调整</span>
-                </button>
-                <button
-                  type="button"
-                  class="btn-download"
-                  :disabled="isDownloading(message.id)"
-                  @click="downloadImage(message)"
-                >
-                  <t-icon name="download" />
-                  <span>{{ isDownloading(message.id) ? '准备下载…' : '下载' }}</span>
-                </button>
-              </div>
-            </figure>
+            <div v-if="message.images?.length" class="image-results">
+              <figure v-for="image in message.images" :key="image.id" class="image-result">
+                <img :src="image.imageUrl" alt="AI 生图生成结果" />
+                <figcaption v-if="image.revisedPrompt">{{ image.revisedPrompt }}</figcaption>
+                <div class="image-actions">
+                  <button
+                    type="button"
+                    class="btn-download"
+                    @click="selectReference(message, image, 'edit')"
+                  >
+                    <t-icon name="edit" />
+                    <span>编辑</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="btn-download"
+                    @click="selectReference(message, image, 'variation')"
+                  >
+                    <t-icon name="refresh" />
+                    <span>变体</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="btn-download"
+                    :disabled="isDownloading(image.id)"
+                    @click="downloadImage(image)"
+                  >
+                    <t-icon name="download" />
+                    <span>{{ isDownloading(image.id) ? '准备下载…' : '下载' }}</span>
+                  </button>
+                </div>
+              </figure>
+            </div>
           </article>
         </div>
 
         <form class="composer" @submit.prevent="sendMessage">
+          <div v-if="selectedReference" class="composer-reference">
+            <img :src="selectedReference.imageUrl" alt="当前参考图" />
+            <div>
+              <strong>{{ requestModeLabel }}</strong>
+              <span>原图仅在主进程本地读取，不会暴露文件路径</span>
+            </div>
+            <button
+              type="button"
+              class="icon-button"
+              aria-label="取消参考图"
+              @click="clearReference"
+            >
+              <t-icon name="close" />
+            </button>
+          </div>
           <div class="composer-input">
             <input
               v-model="draft"
               type="text"
-              placeholder="描述图片，或继续说想怎么调整..."
+              :placeholder="
+                requestMode === 'variation'
+                  ? '描述希望保留的风格或变体方向...'
+                  : '描述图片，或继续说想怎么调整...'
+              "
               :disabled="generating"
             />
           </div>
-          <span class="composer-hint">{{ configReady ? 'Enter 发送' : configReadyHint }}</span>
+          <span class="composer-hint">{{
+            configReady ? `${requestModeLabel} · Enter 发送` : configReadyHint
+          }}</span>
           <button class="btn-send" type="submit" :disabled="generating || !draft.trim()">
             <t-icon name="send" />
-            <span>{{ generating ? '生成中' : '发送' }}</span>
+            <span>{{
+              generating ? '生成中' : `发送${config.count > 1 ? ` ×${config.count}` : ''}`
+            }}</span>
           </button>
         </form>
       </section>
@@ -276,9 +328,28 @@
               </select>
             </label>
 
+            <label class="field">
+              <span>每批张数</span>
+              <select v-model.number="settingsConfig.count">
+                <option :value="1">1 张</option>
+                <option :value="2">2 张</option>
+                <option :value="3">3 张</option>
+                <option :value="4">4 张</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>临时故障重试</span>
+              <select v-model.number="settingsConfig.retryCount">
+                <option :value="0">不自动重试</option>
+                <option :value="1">最多重试 1 次</option>
+                <option :value="2">最多重试 2 次</option>
+              </select>
+            </label>
+
             <label class="toggle-row checkbox-row wide">
               <input v-model="useContext" type="checkbox" />
-              <span>携带最近对话上下文</span>
+              <span>仅文生图携带最近对话上下文</span>
             </label>
           </div>
 
@@ -362,7 +433,7 @@
 
 <script setup>
 import { opsApi } from '../../api/opsApi.js'
-import { computed, reactive, ref, nextTick, onMounted } from 'vue'
+import { computed, reactive, ref, nextTick, onBeforeUnmount, onMounted } from 'vue'
 import MessagePlugin from 'tdesign-vue-next/es/message/plugin.mjs'
 import { Select as TSelect } from 'tdesign-vue-next/es/select/index.mjs'
 
@@ -375,16 +446,17 @@ const config = reactive({
   hasApiKey: false,
   isReady: false,
   apiKeyMasked: '',
-  model: 'gpt-image-1',
+  model: 'gpt-image-2',
   size: '1024x1024',
-  quality: 'auto'
+  quality: 'auto',
+  count: 1,
+  retryCount: 1
 })
-
 const settingsConfig = reactive({ ...config })
-
 const draft = ref('')
 const messages = ref([])
 const generating = ref(false)
+const activeRequestId = ref('')
 const saving = ref(false)
 const showSettings = ref(false)
 const showHistory = ref(false)
@@ -400,6 +472,8 @@ const clearApiKey = ref(false)
 const useContext = ref(true)
 const messagesEl = ref(null)
 const historyItems = ref([])
+const selectedReference = ref(null)
+const requestMode = ref('generate')
 const HISTORY_STORAGE_KEY = 'ops:gpt-image:history'
 const MAX_HISTORY_ITEMS = 80
 const promptSuggestions = [
@@ -412,11 +486,9 @@ const selectableModels = computed(() => {
   const current = settingsConfig.model ? [settingsConfig.model] : []
   return [...new Set([...current, ...modelOptions.value])]
 })
-
 function sourceKey(source = {}) {
   return `${source.appType || ''}::${source.id || ''}`
 }
-
 const reliabilityProviderSources = computed(() =>
   providerSources.value.filter((source) => source.protocol === 'openai' && source.models?.length)
 )
@@ -462,20 +534,18 @@ const configReady = computed(() => {
 const configReadyHint = computed(() =>
   config.sourceMode === 'model-reliability' ? '请先选择已通过模型' : '请先设置 API Key'
 )
+const requestModeLabel = computed(() => {
+  if (requestMode.value === 'edit') return '编辑原图'
+  if (requestMode.value === 'variation') return '生成变体'
+  return '文生图'
+})
 
 function nowTime() {
-  return new Date().toLocaleTimeString('zh-CN', {
-    hour: '2-digit',
-    minute: '2-digit'
-  })
+  return new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
 }
-
 function createId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
-
-// historyItems 会被 Vue 深度代理；所有进入 IPC 的数据都在这里重新构造为
-// 纯字面量，避免 Electron structured clone 因 Proxy 报错。
 function serializeImageConfig(source = {}) {
   return {
     sourceMode: source.sourceMode === 'model-reliability' ? 'model-reliability' : 'manual',
@@ -485,10 +555,11 @@ function serializeImageConfig(source = {}) {
     apiKey: String(source.apiKey || '').trim(),
     model: String(source.model || '').trim(),
     size: String(source.size || '').trim(),
-    quality: String(source.quality || '').trim()
+    quality: String(source.quality || '').trim(),
+    count: Math.max(1, Math.min(Number(source.count) || 1, 4)),
+    retryCount: Math.max(0, Math.min(Number(source.retryCount) || 0, 2))
   }
 }
-
 function normalizeHistoryItem(item = {}) {
   return {
     id: String(item.id || '').trim(),
@@ -500,11 +571,16 @@ function normalizeHistoryItem(item = {}) {
     model: String(item.model || '').trim(),
     size: String(item.size || '').trim(),
     quality: String(item.quality || '').trim(),
+    mode: ['edit', 'variation'].includes(item.mode) ? item.mode : 'generate',
+    parentAssetId: String(item.parentAssetId || '').trim(),
+    batchId: String(item.batchId || '').trim(),
+    batchIndex: Math.max(0, Number(item.batchIndex) || 0),
+    batchSize: Math.max(1, Number(item.batchSize) || 1),
+    attempts: Math.max(1, Number(item.attempts) || 1),
     durationMs: Number(item.durationMs) || 0,
     createdAt: Number(item.createdAt) || Date.now()
   }
 }
-
 function normalizeHistory(history) {
   if (!Array.isArray(history)) return []
   return history
@@ -512,63 +588,50 @@ function normalizeHistory(history) {
     .filter((item) => item.id && item.prompt && item.assetId && item.imageUrl)
     .slice(0, MAX_HISTORY_ITEMS)
 }
-
 function formatDuration(ms) {
   const value = Number(ms) || 0
   if (value < 1000) return `${Math.max(value, 0)}ms`
   const seconds = value / 1000
   if (seconds < 60) return `${seconds.toFixed(seconds >= 10 ? 0 : 1)}s`
   const minutes = Math.floor(seconds / 60)
-  const rest = Math.round(seconds % 60)
-  return `${minutes}m ${rest}s`
+  return `${minutes}m ${Math.round(seconds % 60)}s`
 }
-
 function imageToUrl(image) {
   if (image?.previewUrl) return image.previewUrl
-  if (image?.b64Json) {
-    return `data:image/png;base64,${image.b64Json}`
-  }
+  if (image?.b64Json) return `data:image/png;base64,${image.b64Json}`
   return image?.url || ''
 }
-
 function buildPrompt(currentPrompt) {
-  if (!useContext.value) return currentPrompt
-
-  const recentMessages = messages.value.filter((item) => item.text || item.revisedPrompt).slice(-8)
-
-  if (recentMessages.length === 0) return currentPrompt
-
-  return [
-    '这是一个连续图片生成对话。请参考最近对话延续画面设定，当前需求优先级最高。',
-    ...recentMessages.map((item, index) => {
-      if (item.role === 'user') {
-        return `${index + 1}. 用户需求：${item.text}`
-      }
-      return `${index + 1}. 上次生成说明：${item.revisedPrompt || item.text}`
-    }),
-    `当前需求：${currentPrompt}`
-  ].join('\n')
+  if (!useContext.value || requestMode.value !== 'generate') return currentPrompt
+  const context = messages.value
+    .filter((message) => !message.loading && (message.text || message.revisedPrompt))
+    .slice(-6)
+    .map((message) =>
+      message.role === 'user'
+        ? `用户：${message.text}`
+        : `上一张图的优化描述：${message.revisedPrompt || message.text}`
+    )
+    .join('\n')
+  return context ? `${context}\n当前要求：${currentPrompt}` : currentPrompt
 }
-
-async function scrollToBottom() {
-  await nextTick()
-  if (messagesEl.value) {
-    messagesEl.value.scrollTop = messagesEl.value.scrollHeight
-  }
+function scrollToBottom() {
+  return nextTick(() => {
+    if (messagesEl.value) messagesEl.value.scrollTop = messagesEl.value.scrollHeight
+  })
 }
-
 async function loadConfig() {
   try {
-    const result = await opsApi.getGptImageConfig()
-    if (result?.ok === false) throw new Error(result.error || '读取配置失败')
-    const saved = result?.config || result
-    Object.assign(config, saved || {})
-    Object.assign(settingsConfig, config, { apiKey: '' })
-  } catch (err) {
-    MessagePlugin.error({ content: err?.message || '读取配置失败', placement: 'bottom-right' })
+    if (typeof opsApi?.getGptImageConfig === 'function') {
+      const result = await opsApi.getGptImageConfig()
+      if (result?.ok) {
+        Object.assign(config, result.config || {}, { apiKey: '' })
+        Object.assign(settingsConfig, config, { apiKey: '' })
+      }
+    }
+  } finally {
+    await loadHistory()
   }
 }
-
 async function loadHistory() {
   historyLoading.value = true
   try {
@@ -576,7 +639,6 @@ async function loadHistory() {
       historyItems.value = normalizeHistory(await opsApi.getGptImageHistory())
       return
     }
-
     const rawHistory = localStorage.getItem(HISTORY_STORAGE_KEY)
     historyItems.value = normalizeHistory(rawHistory ? JSON.parse(rawHistory) : [])
   } catch {
@@ -585,31 +647,25 @@ async function loadHistory() {
     historyLoading.value = false
   }
 }
-
 async function persistHistory() {
   const nextHistory = normalizeHistory(historyItems.value)
   historyItems.value = nextHistory
-
   if (typeof opsApi?.saveGptImageHistory === 'function') {
-    // nextHistory 虽来自 normalizeHistory，但赋值到 ref 后会再次成为 Vue Proxy；
-    // 再次规范化，确保 IPC 始终接收结构化克隆支持的普通对象。
     const result = await opsApi.saveGptImageHistory(normalizeHistory(nextHistory))
     if (result?.ok === false) throw new Error(result.error || '历史记录保存失败')
     if (Array.isArray(result?.history)) historyItems.value = normalizeHistory(result.history)
     return
   }
-
   localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(nextHistory))
 }
-
-async function appendHistoryItem(item) {
+async function appendHistoryItems(items) {
+  const ids = new Set(items.map((item) => item.id))
   historyItems.value = normalizeHistory([
-    item,
-    ...historyItems.value.filter((historyItem) => historyItem.id !== item.id)
+    ...items,
+    ...historyItems.value.filter((historyItem) => !ids.has(historyItem.id))
   ])
   await persistHistory()
 }
-
 async function saveConfig() {
   if (
     settingsConfig.sourceMode === 'model-reliability' &&
@@ -621,91 +677,71 @@ async function saveConfig() {
     })
     return
   }
-
   saving.value = true
   try {
-    const nextConfig = {
-      ...serializeImageConfig(settingsConfig),
-      clearApiKey: clearApiKey.value
-    }
+    const nextConfig = { ...serializeImageConfig(settingsConfig), clearApiKey: clearApiKey.value }
     const result = await opsApi.saveGptImageConfig(nextConfig)
-    if (result?.ok) {
-      Object.assign(config, result.config || {}, { apiKey: '' })
-      Object.assign(settingsConfig, config, { apiKey: '' })
-      clearApiKey.value = false
-      MessagePlugin.success({ content: '配置已保存', placement: 'bottom-right' })
-      closeSettings()
-    } else {
-      MessagePlugin.error({ content: result?.error || '配置保存失败', placement: 'bottom-right' })
-    }
+    if (!result?.ok) throw new Error(result?.error || '配置保存失败')
+    Object.assign(config, result.config || {}, { apiKey: '' })
+    Object.assign(settingsConfig, config, { apiKey: '' })
+    clearApiKey.value = false
+    MessagePlugin.success({ content: '配置已保存', placement: 'bottom-right' })
+    closeSettings()
+  } catch (error) {
+    MessagePlugin.error({ content: error?.message || '配置保存失败', placement: 'bottom-right' })
   } finally {
     saving.value = false
   }
 }
-
 async function loadModels() {
   modelError.value = ''
-
   if (typeof opsApi?.listGptImageModels !== 'function') {
     modelError.value = '模型列表接口未加载，请重启 Electron 应用'
-    MessagePlugin.error({ content: modelError.value, placement: 'bottom-right' })
     return
   }
-
   modelLoading.value = true
-
   try {
     const result = await opsApi.listGptImageModels(serializeImageConfig(settingsConfig))
-    if (!result?.ok) {
-      modelError.value = result?.error || '获取模型列表失败'
-      MessagePlugin.error({ content: modelError.value, placement: 'bottom-right' })
-      return
-    }
-
+    if (!result?.ok) throw new Error(result?.error || '获取模型列表失败')
     modelOptions.value = result.models || []
     if (modelOptions.value.length > 0 && !modelOptions.value.includes(settingsConfig.model)) {
       settingsConfig.model = modelOptions.value[0]
     }
     MessagePlugin.success({ content: '模型列表已更新', placement: 'bottom-right' })
-  } catch (err) {
-    modelError.value = err?.message || '获取模型列表失败'
+  } catch (error) {
+    modelError.value = error?.message || '获取模型列表失败'
     MessagePlugin.error({ content: modelError.value, placement: 'bottom-right' })
   } finally {
     modelLoading.value = false
   }
 }
-
 function syncReliabilitySelection() {
   let source = selectedReliabilitySource.value
   if (!source) source = reliabilityProviderSources.value[0]
   selectedReliabilitySourceKey.value = source ? sourceKey(source) : ''
 }
-
 async function loadProviderSources(showSuccess = false) {
   sourceError.value = ''
   if (typeof opsApi?.listAiProviderSources !== 'function') {
     sourceError.value = '模型可靠性来源接口未加载，请重启 Electron 应用'
     return
   }
-
   sourceLoading.value = true
   try {
     const result = await opsApi.listAiProviderSources()
     if (!result?.ok) throw new Error(result?.error || '读取模型可靠性 Provider 失败')
     providerSources.value = result.sources || []
     if (settingsConfig.sourceMode === 'model-reliability') syncReliabilitySelection()
-    if (showSuccess) {
+    if (showSuccess)
       MessagePlugin.success({ content: '模型可靠性来源已更新', placement: 'bottom-right' })
-    }
-  } catch (err) {
+  } catch (error) {
     providerSources.value = []
-    sourceError.value = err?.message || '读取模型可靠性 Provider 失败'
+    sourceError.value = error?.message || '读取模型可靠性 Provider 失败'
     MessagePlugin.error({ content: sourceError.value, placement: 'bottom-right' })
   } finally {
     sourceLoading.value = false
   }
 }
-
 function setSourceMode(mode) {
   settingsConfig.sourceMode = mode === 'model-reliability' ? 'model-reliability' : 'manual'
   clearApiKey.value = false
@@ -716,123 +752,173 @@ function setSourceMode(mode) {
     else void loadProviderSources()
   }
 }
-
-async function sendMessage() {
-  const text = draft.value.trim()
-  if (!text || generating.value) return
-
-  if (!configReady.value) {
-    MessagePlugin.warning({
-      content:
-        config.sourceMode === 'model-reliability'
-          ? '请先在模型设置中选择已通过模型'
-          : '请先在模型设置中填写 API Key',
-      placement: 'bottom-right'
-    })
-    openSettings()
-    return
-  }
-
-  const prompt = buildPrompt(text)
-  const startedAt = Date.now()
-  let timer = null
-  draft.value = ''
-  messages.value.push({
-    id: createId(),
-    role: 'user',
-    text,
-    time: nowTime()
-  })
-
-  const assistantMessage = reactive({
+function createAssistantMessage(request) {
+  return reactive({
     id: createId(),
     role: 'assistant',
     text: '',
     time: nowTime(),
     loading: true,
     error: '',
-    assetId: '',
-    imageUrl: '',
-    revisedPrompt: '',
+    retryable: false,
+    images: [],
     elapsedMs: 0,
-    durationText: '0ms'
+    durationText: '0ms',
+    attempts: 0,
+    request: { ...request }
   })
-  messages.value.push(assistantMessage)
+}
+async function runImageRequest(assistantMessage, request) {
+  const startedAt = Date.now()
+  let timer = null
   generating.value = true
+  activeRequestId.value = request.requestId
+  assistantMessage.loading = true
+  assistantMessage.error = ''
+  assistantMessage.retryable = false
+  assistantMessage.images = []
+  assistantMessage.request = { ...request }
   timer = window.setInterval(() => {
     assistantMessage.elapsedMs = Date.now() - startedAt
     assistantMessage.durationText = formatDuration(assistantMessage.elapsedMs)
   }, 300)
   await scrollToBottom()
-
   try {
     const imageConfig = serializeImageConfig(config)
     await opsApi.saveGptImageConfig(imageConfig)
     const result = await opsApi.generateGptImage({
-      prompt: String(prompt),
+      requestId: request.requestId,
+      prompt: request.prompt,
+      mode: request.mode,
+      sourceAssetId: request.sourceAssetId,
+      count: request.count,
+      retryCount: request.retryCount,
       config: imageConfig
     })
-
-    assistantMessage.loading = false
     assistantMessage.elapsedMs = Date.now() - startedAt
     assistantMessage.durationText = formatDuration(assistantMessage.elapsedMs)
+    assistantMessage.attempts = Number(result?.attempts) || 1
     if (!result?.ok) {
       assistantMessage.error = result?.error || '生成失败'
+      assistantMessage.retryable = Boolean(result?.retryable && !result?.cancelled)
       return
     }
-
+    const resultImages = (Array.isArray(result.images) ? result.images : [result.image])
+      .filter(Boolean)
+      .map((image, index) => ({
+        id: `${assistantMessage.id}-${index}`,
+        assetId: String(image?.assetId || '').trim(),
+        imageUrl: imageToUrl(image),
+        revisedPrompt: String(image?.revisedPrompt || '').trim()
+      }))
+      .filter((image) => image.assetId && image.imageUrl)
+    if (resultImages.length === 0) throw new Error('生成结果未能安全保存到本地')
     const removedAssetIds = new Set(
-      (Array.isArray(result.image?.removedAssetIds) ? result.image.removedAssetIds : []).map((id) =>
-        String(id || '').trim()
-      )
+      (Array.isArray(result.image?.removedAssetIds) ? result.image.removedAssetIds : []).map(String)
     )
     if (removedAssetIds.size > 0) {
       historyItems.value = historyItems.value.filter((item) => !removedAssetIds.has(item.assetId))
     }
-
-    assistantMessage.assetId = String(result.image?.assetId || '').trim()
-    assistantMessage.imageUrl = imageToUrl(result.image)
-    if (!assistantMessage.assetId || !assistantMessage.imageUrl) {
-      throw new Error('生成结果未能安全保存到本地')
-    }
-    assistantMessage.revisedPrompt = result.image?.revisedPrompt || ''
-    await appendHistoryItem({
-      id: createId(),
-      prompt: text,
-      fullPrompt: prompt,
-      assetId: assistantMessage.assetId,
-      imageUrl: assistantMessage.imageUrl,
-      revisedPrompt: assistantMessage.revisedPrompt,
-      model: config.model,
-      size: config.size,
-      quality: config.quality,
-      durationMs: assistantMessage.elapsedMs,
-      createdAt: Date.now()
-    })
-  } catch (err) {
-    assistantMessage.loading = false
-    assistantMessage.elapsedMs = Date.now() - startedAt
-    assistantMessage.durationText = formatDuration(assistantMessage.elapsedMs)
-    assistantMessage.error = err?.message || '生成失败'
+    assistantMessage.images = resultImages
+    const batchId = request.requestId
+    const createdAt = Date.now()
+    await appendHistoryItems(
+      resultImages.map((image, index) => ({
+        id: createId(),
+        prompt: request.displayPrompt,
+        fullPrompt: request.prompt,
+        assetId: image.assetId,
+        imageUrl: image.imageUrl,
+        revisedPrompt: image.revisedPrompt,
+        model: config.model,
+        size: config.size,
+        quality: config.quality,
+        mode: request.mode,
+        parentAssetId: request.sourceAssetId,
+        batchId,
+        batchIndex: index,
+        batchSize: resultImages.length,
+        attempts: assistantMessage.attempts,
+        durationMs: assistantMessage.elapsedMs,
+        createdAt
+      }))
+    )
+    if (request.mode !== 'generate') clearReference()
+  } catch (error) {
+    assistantMessage.error = error?.message || '生成失败'
+    assistantMessage.retryable = true
   } finally {
     if (timer) window.clearInterval(timer)
+    assistantMessage.loading = false
     generating.value = false
+    activeRequestId.value = ''
     scrollToBottom()
   }
 }
-
-function isDownloading(messageId) {
-  return downloadingMessageIds.value.has(messageId)
-}
-
-async function downloadImage(message) {
-  const assetId = String(message?.assetId || '').trim()
-  const imageUrl = String(message?.imageUrl || '').trim()
-  if (!assetId && !imageUrl) {
-    MessagePlugin.warning({ content: '没有可下载的图片', placement: 'bottom-right' })
+async function sendMessage() {
+  const text = draft.value.trim()
+  if (!text || generating.value) return
+  if (!configReady.value) {
+    MessagePlugin.warning({ content: configReadyHint.value, placement: 'bottom-right' })
+    openSettings()
     return
   }
-
+  const mode = selectedReference.value ? requestMode.value : 'generate'
+  const prompt = mode === 'variation' ? text : buildPrompt(text)
+  const request = {
+    requestId: createId(),
+    displayPrompt: text,
+    prompt,
+    mode,
+    sourceAssetId: selectedReference.value?.assetId || '',
+    count: Number(config.count) || 1,
+    retryCount: Number(config.retryCount) || 0
+  }
+  draft.value = ''
+  messages.value.push({
+    id: createId(),
+    role: 'user',
+    text: `${mode === 'edit' ? '编辑原图：' : mode === 'variation' ? '生成变体：' : ''}${text}`,
+    time: nowTime()
+  })
+  const assistantMessage = createAssistantMessage(request)
+  messages.value.push(assistantMessage)
+  await runImageRequest(assistantMessage, request)
+}
+async function cancelGeneration() {
+  if (!activeRequestId.value || typeof opsApi?.cancelGptImage !== 'function') return
+  await opsApi.cancelGptImage(activeRequestId.value)
+}
+async function retryMessage(message) {
+  if (generating.value || !message?.request) return
+  await runImageRequest(message, { ...message.request, requestId: createId() })
+}
+function selectReference(message, image, mode = 'edit') {
+  const assetId = String(image?.assetId || '').trim()
+  const imageUrl = String(image?.imageUrl || '').trim()
+  if (!assetId || !imageUrl) {
+    MessagePlugin.warning({ content: '原始图片已不可用', placement: 'bottom-right' })
+    return
+  }
+  selectedReference.value = {
+    assetId,
+    imageUrl,
+    prompt: image.revisedPrompt || message?.request?.displayPrompt || ''
+  }
+  requestMode.value = mode === 'variation' ? 'variation' : 'edit'
+  draft.value = mode === 'variation' ? '生成一张构图和风格一致的新变体' : '保留主体与构图，调整：'
+  scrollToBottom()
+}
+function clearReference() {
+  selectedReference.value = null
+  requestMode.value = 'generate'
+}
+function isDownloading(imageId) {
+  return downloadingMessageIds.value.has(imageId)
+}
+async function downloadImage(image) {
+  const imageId = String(image?.id || image?.assetId || '')
+  if (!image?.assetId && !image?.imageUrl) return
   if (typeof opsApi?.saveGptImage !== 'function') {
     MessagePlugin.error({
       content: '图片保存接口未加载，请重启 Electron 应用',
@@ -840,43 +926,30 @@ async function downloadImage(message) {
     })
     return
   }
-
-  const messageId = String(message?.id || '')
-  if (isDownloading(messageId)) return
-  downloadingMessageIds.value = new Set([...downloadingMessageIds.value, messageId])
-
+  if (isDownloading(imageId)) return
+  downloadingMessageIds.value = new Set([...downloadingMessageIds.value, imageId])
   try {
     const result = await opsApi.saveGptImage({
-      assetId,
-      imageUrl,
+      assetId: image.assetId,
+      imageUrl: image.imageUrl,
       fileName: `gpt-image-${Date.now()}`
     })
     if (result?.cancelled) return
-
-    if (!result?.ok) {
-      throw new Error(result?.error || '保存图片失败')
-    }
-
+    if (!result?.ok) throw new Error(result?.error || '保存图片失败')
     MessagePlugin.success({ content: '图片已保存', placement: 'bottom-right' })
-  } catch (err) {
-    MessagePlugin.error({ content: err?.message || '保存图片失败', placement: 'bottom-right' })
+  } catch (error) {
+    MessagePlugin.error({ content: error?.message || '保存图片失败', placement: 'bottom-right' })
   } finally {
     const nextIds = new Set(downloadingMessageIds.value)
-    nextIds.delete(messageId)
+    nextIds.delete(imageId)
     downloadingMessageIds.value = nextIds
   }
 }
-
-function continueFromMessage() {
-  draft.value = '基于上一张图继续调整：'
-  scrollToBottom()
-}
-
 function useSuggestion(suggestion) {
+  clearReference()
   draft.value = suggestion
   scrollToBottom()
 }
-
 function openSettings() {
   Object.assign(settingsConfig, config, { apiKey: '' })
   clearApiKey.value = false
@@ -884,20 +957,17 @@ function openSettings() {
   void loadProviderSources()
   if (settingsConfig.sourceMode === 'manual') void loadModels()
 }
-
 function closeSettings() {
   showSettings.value = false
 }
-
 function clearConversation() {
   if (generating.value) return
   messages.value = []
+  clearReference()
 }
-
 async function clearHistory() {
   if (historyItems.value.length === 0) return
   const previousHistory = historyItems.value
-
   try {
     if (typeof opsApi?.clearGptImageHistory === 'function') {
       const result = await opsApi.clearGptImageHistory()
@@ -915,24 +985,22 @@ async function clearHistory() {
     })
   }
 }
-
 async function openHistory() {
   showHistory.value = true
   await loadHistory()
 }
-
 function closeHistory() {
   showHistory.value = false
 }
-
 function openHistoryItem(item) {
+  const image = {
+    id: createId(),
+    assetId: item.assetId,
+    imageUrl: item.imageUrl,
+    revisedPrompt: item.revisedPrompt
+  }
   messages.value = [
-    {
-      id: createId(),
-      role: 'user',
-      text: item.prompt,
-      time: formatHistoryTime(item.createdAt)
-    },
+    { id: createId(), role: 'user', text: item.prompt, time: formatHistoryTime(item.createdAt) },
     {
       id: createId(),
       role: 'assistant',
@@ -940,17 +1008,24 @@ function openHistoryItem(item) {
       time: formatHistoryTime(item.createdAt),
       loading: false,
       error: '',
-      assetId: item.assetId,
-      imageUrl: item.imageUrl,
-      revisedPrompt: item.revisedPrompt,
+      retryable: false,
+      images: [image],
       elapsedMs: item.durationMs || 0,
-      durationText: item.durationMs ? formatDuration(item.durationMs) : ''
+      durationText: item.durationMs ? formatDuration(item.durationMs) : '',
+      attempts: item.attempts || 1,
+      request: {
+        displayPrompt: item.prompt,
+        prompt: item.fullPrompt || item.prompt,
+        mode: item.mode || 'generate',
+        sourceAssetId: item.parentAssetId || '',
+        count: item.batchSize || 1,
+        retryCount: config.retryCount || 0
+      }
     }
   ]
   closeHistory()
   scrollToBottom()
 }
-
 function formatHistoryTime(value) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
@@ -961,9 +1036,12 @@ function formatHistoryTime(value) {
     minute: '2-digit'
   })
 }
-
 function formatHistoryMeta(item) {
+  const mode = item.mode === 'edit' ? '编辑' : item.mode === 'variation' ? '变体' : '生成'
+  const batch = item.batchSize > 1 ? `${item.batchIndex + 1}/${item.batchSize}` : ''
   return [
+    mode,
+    batch,
     item.model,
     item.size,
     item.quality,
@@ -973,8 +1051,9 @@ function formatHistoryMeta(item) {
     .join(' · ')
 }
 
-onMounted(() => {
-  loadConfig()
+onMounted(loadConfig)
+onBeforeUnmount(() => {
+  if (activeRequestId.value) void opsApi?.cancelGptImage?.(activeRequestId.value)
 })
 </script>
 

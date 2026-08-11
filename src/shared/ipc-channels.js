@@ -91,6 +91,7 @@ const IPC_CHANNELS = {
   GPT_IMAGE_CONFIG_SAVE: 'gptImage:saveConfig',
   GPT_IMAGE_MODELS_LIST: 'gptImage:listModels',
   GPT_IMAGE_GENERATE: 'gptImage:generate',
+  GPT_IMAGE_CANCEL: 'gptImage:cancel',
   GPT_IMAGE_SAVE: 'gptImage:save',
   GPT_IMAGE_HISTORY_GET: 'gptImage:getHistory',
   GPT_IMAGE_HISTORY_SAVE: 'gptImage:saveHistory',

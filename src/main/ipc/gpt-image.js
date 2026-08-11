@@ -24,6 +24,15 @@ const {
   storeImageAsset
 } = require('../utils/gpt-image-assets')
 const { fetchPublicResource } = require('../utils/safe-remote-resource')
+const {
+  REQUEST_TIMEOUT_MS,
+  buildImageHttpRequest,
+  executeWithRetry,
+  isAbortError,
+  isRetryableStatus,
+  normalizeImageRequest,
+  normalizeRequestId
+} = require('../utils/gpt-image-request')
 
 const userDataPath = app.getPath('userData')
 const configFile = path.join(userDataPath, 'gpt-image-config.json')
@@ -32,6 +41,7 @@ const assetsDir = path.join(userDataPath, 'gpt-image-assets')
 const MAX_HISTORY_ITEMS = 80
 const MAX_HISTORY_FILE_BYTES = 8 * 1024 * 1024
 const MAX_PROMPT_CHARS = 12_000
+const activeImageRequests = new Map()
 
 const DEFAULT_CONFIG = {
   sourceMode: 'manual',
@@ -39,13 +49,16 @@ const DEFAULT_CONFIG = {
   sourceAppType: '',
   baseUrl: 'https://api.openai.com/v1',
   apiKey: '',
-  model: 'gpt-image-1',
+  model: 'gpt-image-2',
   size: '1024x1024',
-  quality: 'auto'
+  quality: 'auto',
+  count: 1,
+  retryCount: 1
 }
 
 function sanitizeConfig(config = {}) {
   const sourceMode = config.sourceMode === 'model-reliability' ? 'model-reliability' : 'manual'
+  const retryCount = Number(config.retryCount)
   return {
     sourceMode,
     sourceProviderId: String(config.sourceProviderId || '').trim(),
@@ -54,7 +67,12 @@ function sanitizeConfig(config = {}) {
     apiKey: String(config.apiKey || '').trim(),
     model: String(config.model || DEFAULT_CONFIG.model).trim() || DEFAULT_CONFIG.model,
     size: String(config.size || DEFAULT_CONFIG.size).trim() || DEFAULT_CONFIG.size,
-    quality: String(config.quality || DEFAULT_CONFIG.quality).trim() || DEFAULT_CONFIG.quality
+    quality: String(config.quality || DEFAULT_CONFIG.quality).trim() || DEFAULT_CONFIG.quality,
+    count: Math.max(1, Math.min(Math.trunc(Number(config.count) || DEFAULT_CONFIG.count), 4)),
+    retryCount: Math.max(
+      0,
+      Math.min(Math.trunc(Number.isFinite(retryCount) ? retryCount : DEFAULT_CONFIG.retryCount), 2)
+    )
   }
 }
 
@@ -76,7 +94,9 @@ function serializeConfigForStorage(config) {
     apiKeyEncrypted: encryptSecret(safeStorage, normalized.apiKey),
     model: normalized.model,
     size: normalized.size,
-    quality: normalized.quality
+    quality: normalized.quality,
+    count: normalized.count,
+    retryCount: normalized.retryCount
   }
 }
 
@@ -121,7 +141,9 @@ function toSafeConfig(config) {
     apiKeyMasked: maskSecret(normalized.apiKey),
     model: normalized.model,
     size: normalized.size,
-    quality: normalized.quality
+    quality: normalized.quality,
+    count: normalized.count,
+    retryCount: normalized.retryCount
   }
 }
 
@@ -219,6 +241,12 @@ function sanitizeHistoryItem(item = {}) {
     model: limitText(item.model, 200),
     size: limitText(item.size, 64),
     quality: limitText(item.quality, 64),
+    mode: ['edit', 'variation'].includes(item.mode) ? item.mode : 'generate',
+    parentAssetId: normalizeAssetId(item.parentAssetId),
+    batchId: limitText(item.batchId, 128),
+    batchIndex: Math.max(0, Math.min(Math.trunc(Number(item.batchIndex) || 0), 3)),
+    batchSize: Math.max(1, Math.min(Math.trunc(Number(item.batchSize) || 1), 4)),
+    attempts: Math.max(1, Math.min(Math.trunc(Number(item.attempts) || 1), 3)),
     durationMs: Math.max(0, Math.min(Number(item.durationMs) || 0, 24 * 60 * 60 * 1000)),
     createdAt: Number(item.createdAt) || Date.now()
   }
@@ -397,6 +425,48 @@ async function persistGeneratedImage(image) {
   return stored
 }
 
+function imageRequestKey(sender, requestId) {
+  return `${sender?.id || 'unknown'}:${requestId}`
+}
+
+async function resolveSourceAsset(request) {
+  if (request.mode === 'generate') return null
+  const asset = await findImageAsset(assetsDir, request.sourceAssetId)
+  return {
+    buffer: await fs.readFile(asset.filePath),
+    extension: path.extname(asset.filePath).slice(1) || 'png'
+  }
+}
+
+function requestError(status, data) {
+  const error = new Error(buildErrorMessage(status, data))
+  error.status = Number(status) || 0
+  error.retryable = isRetryableStatus(error.status)
+  return error
+}
+
+async function requestImages(config, request, source, signal) {
+  const { value, attempts } = await executeWithRetry(
+    async () => {
+      const httpRequest = buildImageHttpRequest({
+        baseUrl: normalizeBaseUrl(config.baseUrl),
+        apiKey: config.apiKey,
+        model: config.model,
+        size: config.size,
+        quality: config.quality,
+        request,
+        source
+      })
+      const response = await fetch(httpRequest.url, { ...httpRequest.options, signal })
+      const data = await parseResponse(response)
+      if (!response.ok) throw requestError(response.status, data)
+      return data
+    },
+    { retries: request.retryCount, signal }
+  )
+  return { data: value, attempts }
+}
+
 function registerGptImageHandlers() {
   ipcMain.handle(IPC_CHANNELS.GPT_IMAGE_CONFIG_GET, async () => {
     try {
@@ -523,83 +593,138 @@ function registerGptImageHandlers() {
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.GPT_IMAGE_GENERATE, async (_event, payload = {}) => {
+  ipcMain.handle(IPC_CHANNELS.GPT_IMAGE_CANCEL, async (event, requestId) => {
+    const normalizedRequestId = normalizeRequestId(requestId)
+    if (!normalizedRequestId) return { ok: false, error: '请求标识无效' }
+    const active = activeImageRequests.get(imageRequestKey(event.sender, normalizedRequestId))
+    if (!active) return { ok: true, cancelled: false }
+    active.cancelled = true
+    active.controller.abort()
+    return { ok: true, cancelled: true }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.GPT_IMAGE_GENERATE, async (event, payload = {}) => {
     let config
     try {
       config = await resolveRequestConfig(payload.config || {})
     } catch (err) {
-      return { ok: false, error: err?.message || '读取配置失败' }
+      return { ok: false, error: err?.message || '读取配置失败', retryable: false }
     }
-    const prompt = String(payload.prompt || '').trim()
 
+    const request = normalizeImageRequest({
+      ...payload,
+      count: payload.count ?? config.count,
+      retryCount: payload.retryCount ?? config.retryCount
+    })
+    if (!request.requestId) {
+      return { ok: false, error: '请求标识无效，请重试', retryable: false }
+    }
     if (!config.apiKey) {
-      return { ok: false, error: '请先填写 API Key' }
+      return { ok: false, error: '请先填写 API Key', retryable: false }
+    }
+    if (request.mode !== 'variation' && !request.prompt) {
+      return { ok: false, error: '请输入绘图描述', retryable: false }
+    }
+    if (request.prompt.length > MAX_PROMPT_CHARS) {
+      return {
+        ok: false,
+        error: `绘图描述不能超过 ${MAX_PROMPT_CHARS} 个字符`,
+        retryable: false
+      }
+    }
+    if (request.mode !== 'generate' && !normalizeAssetId(request.sourceAssetId)) {
+      return { ok: false, error: '请选择一张本地生成图片作为参考图', retryable: false }
     }
 
-    if (!prompt) {
-      return { ok: false, error: '请输入绘图描述' }
+    const key = imageRequestKey(event.sender, request.requestId)
+    const previous = activeImageRequests.get(key)
+    if (previous) {
+      previous.cancelled = true
+      previous.controller.abort()
     }
-    if (prompt.length > MAX_PROMPT_CHARS) {
-      return { ok: false, error: `绘图描述不能超过 ${MAX_PROMPT_CHARS} 个字符` }
-    }
-
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 120000)
+    const active = { controller: new AbortController(), cancelled: false, timedOut: false }
+    activeImageRequests.set(key, active)
+    const timeout = setTimeout(() => {
+      active.timedOut = true
+      active.controller.abort()
+    }, REQUEST_TIMEOUT_MS)
 
     try {
-      const requestBody = {
-        model: config.model,
-        prompt,
-        n: 1
+      const source = await resolveSourceAsset(request)
+      const { data, attempts } = await requestImages(
+        config,
+        request,
+        source,
+        active.controller.signal
+      )
+      const rawImages = Array.isArray(data?.data)
+        ? data.data.filter((image) => image?.b64_json || image?.url).slice(0, request.count)
+        : []
+      if (rawImages.length === 0) {
+        return { ok: false, error: '接口未返回图片数据', retryable: false, attempts }
       }
 
-      if (config.size && config.size !== 'auto') {
-        requestBody.size = config.size
+      const images = []
+      const removedAssetIds = new Set()
+      try {
+        for (const image of rawImages) {
+          const storedImage = await persistGeneratedImage(image)
+          for (const removedId of storedImage.removedAssetIds || []) removedAssetIds.add(removedId)
+          images.push({
+            assetId: storedImage.assetId,
+            previewUrl: storedImage.previewUrl,
+            revisedPrompt: image.revised_prompt || ''
+          })
+        }
+      } catch (error) {
+        await removeImageAssets(
+          assetsDir,
+          images.map((image) => image.assetId)
+        )
+        throw error
       }
 
-      if (config.quality && config.quality !== 'auto') {
-        requestBody.quality = config.quality
+      const removed = [...removedAssetIds]
+      const retainedImages = images.filter((image) => !removedAssetIds.has(image.assetId))
+      if (retainedImages.length === 0) {
+        return {
+          ok: false,
+          error: '本地图片存储空间不足，生成结果已被配额清理',
+          retryable: false,
+          attempts
+        }
       }
-
-      const response = await fetch(`${normalizeBaseUrl(config.baseUrl)}/images/generations`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${config.apiKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(requestBody),
-        signal: controller.signal
-      })
-
-      const data = await parseResponse(response)
-
-      if (!response.ok) {
-        return { ok: false, error: buildErrorMessage(response.status, data) }
-      }
-
-      const image = Array.isArray(data?.data) ? data.data[0] : null
-      if (!image?.b64_json && !image?.url) {
-        return { ok: false, error: '接口未返回图片数据' }
-      }
-
-      const storedImage = await persistGeneratedImage(image)
-
+      for (const image of retainedImages) image.removedAssetIds = removed
       return {
         ok: true,
-        image: {
-          assetId: storedImage.assetId,
-          previewUrl: storedImage.previewUrl,
-          removedAssetIds: storedImage.removedAssetIds,
-          revisedPrompt: image.revised_prompt || ''
-        },
-        usage: data?.usage || null
+        image: retainedImages[0],
+        images: retainedImages,
+        usage: data?.usage || null,
+        attempts,
+        mode: request.mode
       }
     } catch (err) {
-      const message =
-        err?.name === 'AbortError' ? '请求超时，请稍后重试' : err?.message || '图片生成失败'
-      return { ok: false, error: message }
+      if (isAbortError(err)) {
+        return {
+          ok: false,
+          cancelled: active.cancelled,
+          retryable: !active.cancelled,
+          error: active.cancelled
+            ? '已停止生成'
+            : active.timedOut
+              ? '请求超时，请稍后重试'
+              : '请求已取消'
+        }
+      }
+      return {
+        ok: false,
+        error: err?.message || '图片生成失败',
+        retryable: Boolean(err?.retryable ?? true),
+        status: Number(err?.status) || 0
+      }
     } finally {
       clearTimeout(timeout)
+      if (activeImageRequests.get(key) === active) activeImageRequests.delete(key)
     }
   })
 }
@@ -619,6 +744,8 @@ module.exports = {
     normalizeStoredHistory,
     sanitizeHistory,
     sanitizeHistoryItem,
-    sanitizePreviewUrl
+    sanitizePreviewUrl,
+    imageRequestKey,
+    requestError
   }
 }
