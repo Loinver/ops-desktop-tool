@@ -115,13 +115,32 @@ test('OpenAI 流式首选接口返回 404 时会安全回退到另一标准接�
   }
 
   const result = await requestCompletionStream(provider({ wireApi: 'responses' }), {
-    messages: [{ role: 'user', content: 'fallback' }]
+    messages: [
+      {
+        role: 'user',
+        content: 'fallback',
+        images: [
+          {
+            id: '22222222-2222-4222-8222-222222222222',
+            name: 'fallback.png',
+            mimeType: 'image/png',
+            data: 'aGVsbG8=',
+            width: 320,
+            height: 240,
+            sizeBytes: 5
+          }
+        ]
+      }
+    ]
   })
 
   assert.equal(calls.length, 2)
   assert.equal(calls[0].url, 'https://api.example.test/v1/responses')
   assert.equal(calls[1].url, 'https://api.example.test/v1/chat/completions')
   assert.equal(calls[0].body.stream, true)
+  assert.equal(calls[0].body.input[0].content[1].type, 'input_image')
+  assert.equal(calls[1].body.messages[0].content[1].type, 'image_url')
+  assert.equal(calls[1].body.messages[0].content[1].image_url.url, 'data:image/png;base64,aGVsbG8=')
   assert.equal(result.content, 'fallback')
 })
 

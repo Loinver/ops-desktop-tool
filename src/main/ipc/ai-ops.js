@@ -1,6 +1,6 @@
 const path = require('node:path')
 const fs = require('node:fs')
-const { app, ipcMain, shell, dialog, BrowserWindow } = require('electron')
+const { app, ipcMain, shell, dialog, BrowserWindow, nativeImage } = require('electron')
 const { IPC_CHANNELS } = require('../../shared/ipc-channels')
 const { readJsonFile } = require('../utils/json-store')
 const { readQuickLaunchState } = require('../utils/quicklaunch-storage')
@@ -14,6 +14,14 @@ const {
   formatCopilotTimeline
 } = require('../utils/ai-insights')
 const { buildIncidentPostmortem, buildOpsReport } = require('../utils/ai-reports')
+const {
+  MAX_IMAGE_COUNT,
+  importImageEvidence,
+  resolveImageEvidence,
+  listImageEvidence,
+  removeImageEvidence,
+  clearImageEvidence
+} = require('../utils/ai-image-evidence')
 const {
   getAiUsageState,
   saveAiUsageSettings,
@@ -62,6 +70,7 @@ const {
 
 let automationTimer = null
 const activeChatStreams = new Map()
+const imageEvidenceCleanupSenders = new WeakSet()
 
 function userDataPath() {
   return app.getPath('userData')
@@ -79,19 +88,33 @@ function failure(error) {
   return result
 }
 
-function chatUsageInput(options = {}) {
+function imageEvidenceUsageSummary(imageEvidence = []) {
+  return (Array.isArray(imageEvidence) ? imageEvidence : []).map((item) => ({
+    id: String(item?.id || '').slice(0, 100),
+    name: redactSensitiveText(String(item?.name || '图片证据')).slice(0, 160),
+    mimeType: String(item?.mimeType || '').slice(0, 40),
+    width: Math.max(0, Number(item?.width) || 0),
+    height: Math.max(0, Number(item?.height) || 0),
+    sizeBytes: Math.max(0, Number(item?.sizeBytes) || 0)
+  }))
+}
+
+function chatUsageInput(options = {}, imageEvidence = []) {
   return JSON.stringify({
     messages: Array.isArray(options.messages) ? options.messages : [],
     knowledgeResults: Array.isArray(options.knowledgeResults) ? options.knowledgeResults : [],
-    contextAttachments: Array.isArray(options.contextAttachments) ? options.contextAttachments : []
+    contextAttachments: Array.isArray(options.contextAttachments) ? options.contextAttachments : [],
+    imageEvidence: imageEvidenceUsageSummary(imageEvidence)
   }).slice(0, 80_000)
 }
 
-function ensureChatBudget(provider, options = {}) {
+function ensureChatBudget(provider, options = {}, imageEvidence = []) {
+  const hasImages = imageEvidence.length > 0
   const budget = checkAiUsageBudget(userDataPath(), {
     providerId: provider.id,
     model: provider.model,
-    override: options.budgetOverride === true
+    override: options.budgetOverride === true,
+    ...(hasImages ? { costKnown: false } : {})
   })
   if (budget.allowed) return budget
   const error = new Error(budget.reason)
@@ -100,15 +123,40 @@ function ensureChatBudget(provider, options = {}) {
   throw error
 }
 
-function recordChatUsage(provider, result, options = {}) {
+function recordChatUsage(provider, result, options = {}, imageEvidence = []) {
+  const hasImages = imageEvidence.length > 0
   return recordAiUsage(userDataPath(), {
     providerId: provider.id,
     providerName: provider.name,
     model: result.model || provider.model,
     usage: result.usage,
-    inputText: chatUsageInput(options),
-    outputText: result.content
+    inputText: chatUsageInput(options, imageEvidence),
+    outputText: result.content,
+    ...(hasImages ? { costKnown: false, costSource: 'multimodal-usage-unknown' } : {})
   })
+}
+
+function bindImageEvidenceCleanup(sender) {
+  if (!sender || imageEvidenceCleanupSenders.has(sender)) return
+  imageEvidenceCleanupSenders.add(sender)
+  sender.once?.('destroyed', () => clearImageEvidence(sender))
+}
+
+function resolveImageEvidenceIds(sender, value) {
+  if (value === undefined || value === null) return []
+  if (!Array.isArray(value)) throw new Error('图片证据标识无效')
+  if (value.length > MAX_IMAGE_COUNT) {
+    throw new Error(`每次对话最多附加 ${MAX_IMAGE_COUNT} 张图片证据`)
+  }
+  const ids = []
+  const seen = new Set()
+  for (const item of value) {
+    const id = String(item || '').trim()
+    if (seen.has(id)) continue
+    seen.add(id)
+    ids.push(id)
+  }
+  return ids.map((id) => resolveImageEvidence(sender, id))
 }
 
 async function safeState() {
@@ -261,22 +309,77 @@ function registerAiOpsHandlers() {
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.AI_CHAT_ASK, async (_event, options = {}) => {
+  ipcMain.handle(IPC_CHANNELS.AI_IMAGE_EVIDENCE_IMPORT, async (event) => {
+    try {
+      bindImageEvidenceCleanup(event.sender)
+      const current = listImageEvidence(event.sender)
+      if (current.length >= MAX_IMAGE_COUNT) {
+        throw new Error(`每次对话最多附加 ${MAX_IMAGE_COUNT} 张图片证据`)
+      }
+      const focused = BrowserWindow.fromWebContents?.(event.sender) || null
+      const options = {
+        title: '选择故障截图或图片证据',
+        properties: ['openFile', 'multiSelections'],
+        filters: [
+          { name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp'] },
+          { name: '所有文件', extensions: ['*'] }
+        ]
+      }
+      const selection = focused
+        ? await dialog.showOpenDialog(focused, options)
+        : await dialog.showOpenDialog(options)
+      if (selection.canceled || !selection.filePaths?.length) {
+        return success({ cancelled: true, attachments: current })
+      }
+      await importImageEvidence({
+        sender: event.sender,
+        filePaths: selection.filePaths,
+        nativeImage
+      })
+      return success({ attachments: listImageEvidence(event.sender) })
+    } catch (error) {
+      return failure(error)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.AI_IMAGE_EVIDENCE_REMOVE, async (event, input = {}) => {
+    try {
+      removeImageEvidence(event.sender, input.id)
+      return success({ attachments: listImageEvidence(event.sender) })
+    } catch (error) {
+      return failure(error)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.AI_IMAGE_EVIDENCE_CLEAR, async (event) => {
+    try {
+      clearImageEvidence(event.sender)
+      return success({ attachments: [] })
+    } catch (error) {
+      return failure(error)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.AI_CHAT_ASK, async (event, options = {}) => {
     try {
       const provider = await runtimeProvider({
         userDataPath: userDataPath(),
         providerId: options.providerId
       })
-      ensureChatBudget(provider, options)
+      const imageEvidence = resolveImageEvidenceIds(event.sender, options.imageEvidenceIds)
+      ensureChatBudget(provider, options, imageEvidence)
       const result = await askAiChat({
         userDataPath: userDataPath(),
         providerId: options.providerId,
         messages: options.messages,
         knowledgeResults: options.knowledgeResults,
         contextAttachments: options.contextAttachments,
+        imageEvidence,
         provider
       })
-      return success({ ...result, usageState: recordChatUsage(provider, result, options) })
+      const usageState = recordChatUsage(provider, result, options, imageEvidence)
+      if (imageEvidence.length) clearImageEvidence(event.sender)
+      return success({ ...result, usageState })
     } catch (error) {
       return failure(error)
     }
@@ -301,13 +404,15 @@ function registerAiOpsHandlers() {
         userDataPath: userDataPath(),
         providerId: options.providerId
       })
-      ensureChatBudget(provider, options)
+      const imageEvidence = resolveImageEvidenceIds(sender, options.imageEvidenceIds)
+      ensureChatBudget(provider, options, imageEvidence)
       const result = await askAiChatStream({
         userDataPath: userDataPath(),
         providerId: options.providerId,
         messages: options.messages,
         knowledgeResults: options.knowledgeResults,
         contextAttachments: options.contextAttachments,
+        imageEvidence,
         provider,
         signal: controller.signal,
         onDelta: (delta) => {
@@ -327,7 +432,8 @@ function registerAiOpsHandlers() {
         truncated: Boolean(result.truncated),
         usage: result.usage
       })
-      const usageState = recordChatUsage(provider, result, options)
+      const usageState = recordChatUsage(provider, result, options, imageEvidence)
+      if (imageEvidence.length) clearImageEvidence(sender)
       return success({
         requestId,
         content: result.content,

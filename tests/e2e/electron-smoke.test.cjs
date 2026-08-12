@@ -350,6 +350,16 @@ test('AI 对话、图像生成与备份恢复关键页面可在真实 Electron �
       const exportJsonButton = page.getByRole('button', { name: '导出 JSON', exact: true })
       await exportJsonButton.waitFor({ state: 'visible' })
       assert.equal(await exportJsonButton.isDisabled(), false)
+
+      const evidencePanel = page.locator('[aria-label="AI 对话上下文附件"]')
+      await evidencePanel.waitFor({ state: 'visible' })
+      assert.match(await evidencePanel.textContent(), /文本 0 \/ 8 · 图片 0 \/ 4/)
+      const importImageButton = evidencePanel.getByRole('button', {
+        name: '添加截图',
+        exact: true
+      })
+      assert.equal(await importImageButton.count(), 1)
+      assert.equal(await importImageButton.isDisabled(), false)
     }
   }
 

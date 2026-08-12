@@ -137,42 +137,86 @@
               <div class="ai-context-panel__label">
                 <t-icon name="attach" />
                 <span>已附加证据</span>
-                <span class="ai-context-panel__count"
-                  >{{ contextAttachments.length }} / {{ MAX_AI_CONTEXT_ATTACHMENTS }}</span
-                >
+                <span class="ai-context-panel__count">
+                  文本 {{ contextAttachments.length }} / {{ MAX_AI_CONTEXT_ATTACHMENTS }} · 图片
+                  {{ imageEvidenceAttachments.length }} / {{ MAX_AI_IMAGE_EVIDENCE }}
+                </span>
               </div>
-              <button
-                v-if="contextAttachments.length"
-                class="btn-text ai-context-panel__clear"
-                type="button"
-                :disabled="chatBusy"
-                @click="clearContextAttachments"
-              >
-                清空
-              </button>
-            </div>
-            <div v-if="contextAttachments.length" class="ai-context-list">
-              <article v-for="item in contextAttachments" :key="item.id" class="ai-context-item">
-                <div class="ai-context-item__body">
-                  <div class="ai-context-item__meta">
-                    <span>{{ item.source }}</span>
-                    <strong>{{ item.title }}</strong>
-                  </div>
-                  <p>{{ previewContext(item.content) }}</p>
-                </div>
+              <div class="ai-context-panel__actions">
                 <button
-                  class="ai-context-item__remove"
+                  class="btn-secondary ai-context-panel__import"
                   type="button"
-                  :disabled="chatBusy"
-                  :aria-label="`移除 ${item.title}`"
-                  @click="removeContextAttachment(item.id)"
+                  :disabled="
+                    chatBusy ||
+                    imageEvidenceImporting ||
+                    imageEvidenceAttachments.length >= MAX_AI_IMAGE_EVIDENCE
+                  "
+                  @click="importImageEvidence"
                 >
-                  <t-icon name="close" />
+                  <t-icon name="image" :class="{ spinning: imageEvidenceImporting }" />
+                  {{ imageEvidenceImporting ? '处理中…' : '添加截图' }}
                 </button>
-              </article>
+                <button
+                  v-if="hasContextEvidence"
+                  class="btn-text ai-context-panel__clear"
+                  type="button"
+                  :disabled="chatBusy || imageEvidenceImporting"
+                  @click="clearContextAttachments"
+                >
+                  清空
+                </button>
+              </div>
+            </div>
+            <div v-if="hasContextEvidence" class="ai-evidence-content">
+              <div v-if="imageEvidenceAttachments.length" class="ai-image-evidence-list">
+                <article
+                  v-for="item in imageEvidenceAttachments"
+                  :key="item.id"
+                  class="ai-image-evidence-item"
+                >
+                  <img :src="item.previewDataUrl" :alt="item.name" />
+                  <div class="ai-image-evidence-item__body">
+                    <strong>{{ item.name }}</strong>
+                    <span>
+                      {{ item.width }} × {{ item.height }} ·
+                      {{ formatEvidenceBytes(item.sizeBytes) }}
+                    </span>
+                    <small>仅本次提问使用，发送成功后自动清理</small>
+                  </div>
+                  <button
+                    class="ai-context-item__remove"
+                    type="button"
+                    :disabled="chatBusy || imageEvidenceImporting"
+                    :aria-label="`移除 ${item.name}`"
+                    @click="removeImageEvidence(item.id)"
+                  >
+                    <t-icon name="close" />
+                  </button>
+                </article>
+              </div>
+              <div v-if="contextAttachments.length" class="ai-context-list">
+                <article v-for="item in contextAttachments" :key="item.id" class="ai-context-item">
+                  <div class="ai-context-item__body">
+                    <div class="ai-context-item__meta">
+                      <span>{{ item.source }}</span>
+                      <strong>{{ item.title }}</strong>
+                    </div>
+                    <p>{{ previewContext(item.content) }}</p>
+                  </div>
+                  <button
+                    class="ai-context-item__remove"
+                    type="button"
+                    :disabled="chatBusy"
+                    :aria-label="`移除 ${item.title}`"
+                    @click="removeContextAttachment(item.id)"
+                  >
+                    <t-icon name="close" />
+                  </button>
+                </article>
+              </div>
             </div>
             <p v-else class="ai-context-panel__empty">
-              从日志分析、事件详情、发布预检或知识库结果添加证据；发送前会自动再次脱敏并限制长度。
+              可添加故障截图，或从日志分析、事件详情、发布预检和知识库附加文本证据。图片会在主进程解码、缩放和限额，不保存原路径。
             </p>
           </section>
 
@@ -327,8 +371,8 @@
               </div>
             </div>
             <p class="composer-note">
-              <t-icon name="secured" /> API Key 仅在主进程使用；提交内容会先脱敏常见密钥、Token
-              和密码字段。
+              <t-icon name="secured" /> API Key 仅在主进程使用；文本会先脱敏常见密钥、Token
+              和密码字段。图片无法自动脱敏，请确认截图不含不应上传的信息。
             </p>
           </footer>
         </section>
@@ -371,7 +415,8 @@ defineOptions({ name: 'AiChat' })
 const router = useRouter()
 const { confirm } = useConfirm()
 const title = 'AI 对话'
-const description = '使用模型可靠性来源的一键配置 Provider 进行多轮对话，并按需关联本地知识库。'
+const description =
+  '使用模型可靠性来源的一键配置 Provider 进行多轮对话，并按需关联本地知识库与故障截图。'
 
 const chatMessages = ref([])
 const chatSessions = ref([])
@@ -383,6 +428,8 @@ const retryableChatError = ref(false)
 const streamingReply = ref('')
 const cancelRequested = ref(false)
 const contextAttachments = ref([])
+const imageEvidenceAttachments = ref([])
+const imageEvidenceImporting = ref(false)
 const usagePanelOpen = ref(false)
 const savingUsageBudget = ref(false)
 const budgetOverrideOnce = ref(false)
@@ -424,7 +471,11 @@ const latestUserMessage = computed(
 const activeChatSession = computed(
   () => chatSessions.value.find((session) => session.id === activeSessionId.value) || null
 )
+const hasContextEvidence = computed(
+  () => contextAttachments.value.length > 0 || imageEvidenceAttachments.value.length > 0
+)
 
+const MAX_AI_IMAGE_EVIDENCE = 4
 const examplePrompts = [
   '如何为当前项目设计安全的备份策略？',
   '请解释一下 Node.js 的事件循环机制',
@@ -504,9 +555,83 @@ function removeContextAttachment(id) {
   MessagePlugin.info({ content: '已移除一条 AI 证据', placement: 'bottom-right' })
 }
 
-function clearContextAttachments() {
+async function importImageEvidence() {
+  if (
+    chatBusy.value ||
+    imageEvidenceImporting.value ||
+    imageEvidenceAttachments.value.length >= MAX_AI_IMAGE_EVIDENCE
+  ) {
+    return
+  }
+  imageEvidenceImporting.value = true
+  try {
+    const result = await opsApi.importAiImageEvidence?.()
+    if (!result?.ok) throw new Error(result?.error || '导入图片证据失败')
+    if (result.cancelled) return
+    imageEvidenceAttachments.value = Array.isArray(result.attachments) ? result.attachments : []
+    MessagePlugin.success({
+      content: `已准备 ${imageEvidenceAttachments.value.length} 张图片证据`,
+      placement: 'bottom-right'
+    })
+  } catch (error) {
+    MessagePlugin.error({
+      content: error?.message || '导入图片证据失败',
+      placement: 'bottom-right'
+    })
+  } finally {
+    imageEvidenceImporting.value = false
+  }
+}
+
+async function removeImageEvidence(id) {
+  if (chatBusy.value || imageEvidenceImporting.value) return
+  try {
+    const result = await opsApi.removeAiImageEvidence?.(id)
+    if (!result?.ok) throw new Error(result?.error || '移除图片证据失败')
+    imageEvidenceAttachments.value = Array.isArray(result.attachments) ? result.attachments : []
+    MessagePlugin.info({ content: '已移除一张图片证据', placement: 'bottom-right' })
+  } catch (error) {
+    MessagePlugin.error({
+      content: error?.message || '移除图片证据失败',
+      placement: 'bottom-right'
+    })
+  }
+}
+
+async function clearImageEvidence({ notify = false } = {}) {
+  const hadImages = imageEvidenceAttachments.value.length > 0
+  imageEvidenceAttachments.value = []
+  try {
+    const result = await opsApi.clearAiImageEvidence?.()
+    if (result?.ok === false) throw new Error(result.error || '清理图片证据失败')
+    if (notify && hadImages) {
+      MessagePlugin.info({ content: '已清空图片证据', placement: 'bottom-right' })
+    }
+  } catch (error) {
+    console.error('清理 AI 图片证据失败', error)
+    if (notify && hadImages) {
+      MessagePlugin.warning({
+        content: '界面已移除图片，主进程临时副本将在过期后自动清理',
+        placement: 'bottom-right'
+      })
+    }
+  }
+}
+
+async function clearContextAttachments() {
+  const hadEvidence = hasContextEvidence.value
   contextAttachments.value = clearAiContextAttachments()
-  MessagePlugin.info({ content: '已清空本次 AI 证据', placement: 'bottom-right' })
+  await clearImageEvidence()
+  if (hadEvidence) {
+    MessagePlugin.info({ content: '已清空本次 AI 证据', placement: 'bottom-right' })
+  }
+}
+
+function formatEvidenceBytes(value) {
+  const bytes = Math.max(0, Number(value) || 0)
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`
+  return `${(bytes / 1024 / 1024).toFixed(2)} MiB`
 }
 
 function previewContext(value) {
@@ -541,6 +666,7 @@ onBeforeUnmount(() => {
   unsubscribeChatStream = null
   if (activeChatRequestId)
     void Promise.resolve(opsApi.cancelAiChatStream?.(activeChatRequestId)).catch(() => {})
+  void clearImageEvidence()
 })
 
 onActivated(() => {
@@ -712,6 +838,7 @@ async function requestAssistantReply() {
       })),
       knowledgeResults: searched.value && knowledgeUseAi.value ? knowledgeResults.value : [],
       contextAttachments: contextAttachments.value,
+      imageEvidenceIds: imageEvidenceAttachments.value.map((item) => item.id),
       budgetOverride: budgetOverrideOnce.value
     }
     budgetOverrideOnce.value = false
@@ -766,8 +893,11 @@ async function requestAssistantReply() {
     streamingReply.value = ''
     cancelRequested.value = false
     chatBusy.value = false
-    // 检索证据只用于下一次提问；请求失败时保留它，确保“重试”仍使用同一批证据。
-    if (completed) searched.value = false
+    // 检索和图片证据只用于下一次提问；失败时保留，确保“重试”仍使用同一批证据。
+    if (completed) {
+      searched.value = false
+      await clearImageEvidence()
+    }
   }
 }
 
@@ -857,6 +987,7 @@ async function copyMessage(message) {
 }
 
 function resetTransientChatState() {
+  void clearImageEvidence()
   chatInput.value = ''
   chatError.value = ''
   retryableChatError.value = false
@@ -1271,6 +1402,7 @@ function configureProvider() {
 }
 
 .ai-context-panel__header {
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--spacing-sm);
 }
@@ -1292,18 +1424,90 @@ function configureProvider() {
   font-weight: 500;
 }
 
+.ai-context-panel__actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+}
+
+.ai-context-panel__import,
 .ai-context-panel__clear {
   min-height: 26px;
-  padding: 0 6px;
+  padding: 0 7px;
   font-size: 11px;
+}
+
+.ai-context-panel__import :deep(svg) {
+  font-size: 14px;
+}
+
+.ai-evidence-content {
+  display: grid;
+  gap: 7px;
+  max-height: 174px;
+  padding-top: 7px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.ai-image-evidence-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.ai-image-evidence-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px;
+  border: 1px solid color-mix(in srgb, var(--primary) 18%, var(--border-light));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--primary-light) 36%, var(--card-bg));
+}
+
+.ai-image-evidence-item img {
+  width: 52px;
+  height: 44px;
+  flex: 0 0 auto;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  object-fit: cover;
+  background: var(--bg-subtle);
+}
+
+.ai-image-evidence-item__body {
+  display: grid;
+  min-width: 0;
+  flex: 1 1 auto;
+  gap: 1px;
+}
+
+.ai-image-evidence-item__body strong,
+.ai-image-evidence-item__body span,
+.ai-image-evidence-item__body small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-image-evidence-item__body strong {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.ai-image-evidence-item__body span,
+.ai-image-evidence-item__body small {
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 14px;
 }
 
 .ai-context-list {
   display: grid;
   gap: 6px;
-  max-height: 132px;
-  padding-top: 7px;
-  overflow-y: auto;
 }
 
 .ai-context-item {
@@ -1945,6 +2149,18 @@ function configureProvider() {
     padding-inline: var(--spacing-md);
   }
 
+  .ai-context-panel__header {
+    flex-wrap: wrap;
+  }
+
+  .ai-context-panel__actions {
+    width: 100%;
+  }
+
+  .ai-image-evidence-list {
+    grid-template-columns: 1fr;
+  }
+
   .knowledge-toggle {
     flex: 1;
   }
@@ -2004,6 +2220,16 @@ function configureProvider() {
 
   .knowledge-toggle {
     flex-basis: 100%;
+  }
+
+  .ai-context-panel__label {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .ai-context-panel__count {
+    width: 100%;
+    padding-left: 22px;
   }
 
   .knowledge-search-button {
