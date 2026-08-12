@@ -414,6 +414,85 @@ button:disabled {
   gap: 10px;
 }
 
+.routing-panel {
+  grid-column: 1 / -1;
+}
+
+.routing-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(360px, 1.1fr);
+  gap: var(--content-gap);
+}
+
+.routing-settings,
+.routing-observability {
+  min-width: 0;
+}
+
+.routing-notice {
+  margin-bottom: 14px;
+}
+
+.routing-subtitle,
+.routing-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.routing-subtitle {
+  margin-bottom: 10px;
+}
+
+.routing-subtitle > span {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.routing-health-list,
+.routing-history {
+  display: grid;
+  gap: 8px;
+}
+
+.routing-history {
+  padding-top: 10px;
+  margin-top: 10px;
+  border-top: 1px solid var(--border-light);
+}
+
+.routing-row {
+  padding: 10px 11px;
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  background: var(--bg-subtle);
+}
+
+.routing-row > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+  margin-right: auto;
+}
+
+.routing-row strong,
+.routing-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.routing-row strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.routing-row small {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
 .provider-list-panel .panel-title {
   margin-bottom: 3px;
 }
@@ -1218,6 +1297,10 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
+  .routing-grid {
+    grid-template-columns: 1fr;
+  }
+
   .ai-ops-page .page-header {
     align-items: flex-start;
     flex-direction: column;
@@ -1264,7 +1347,8 @@ button:disabled {
 
   .provider-card,
   .table-row,
-  .knowledge-doc {
+  .knowledge-doc,
+  .routing-row {
     align-items: stretch;
     flex-direction: column;
   }

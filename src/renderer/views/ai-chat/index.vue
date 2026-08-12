@@ -343,7 +343,7 @@
                     :disabled="chatBusy"
                     @click="switchProvider"
                   >
-                    <t-icon name="refresh" /> 切换模型
+                    <t-icon name="refresh" /> {{ routingEnabled ? '自动路由' : '切换模型' }}
                   </button>
                   <button
                     v-if="chatBusy"
@@ -452,6 +452,10 @@ const knowledgeResults = ref([])
 const searched = ref(false)
 
 const providerState = ref({ activeProviderId: '', providers: [] })
+const routingState = ref({
+  settings: { enabled: false, preferLocal: true, maxAttempts: 2, cooldownMinutes: 5 }
+})
+const routingEnabled = computed(() => routingState.value.settings?.enabled === true)
 const activeProvider = computed(
   () =>
     providerState.value.providers.find(
@@ -460,9 +464,13 @@ const activeProvider = computed(
 )
 const activeProviderReady = computed(() =>
   Boolean(
-    activeProvider.value?.enabled &&
-    activeProvider.value?.available &&
-    activeProvider.value?.hasApiKey
+    (activeProvider.value?.enabled &&
+      activeProvider.value?.available &&
+      activeProvider.value?.hasApiKey) ||
+    (routingEnabled.value &&
+      providerState.value.providers.some(
+        (provider) => provider.enabled && provider.available && provider.hasApiKey
+      ))
   )
 )
 const latestUserMessage = computed(
@@ -493,6 +501,7 @@ async function loadProviderState() {
     const result = await opsApi.getAiOpsState()
     if (result?.ok && Array.isArray(result.providers?.providers)) {
       providerState.value = result.providers
+      if (result.routing?.settings) routingState.value = result.routing
     } else if (!result?.ok) {
       console.error('加载 AI Provider 状态失败', result?.error)
     }
@@ -870,6 +879,13 @@ async function requestAssistantReply() {
     if (!content) throw new Error('AI 未返回可用文本')
     addMessage('assistant', content)
     applyUsageState(result.usageState)
+    if (result.route?.failover) {
+      MessagePlugin.warning({
+        content: `已自动路由至 ${result.route.providerName || '备用 Provider'} · ${result.route.model || '当前模型'}`,
+        placement: 'bottom-right',
+        duration: 5000
+      })
+    }
     if (result.truncated) {
       MessagePlugin.warning({ content: '回答过长，已安全截断', placement: 'bottom-right' })
     }

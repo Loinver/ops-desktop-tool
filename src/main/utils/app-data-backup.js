@@ -46,9 +46,10 @@ const BACKUP_GROUPS = Object.freeze([
   {
     id: 'ai',
     label: 'AI 与知识',
-    description: 'Provider、评测、日志分析、知识库和工作流记录',
+    description: 'Provider、路由策略、评测、日志分析、知识库和工作流记录',
     files: [
       'ai-providers.json',
+      'ai-provider-routing.json',
       'ai-evaluations.json',
       'ai-log-analysis.json',
       'ai-knowledge.json',

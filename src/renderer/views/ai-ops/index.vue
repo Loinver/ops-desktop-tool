@@ -274,6 +274,135 @@
               </div>
             </div>
           </article>
+
+          <article class="panel routing-panel">
+            <div class="panel-title">
+              <div>
+                <h3>Provider 自动路由</h3>
+                <p>
+                  仅在已添加且最近测试通过的 Provider 之间切换；连接测试和质量评测始终锁定指定模型。
+                </p>
+              </div>
+              <span :class="['status-badge', routingForm.enabled ? 'success' : 'muted']">
+                {{ routingForm.enabled ? '已启用' : '未启用' }}
+              </span>
+            </div>
+
+            <div class="routing-grid">
+              <div class="routing-settings">
+                <div class="source-notice routing-notice">
+                  <t-icon name="secured" aria-hidden="true" />
+                  <span
+                    >本地优先仅识别 localhost、*.localhost、127.0.0.0/8 与
+                    ::1，不会自动安装、启动或发现本地模型服务。</span
+                  >
+                </div>
+                <div class="form-grid">
+                  <label class="check checkbox-row full">
+                    <input v-model="routingForm.enabled" type="checkbox" />
+                    <span>请求失败时自动尝试其他可用 Provider</span>
+                  </label>
+                  <label class="check checkbox-row full">
+                    <input
+                      v-model="routingForm.preferLocal"
+                      type="checkbox"
+                      :disabled="!routingForm.enabled"
+                    />
+                    <span>优先使用已配置的本机回环 Provider</span>
+                  </label>
+                  <label>
+                    <span>单次最多尝试</span>
+                    <select
+                      v-model.number="routingForm.maxAttempts"
+                      :disabled="!routingForm.enabled"
+                    >
+                      <option :value="1">1 个 Provider</option>
+                      <option :value="2">2 个 Provider</option>
+                      <option :value="3">3 个 Provider</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>失败冷却（分钟）</span>
+                    <input
+                      v-model.number="routingForm.cooldownMinutes"
+                      type="number"
+                      min="1"
+                      max="60"
+                      :disabled="!routingForm.enabled"
+                    />
+                  </label>
+                </div>
+                <div class="actions">
+                  <button
+                    class="btn-primary"
+                    type="button"
+                    :disabled="savingRouting"
+                    @click="saveProviderRouting"
+                  >
+                    <t-icon
+                      :name="savingRouting ? 'loading' : 'save'"
+                      :class="{ spinning: savingRouting }"
+                    />
+                    {{ savingRouting ? '保存中' : '保存路由策略' }}
+                  </button>
+                  <button
+                    class="btn-text"
+                    type="button"
+                    :disabled="savingRouting || !routingState.health.length"
+                    @click="resetProviderRouting"
+                  >
+                    清除故障冷却
+                  </button>
+                </div>
+              </div>
+
+              <div class="routing-observability">
+                <div class="routing-subtitle">
+                  <strong>健康与最近路由</strong>
+                  <span>{{ routingState.health.length }} 个健康记录</span>
+                </div>
+                <div
+                  v-if="!routingState.health.length && !routingState.recentRoutes.length"
+                  class="empty-mini"
+                >
+                  保存并启用策略后，Provider 的成功、失败和冷却状态会显示在这里。
+                </div>
+                <div v-if="routingState.health.length" class="routing-health-list">
+                  <div
+                    v-for="item in routingState.health"
+                    :key="item.providerId"
+                    class="routing-row"
+                  >
+                    <div>
+                      <strong>{{ item.providerName }}</strong>
+                      <small>{{ item.model || item.providerId }}</small>
+                    </div>
+                    <span v-if="item.local" class="status-badge primary">本机</span>
+                    <span :class="['status-badge', item.cooling ? 'muted' : 'success']">
+                      {{ item.cooling ? `冷却至 ${formatTime(item.cooldownUntil)}` : '可尝试' }}
+                    </span>
+                  </div>
+                </div>
+                <div v-if="routingState.recentRoutes.length" class="routing-history">
+                  <div
+                    v-for="(item, index) in routingState.recentRoutes.slice(0, 6)"
+                    :key="`${item.at}-${item.providerId}-${index}`"
+                    class="routing-row routing-history-row"
+                  >
+                    <div>
+                      <strong>{{ item.providerName }}</strong>
+                      <small>{{ formatTime(item.at) }} · 第 {{ item.attempt }} 次尝试</small>
+                    </div>
+                    <span
+                      :class="['status-badge', item.outcome === 'success' ? 'success' : 'muted']"
+                    >
+                      {{ item.outcome === 'success' ? '成功' : '失败' }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </article>
         </section>
 
         <section v-else-if="activeTab === 'evaluation'" class="stack">
@@ -435,10 +564,10 @@
                 ><input v-model="logForm.title" placeholder="例如：正式环境发布失败 2026-07-31"
               /></label>
               <label class="check checkbox-row align-end"
-                ><input v-model="logForm.useAi" type="checkbox" :disabled="!activeProviderReady" />
+                ><input v-model="logForm.useAi" type="checkbox" :disabled="!routedProviderReady" />
                 使用当前 AI Provider 生成总结</label
               >
-              <p v-if="!activeProviderReady" class="inline-hint full provider-hint">
+              <p v-if="!routedProviderReady" class="inline-hint full provider-hint">
                 <t-icon name="info-circle" aria-hidden="true" />
                 <span
                   >暂无可用 Provider；当前可使用本地规则分析。请先在 Provider
@@ -682,10 +811,10 @@
                 </button>
               </div>
               <label class="check checkbox-row"
-                ><input v-model="knowledgeUseAi" type="checkbox" :disabled="!activeProviderReady" />
+                ><input v-model="knowledgeUseAi" type="checkbox" :disabled="!routedProviderReady" />
                 使用当前 AI Provider 基于检索结果回答</label
               >
-              <p v-if="!activeProviderReady" class="inline-hint">
+              <p v-if="!routedProviderReady" class="inline-hint">
                 <t-icon name="info-circle" /> 配置已启用且包含密钥的默认 Provider 后可生成 AI 回答。
               </p>
               <button
@@ -948,6 +1077,13 @@ const sourceError = ref('')
 const testingProviderId = ref('')
 const activatingProviderId = ref('')
 const providerState = ref({ activeProviderId: '', providers: [] })
+const routingState = ref({
+  settings: { enabled: false, preferLocal: true, maxAttempts: 2, cooldownMinutes: 5 },
+  health: [],
+  recentRoutes: []
+})
+const routingForm = ref({ ...routingState.value.settings })
+const savingRouting = ref(false)
 const evaluationState = ref({ cases: [], runs: [] })
 const logState = ref({ items: [] })
 const knowledgeState = ref({ documents: [] })
@@ -991,6 +1127,14 @@ const activeProviderReady = computed(() =>
     activeProvider.value?.available &&
     activeProvider.value?.hasApiKey
   )
+)
+const routedProviderReady = computed(
+  () =>
+    activeProviderReady.value ||
+    (routingState.value.settings?.enabled &&
+      providers.value.some(
+        (provider) => provider.enabled && provider.available && provider.hasApiKey
+      ))
 )
 const sourceKey = (source) => `${source.appType}::${source.id}`
 const selectedProviderSource = computed(
@@ -1166,6 +1310,10 @@ async function loadState() {
     const result = await opsApi.getAiOpsState()
     if (!notify(result, '读取 AI 运维数据失败')) return
     providerState.value = result.providers || providerState.value
+    if (result.routing?.settings) {
+      routingState.value = result.routing
+      routingForm.value = { ...result.routing.settings }
+    }
     evaluationState.value = result.evaluations || evaluationState.value
     logState.value = result.logs || logState.value
     knowledgeState.value = result.knowledge || knowledgeState.value
@@ -1263,6 +1411,32 @@ async function testProvider(id) {
       })
   } finally {
     testingProviderId.value = ''
+  }
+}
+
+async function saveProviderRouting() {
+  savingRouting.value = true
+  try {
+    const result = await opsApi.saveAiProviderRouting({ ...routingForm.value })
+    if (!notify(result, '保存 Provider 路由策略失败')) return
+    routingState.value = result.routing
+    routingForm.value = { ...result.routing.settings }
+    MessagePlugin.success({ content: 'Provider 路由策略已保存', placement: 'bottom-right' })
+  } finally {
+    savingRouting.value = false
+  }
+}
+
+async function resetProviderRouting() {
+  savingRouting.value = true
+  try {
+    const result = await opsApi.resetAiProviderRoutingHealth()
+    if (!notify(result, '清除 Provider 故障冷却失败')) return
+    routingState.value = result.routing
+    routingForm.value = { ...result.routing.settings }
+    MessagePlugin.success({ content: 'Provider 故障冷却已清除', placement: 'bottom-right' })
+  } finally {
+    savingRouting.value = false
   }
 }
 

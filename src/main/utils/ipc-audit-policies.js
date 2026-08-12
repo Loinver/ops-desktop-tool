@@ -346,6 +346,21 @@ function createIpcAuditPolicies() {
       category: 'ai-config',
       target: (args) => ({ hasProviderId: hasValue(first(args)) })
     },
+    [IPC_CHANNELS.AI_PROVIDER_ROUTING_SAVE]: {
+      action: 'ai-provider.routing-save',
+      category: 'ai-config',
+      target: (args) => ({
+        enabled: objectArg(args).enabled === true,
+        preferLocal: objectArg(args).preferLocal !== false,
+        maxAttempts: integerValue(objectArg(args).maxAttempts, 1, 3),
+        cooldownMinutes: integerValue(objectArg(args).cooldownMinutes, 1, 60)
+      })
+    },
+    [IPC_CHANNELS.AI_PROVIDER_ROUTING_RESET]: {
+      action: 'ai-provider.routing-reset',
+      category: 'ai-config',
+      target: () => ({ operation: 'reset-health' })
+    },
     [IPC_CHANNELS.AI_WORKFLOW_EXECUTE]: {
       action: 'ai-workflow.execute',
       category: 'ai-workflow',

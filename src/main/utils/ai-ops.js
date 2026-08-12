@@ -389,12 +389,9 @@ async function activateProvider({ userDataPath, id, providerLoader = loadProvide
   return listProviders({ userDataPath, providerLoader })
 }
 
-async function runtimeProvider({ userDataPath, providerId, providerLoader = loadProviders }) {
-  const state = loadProviderRaw(userDataPath)
-  const ref = state.providers.find((item) => item.id === (providerId || state.activeProviderId))
+function resolveRuntimeProviderRef({ ref, sources, modelStatuses }) {
   if (!ref || ref.enabled === false)
     throw new Error('请先在模型可靠性配置 Provider，再一键添加到 AI 功能')
-  const sources = await loadModelReliabilitySources(providerLoader)
   const source = sources.find((item) => sourceKeyMatches(item, ref))
   if (!source) throw new Error('当前 AI Provider 已从模型可靠性中移除，请重新一键配置')
   if (!supportedAiSource(source))
@@ -405,7 +402,7 @@ async function runtimeProvider({ userDataPath, providerId, providerLoader = load
     throw new Error('当前 AI Provider 在模型可靠性中不可用，请先检查接口地址和密钥')
   if (!sourceModels(source).some((item) => item.model === ref.model))
     throw new Error('当前 AI 模型已不在模型可靠性 Provider 中，请重新一键配置')
-  const latestStatus = latestModelTestStatuses(userDataPath).get(
+  const latestStatus = modelStatuses.get(
     modelTestKey(ref.sourceProviderId, ref.sourceAppType, ref.model)
   )
   if (latestStatus !== 'ok')
@@ -419,12 +416,54 @@ async function runtimeProvider({ userDataPath, providerId, providerLoader = load
     apiKey: source.apiKey,
     protocol: string(source.protocol, 40),
     wireApi: string(source.wireApi, 40),
+    protocolLabel: providerProtocolLabel(source.protocol, source.wireApi),
     customUserAgent: string(source.customUserAgent, 300),
     anthropicAuthType: string(source.anthropicAuthType, 40),
     anthropicBeta: string(source.anthropicBeta, 300),
     beta1m: Boolean(selectedModel?.beta1m),
     source: 'model-reliability'
   }
+}
+
+async function runtimeProvider({ userDataPath, providerId, providerLoader = loadProviders }) {
+  const state = loadProviderRaw(userDataPath)
+  const ref = state.providers.find((item) => item.id === (providerId || state.activeProviderId))
+  const sources = await loadModelReliabilitySources(providerLoader)
+  return resolveRuntimeProviderRef({
+    ref,
+    sources,
+    modelStatuses: latestModelTestStatuses(userDataPath)
+  })
+}
+
+async function runtimeProviderCandidates({
+  userDataPath,
+  providerId,
+  providerLoader = loadProviders
+}) {
+  const state = loadProviderRaw(userDataPath)
+  const requestedProviderId = string(providerId || state.activeProviderId, 100)
+  const requestedRef = state.providers.find((item) => item.id === requestedProviderId)
+
+  const sources = await loadModelReliabilitySources(providerLoader)
+  const modelStatuses = latestModelTestStatuses(userDataPath)
+  const refs = [
+    ...(requestedRef ? [requestedRef] : []),
+    ...state.providers.filter((item) => item.id !== requestedProviderId && item.enabled !== false)
+  ]
+  const providers = []
+  let requestedError = requestedRef
+    ? null
+    : new Error('请求的 AI Provider 不存在，请重新选择或启用自动路由')
+  for (const ref of refs) {
+    try {
+      providers.push(resolveRuntimeProviderRef({ ref, sources, modelStatuses }))
+    } catch (error) {
+      if (ref.id === requestedProviderId) requestedError = error
+    }
+  }
+  if (!providers.length) throw requestedError || new Error('没有可用于 AI 请求的 Provider')
+  return { requestedProviderId, providers, requestedError }
 }
 
 function stripTrailingSlash(value) {
@@ -674,6 +713,36 @@ function providerRequestError(data, raw, status) {
       ? ' 上游服务或中转接口暂时异常，请稍后重试、执行连接测试，或切换 Provider。'
       : ''
   return `AI 请求失败（HTTP ${status}${codeSuffix}）：${detail}${recoveryHint}`
+}
+
+function createProviderHttpError(data, raw, status) {
+  const error = new Error(providerRequestError(data, raw, status))
+  error.code = 'AI_PROVIDER_HTTP_ERROR'
+  error.status = Math.max(0, Number(status) || 0)
+  return error
+}
+
+function createProviderEmptyResponseError() {
+  const error = new Error('AI 未返回可用文本')
+  error.code = 'AI_PROVIDER_EMPTY_RESPONSE'
+  return error
+}
+
+function normalizeProviderRequestError(error, { timedOut = false } = {}) {
+  if (timedOut || error?.name === 'AbortError') {
+    const timeout = new Error('AI 请求超时（60 秒）')
+    timeout.code = 'AI_PROVIDER_TIMEOUT'
+    timeout.cause = error
+    return timeout
+  }
+  if (error?.code) return error
+  if (error instanceof TypeError) {
+    const network = new Error('AI Provider 网络连接失败，请检查接口地址或网络状态')
+    network.code = 'AI_PROVIDER_NETWORK_ERROR'
+    network.cause = error
+    return network
+  }
+  return error
 }
 
 function applyCustomUserAgent(provider, headers) {
@@ -960,7 +1029,7 @@ function completionStreamRequests(provider, options) {
 
 function parseStreamError(provider, result, payload) {
   const raw = typeof payload === 'string' ? payload : JSON.stringify(payload || {})
-  const error = new Error(providerRequestError(payload, raw, result.response.status || 0))
+  const error = createProviderHttpError(payload, raw, result.response.status || 0)
   error.providerPayload = payload
   return error
 }
@@ -995,7 +1064,7 @@ async function requestCompletionStream(
           lastResult.data = null
         }
         if (index < requests.length - 1 && [404, 405].includes(response.status)) continue
-        throw new Error(providerRequestError(lastResult.data, lastResult.raw, response.status))
+        throw createProviderHttpError(lastResult.data, lastResult.raw, response.status)
       }
 
       let model = provider.model
@@ -1023,18 +1092,20 @@ async function requestCompletionStream(
         }
         if (data?.error) throw parseStreamError(provider, { response }, data)
         const content = request.extract(data)
-        if (!content) throw new Error('AI 未返回可用文本')
+        if (!content) throw createProviderEmptyResponseError()
         emitter.push(content)
         usage = data?.usage || data?.usageMetadata || usage
         model = string(data?.model || data?.modelVersion, 160) || model
       }
 
       const result = emitter.finish()
-      if (!result.content.trim()) throw new Error('AI 未返回可用文本')
+      if (!result.content.trim()) throw createProviderEmptyResponseError()
       return { content: result.content.trim(), usage, model, truncated: result.truncated }
     }
-    throw new Error(
-      providerRequestError(lastResult?.data, lastResult?.raw, lastResult?.response?.status || 0)
+    throw createProviderHttpError(
+      lastResult?.data,
+      lastResult?.raw,
+      lastResult?.response?.status || 0
     )
   } catch (error) {
     if (signal?.aborted) {
@@ -1043,9 +1114,7 @@ async function requestCompletionStream(
       cancelled.cause = error
       throw cancelled
     }
-    if (timedOut || error?.name === 'AbortError')
-      throw new Error('AI 请求超时（60 秒）', { cause: error })
-    throw error
+    throw normalizeProviderRequestError(error, { timedOut })
   } finally {
     clearTimeout(timer)
     signal?.removeEventListener('abort', abortExternal)
@@ -1073,21 +1142,22 @@ async function requestCompletion(
       )
         continue
       if (!result.response.ok)
-        throw new Error(providerRequestError(result.data, result.raw, result.response.status))
+        throw createProviderHttpError(result.data, result.raw, result.response.status)
       const content = request.extract(result.data)
-      if (!content) throw new Error('AI 未返回可用文本')
+      if (!content) throw createProviderEmptyResponseError()
       return {
         content,
         usage: result.data?.usage || result.data?.usageMetadata || {},
         model: result.data?.model || provider.model
       }
     }
-    throw new Error(
-      providerRequestError(lastResult?.data, lastResult?.raw, lastResult?.response?.status || 0)
+    throw createProviderHttpError(
+      lastResult?.data,
+      lastResult?.raw,
+      lastResult?.response?.status || 0
     )
   } catch (error) {
-    if (error?.name === 'AbortError') throw new Error('AI 请求超时（60 秒）', { cause: error })
-    throw error
+    throw normalizeProviderRequestError(error, { timedOut: error?.name === 'AbortError' })
   } finally {
     clearTimeout(timer)
   }
@@ -1924,6 +1994,7 @@ module.exports = {
   deleteProvider,
   activateProvider,
   runtimeProvider,
+  runtimeProviderCandidates,
   buildKnowledgeContext,
   buildAiContextContext,
   normalizeAiImageEvidence,

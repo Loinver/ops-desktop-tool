@@ -445,7 +445,7 @@ test('模型来源提示图标居中且模型可靠性入口保持轻量', async
   })
   await page.waitForURL(/#\/ai-models$/)
 
-  const notice = page.locator('.source-notice')
+  const notice = page.locator('.provider-source-panel .source-notice')
   const sourceLink = page.locator('.source-reliability-link')
   await notice.waitFor({ state: 'visible' })
 

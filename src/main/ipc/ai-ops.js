@@ -36,6 +36,7 @@ const {
   deleteProvider,
   activateProvider,
   runtimeProvider,
+  runtimeProviderCandidates,
   askAiChat,
   askAiChatStream,
   requestCompletion,
@@ -55,6 +56,13 @@ const {
   planWorkflow,
   saveWorkflowPlan
 } = require('../utils/ai-ops')
+const {
+  executeProviderRoute,
+  isLoopbackProvider,
+  loadProviderRoutingState,
+  resetProviderRoutingHealth,
+  saveProviderRoutingSettings
+} = require('../utils/ai-provider-routing')
 const {
   addOpsEvent,
   deleteAutomationTask,
@@ -85,6 +93,7 @@ function failure(error) {
   }
   if (error?.code) result.code = String(error.code).slice(0, 120)
   if (error?.budget) result.budget = error.budget
+  if (error?.route) result.route = error.route
   return result
 }
 
@@ -159,9 +168,143 @@ function resolveImageEvidenceIds(sender, value) {
   return ids.map((id) => resolveImageEvidence(sender, id))
 }
 
-async function safeState() {
+function safeRoutingState(providerState) {
+  const state = loadProviderRoutingState(userDataPath())
+  const providers = Array.isArray(providerState?.providers) ? providerState.providers : []
+  const providerById = new Map(providers.map((provider) => [provider.id, provider]))
+  const now = Date.now()
   return {
-    providers: await listProviders({ userDataPath: userDataPath() }),
+    version: state.version,
+    settings: state.settings,
+    health: Object.entries(state.health || {}).map(([providerId, item]) => {
+      const provider = providerById.get(providerId)
+      return {
+        providerId,
+        providerName: provider?.name || '已移除 Provider',
+        model: provider?.model || '',
+        local: Boolean(provider && isLoopbackProvider(provider)),
+        consecutiveFailures: Math.max(0, Number(item?.consecutiveFailures) || 0),
+        cooldownUntil: Number(item?.cooldownUntil) || 0,
+        cooling: Number(item?.cooldownUntil) > now,
+        lastFailureAt: Number(item?.lastFailureAt) || 0,
+        lastSuccessAt: Number(item?.lastSuccessAt) || 0,
+        lastErrorCode: String(item?.lastErrorCode || '').slice(0, 80)
+      }
+    }),
+    recentRoutes: (Array.isArray(state.routeHistory) ? state.routeHistory : [])
+      .slice(-12)
+      .reverse()
+      .map((item) => {
+        const provider = providerById.get(item.providerId)
+        return {
+          ...item,
+          providerName: provider?.name || '已移除 Provider',
+          model: provider?.model || '',
+          local: Boolean(provider && isLoopbackProvider(provider))
+        }
+      })
+  }
+}
+
+function safeRouteResult(routed) {
+  const provider = routed.provider
+  return {
+    ...routed.route,
+    providerId: provider.id,
+    providerName: provider.name,
+    model: routed.result?.model || provider.model,
+    protocolLabel: provider.protocolLabel || '',
+    local: isLoopbackProvider(provider)
+  }
+}
+
+function isRouteCancellation(error, signal) {
+  return (
+    signal?.aborted ||
+    ['AI_CHAT_CANCELLED', 'AI_PROVIDER_ROUTE_CANCELLED'].includes(String(error?.code || ''))
+  )
+}
+
+function isRetryableProviderError(error) {
+  const code = String(error?.code || '')
+  if (code.startsWith('AI_USAGE_') || code === 'AI_CHAT_CANCELLED') return false
+  if (code === 'AI_PROVIDER_HTTP_ERROR') {
+    const status = Math.max(0, Number(error?.status) || 0)
+    return status === 0 || [408, 425, 429].includes(status) || status >= 500
+  }
+  return [
+    'AI_PROVIDER_NETWORK_ERROR',
+    'AI_PROVIDER_TIMEOUT',
+    'AI_PROVIDER_EMPTY_RESPONSE'
+  ].includes(code)
+}
+
+async function executeRoutedProviderRequest({
+  providerId,
+  execute,
+  beforeAttempt,
+  signal,
+  hasPartialOutput
+}) {
+  const currentUserDataPath = userDataPath()
+  const routingState = loadProviderRoutingState(currentUserDataPath)
+  const resolved =
+    typeof runtimeProviderCandidates === 'function'
+      ? await runtimeProviderCandidates({ userDataPath: currentUserDataPath, providerId })
+      : await runtimeProvider({ userDataPath: currentUserDataPath, providerId }).then(
+          (provider) => ({
+            requestedProviderId: provider.id,
+            providers: [provider],
+            requestedError: null
+          })
+        )
+  if (!routingState.settings.enabled) {
+    if (resolved.requestedError) throw resolved.requestedError
+    const provider =
+      resolved.providers.find((item) => item.id === resolved.requestedProviderId) ||
+      resolved.providers[0]
+    if (!provider) throw new Error('没有可用的 AI Provider')
+    if (typeof beforeAttempt === 'function') await beforeAttempt(provider)
+    const result = await execute(provider)
+    const routed = {
+      provider,
+      result,
+      route: {
+        enabled: false,
+        requestedProviderId: resolved.requestedProviderId || provider.id,
+        attemptedProviderIds: [provider.id],
+        attemptCount: 1,
+        maxAttempts: 1,
+        selectedProviderId: provider.id,
+        failover: false,
+        stoppedReason: 'routing-disabled'
+      }
+    }
+    return { ...routed, route: safeRouteResult(routed) }
+  }
+
+  const routed = await executeProviderRoute({
+    userDataPath: currentUserDataPath,
+    state: routingState,
+    settings: routingState.settings,
+    candidates: resolved.providers,
+    requestedProviderId: resolved.requestedProviderId,
+    execute,
+    beforeAttempt,
+    isCancelled: ({ error } = {}) => isRouteCancellation(error, signal),
+    hasPartialOutput,
+    canFailover: ({ error } = {}) => isRetryableProviderError(error),
+    preserveError: ({ error } = {}) => !isRetryableProviderError(error),
+    shouldRecordFailure: ({ error } = {}) => isRetryableProviderError(error)
+  })
+  return { ...routed, route: safeRouteResult(routed) }
+}
+
+async function safeState() {
+  const providers = await listProviders({ userDataPath: userDataPath() })
+  return {
+    providers,
+    routing: safeRoutingState(providers),
     evaluations: loadEvaluationState(userDataPath()),
     logs: loadLogState(userDataPath()),
     knowledge: loadKnowledgeState(userDataPath()),
@@ -225,19 +368,22 @@ function copilotContext(prompt) {
 }
 
 async function generateOptionalAnalysis({ providerId, prompt }) {
-  const provider = await runtimeProvider({ userDataPath: userDataPath(), providerId })
-  const response = await requestCompletion(provider, {
-    temperature: 0.1,
-    messages: [
-      {
-        role: 'system',
-        content:
-          '你是谨慎的运维分析助手。仅根据给出的脱敏材料给出结论，区分事实、推测和建议；禁止输出密钥、密码或破坏性命令。'
-      },
-      { role: 'user', content: prompt }
-    ]
+  const routed = await executeRoutedProviderRequest({
+    providerId,
+    execute: (provider) =>
+      requestCompletion(provider, {
+        temperature: 0.1,
+        messages: [
+          {
+            role: 'system',
+            content:
+              '你是谨慎的运维分析助手。仅根据给出的脱敏材料给出结论，区分事实、推测和建议；禁止输出密钥、密码或破坏性命令。'
+          },
+          { role: 'user', content: prompt }
+        ]
+      })
   })
-  return redactSensitiveText(response.content)
+  return redactSensitiveText(routed.result.content)
 }
 
 function registerAiOpsHandlers() {
@@ -308,6 +454,24 @@ function registerAiOpsHandlers() {
       return failure(error)
     }
   })
+  ipcMain.handle(IPC_CHANNELS.AI_PROVIDER_ROUTING_SAVE, async (_event, settings = {}) => {
+    try {
+      const providers = await listProviders({ userDataPath: userDataPath() })
+      saveProviderRoutingSettings(userDataPath(), settings)
+      return success({ routing: safeRoutingState(providers) })
+    } catch (error) {
+      return failure(error)
+    }
+  })
+  ipcMain.handle(IPC_CHANNELS.AI_PROVIDER_ROUTING_RESET, async () => {
+    try {
+      const providers = await listProviders({ userDataPath: userDataPath() })
+      resetProviderRoutingHealth(userDataPath())
+      return success({ routing: safeRoutingState(providers) })
+    } catch (error) {
+      return failure(error)
+    }
+  })
 
   ipcMain.handle(IPC_CHANNELS.AI_IMAGE_EVIDENCE_IMPORT, async (event) => {
     try {
@@ -362,24 +526,25 @@ function registerAiOpsHandlers() {
 
   ipcMain.handle(IPC_CHANNELS.AI_CHAT_ASK, async (event, options = {}) => {
     try {
-      const provider = await runtimeProvider({
-        userDataPath: userDataPath(),
-        providerId: options.providerId
-      })
       const imageEvidence = resolveImageEvidenceIds(event.sender, options.imageEvidenceIds)
-      ensureChatBudget(provider, options, imageEvidence)
-      const result = await askAiChat({
-        userDataPath: userDataPath(),
+      const routed = await executeRoutedProviderRequest({
         providerId: options.providerId,
-        messages: options.messages,
-        knowledgeResults: options.knowledgeResults,
-        contextAttachments: options.contextAttachments,
-        imageEvidence,
-        provider
+        beforeAttempt: (provider) => ensureChatBudget(provider, options, imageEvidence),
+        execute: (provider) =>
+          askAiChat({
+            userDataPath: userDataPath(),
+            providerId: provider.id,
+            messages: options.messages,
+            knowledgeResults: options.knowledgeResults,
+            contextAttachments: options.contextAttachments,
+            imageEvidence,
+            provider
+          })
       })
-      const usageState = recordChatUsage(provider, result, options, imageEvidence)
+      const result = routed.result
+      const usageState = recordChatUsage(routed.provider, result, options, imageEvidence)
       if (imageEvidence.length) clearImageEvidence(event.sender)
-      return success({ ...result, usageState })
+      return success({ ...result, route: routed.route, usageState })
     } catch (error) {
       return failure(error)
     }
@@ -400,26 +565,31 @@ function registerAiOpsHandlers() {
     sender.once?.('destroyed', onDestroyed)
 
     try {
-      const provider = await runtimeProvider({
-        userDataPath: userDataPath(),
-        providerId: options.providerId
-      })
       const imageEvidence = resolveImageEvidenceIds(sender, options.imageEvidenceIds)
-      ensureChatBudget(provider, options, imageEvidence)
-      const result = await askAiChatStream({
-        userDataPath: userDataPath(),
+      let emittedDelta = false
+      const routed = await executeRoutedProviderRequest({
         providerId: options.providerId,
-        messages: options.messages,
-        knowledgeResults: options.knowledgeResults,
-        contextAttachments: options.contextAttachments,
-        imageEvidence,
-        provider,
         signal: controller.signal,
-        onDelta: (delta) => {
-          if (entry.cancelled || controller.signal.aborted) return
-          sendChatStreamEvent(sender, { requestId, type: 'delta', delta })
-        }
+        hasPartialOutput: () => emittedDelta,
+        beforeAttempt: (provider) => ensureChatBudget(provider, options, imageEvidence),
+        execute: (provider) =>
+          askAiChatStream({
+            userDataPath: userDataPath(),
+            providerId: provider.id,
+            messages: options.messages,
+            knowledgeResults: options.knowledgeResults,
+            contextAttachments: options.contextAttachments,
+            imageEvidence,
+            provider,
+            signal: controller.signal,
+            onDelta: (delta) => {
+              if (entry.cancelled || controller.signal.aborted) return
+              emittedDelta = true
+              sendChatStreamEvent(sender, { requestId, type: 'delta', delta })
+            }
+          })
       })
+      const result = routed.result
       if (entry.cancelled || controller.signal.aborted) {
         const cancelled = new Error('AI 请求已取消')
         cancelled.code = 'AI_CHAT_CANCELLED'
@@ -432,7 +602,7 @@ function registerAiOpsHandlers() {
         truncated: Boolean(result.truncated),
         usage: result.usage
       })
-      const usageState = recordChatUsage(provider, result, options, imageEvidence)
+      const usageState = recordChatUsage(routed.provider, result, options, imageEvidence)
       if (imageEvidence.length) clearImageEvidence(sender)
       return success({
         requestId,
@@ -440,12 +610,19 @@ function registerAiOpsHandlers() {
         model: result.model,
         truncated: result.truncated,
         usage: result.usage,
+        route: routed.route,
         usageState
       })
     } catch (error) {
-      const cancelled = entry.cancelled || error?.code === 'AI_CHAT_CANCELLED'
+      const cancelled =
+        entry.cancelled ||
+        ['AI_CHAT_CANCELLED', 'AI_PROVIDER_ROUTE_CANCELLED'].includes(String(error?.code || ''))
       if (cancelled) return { ok: false, cancelled: true, requestId, error: '已停止生成' }
-      return { ...failure(error), requestId, retryable: true }
+      return {
+        ...failure(error),
+        requestId,
+        retryable: isRetryableProviderError(error) || isRetryableProviderError(error?.cause)
+      }
     } finally {
       sender.removeListener?.('destroyed', onDestroyed)
       activeChatStreams.delete(key)

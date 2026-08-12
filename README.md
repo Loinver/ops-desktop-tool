@@ -11,7 +11,7 @@
 | 核心运维  | 系统发布     | 发布前预检、忽略规则、多环境 Profile、发布历史、远端备份、健康检查与一键回滚；通过 SFTP 上传、续传、比较、删除、创建目录或 ZIP 部署    |
 | 核心运维  | 模型可靠性   | 检测 cc-switch 中转模型可用性，管理测试范围、历史趋势、定时巡检和异常桌面通知                                                          |
 | 核心运维  | Node 服务    | 扫描本机 Node.js 监听端口，按端口、PID、命令和地址筛选，支持正常结束或强制结束进程                                                     |
-| AI 与知识 | AI 能力中心  | 流式多轮对话、停止与重试、受控截图证据分析，统一管理 OpenAI/Anthropic/Gemini Provider、模型语义评测、脱敏日志分析、本地知识库、安全工作流与只读 MCP 服务 |
+| AI 与知识 | AI 能力中心  | 流式多轮对话、停止与重试、受控截图证据分析、Provider 自动故障转移与本机回环优先，统一管理 OpenAI/Anthropic/Gemini Provider、模型语义评测、脱敏日志分析、本地知识库、安全工作流与只读 MCP 服务 |
 | 本机工具  | 快捷启动     | 保存常用应用、文件、目录或网页入口，并从桌面端安全启动                                                                                 |
 | 本机工具  | 剪贴板历史   | 记录文本和图片历史，支持筛选、搜索、复制、删除与清空                                                                                   |
 | 本机工具  | 系统信息     | 查看操作系统、CPU、内存和运行环境信息                                                                                                  |
@@ -89,7 +89,7 @@ pnpm test:sftp
 pnpm mcp
 ```
 
-测试覆盖安全凭证迁移、IPC 通道一致性、Renderer IPC 边界、路径边界、SFTP 主机指纹与部署安全、AI 图片资源及 SSRF 防护、AI 对话流式协议、取消隔离与跨分片脱敏、备份恢复、AI 运维核心能力和端口解析；`pnpm test:e2e` 会构建渲染页面并启动 Electron，验证桌面壳、AI 对话、图像生成、本地数据管理及其他关键路由可用。
+测试覆盖安全凭证迁移、IPC 通道一致性、Renderer IPC 边界、路径边界、SFTP 主机指纹与部署安全、AI 图片资源及 SSRF 防护、AI 对话流式协议、Provider 故障转移/冷却、取消隔离与跨分片脱敏、备份恢复、AI 运维核心能力和端口解析；`pnpm test:e2e` 会构建渲染页面并启动 Electron，验证桌面壳、AI 对话、图像生成、本地数据管理及其他关键路由可用。
 
 ## 构建与打包
 
@@ -161,7 +161,8 @@ export SFTP_HOST_FINGERPRINT='SHA256:服务器公钥指纹'
 | `gpt-image-history.json`        | AI 图像实验历史，只保存受限预览和本地资源标识             |
 | `gpt-image-assets/`             | AI 生图原始图片，单图与目录总容量均受限制                 |
 | `ai-usage.json`                  | AI 对话与生图统一用量、费用估算和每日/月度预算设置         |
-| `ai-providers.json`             | AI Provider 配置，API Key 为加密字段                      |
+| `ai-providers.json`             | AI Provider 引用、模型和默认选择，不保存 API Key          |
+| `ai-provider-routing.json`       | Provider 路由策略、故障冷却与受限路由元数据，不保存提示词、回复、密钥或原始错误 |
 | `ai-evaluations.json`           | 模型语义评测用例与运行结果，回答会先脱敏                  |
 | `ai-log-analysis.json`          | 脱敏日志的本地规则分析和可选 AI 总结                      |
 | `ai-knowledge.json`             | 本地运维知识库，保存前会脱敏                              |
@@ -207,7 +208,9 @@ ZIP 部署成功后，旧版本按发布记录保留在远端目标目录父级�
 
 ## AI 能力中心与 MCP
 
-AI 能力中心当前支持 OpenAI Chat Completions/Responses 兼容服务、Anthropic Messages 与 Gemini GenerateContent。AI 对话会按 Provider 协议流式显示回答，支持停止生成、保留部分回答和重试；增量输出在进入 Renderer 前完成跨分片脱敏并限制总长度。Provider 的 API Key 使用系统安全存储加密；评测结果、日志和知识文档在持久化前均会进行基础敏感信息脱敏。
+AI 能力中心当前支持 OpenAI Chat Completions/Responses 兼容服务、Anthropic Messages 与 Gemini GenerateContent。AI 对话会按 Provider 协议流式显示回答，支持停止生成、保留部分回答和重试；增量输出在进入 Renderer 前完成跨分片脱敏并限制总长度。AI 功能只保存模型可靠性中的 Provider 引用，请求时在主进程读取最新凭证；评测结果、日志和知识文档在持久化前均会进行基础敏感信息脱敏。
+
+Provider 自动路由默认关闭。启用后，AI 对话、知识问答和可选 AI 总结只会在“已添加、当前可用且最近一次模型测试通过”的 Provider 间路由，可配置单次最多尝试 1–3 个 Provider、失败冷却 1–60 分钟，并可优先使用 `localhost`、`*.localhost`、`127.0.0.0/8` 或 `::1` 回环地址。应用不会自动安装、启动或发现本地模型服务；连接测试与模型质量评测始终锁定用户指定的 Provider。流式请求仅允许在尚未输出任何增量时切换，用户取消、预算阻止或已经输出部分回答后不会切换。路由观测只记录 Provider 标识、成功/失败、受限错误码和时间，不保存提示词、回复、API Key 或原始错误。
 
 自然语言工作流只生成预览：页面导航属于低风险操作，外部网站打开必须由用户确认；发布、删除、回滚和任何 shell 命令都不会由 AI 自动执行。
 

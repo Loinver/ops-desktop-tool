@@ -135,6 +135,8 @@ const IPC_CHANNELS = {
   AI_PROVIDER_DELETE: 'aiOps:deleteProvider',
   AI_PROVIDER_ACTIVATE: 'aiOps:activateProvider',
   AI_PROVIDER_TEST: 'aiOps:testProvider',
+  AI_PROVIDER_ROUTING_SAVE: 'aiOps:saveProviderRouting',
+  AI_PROVIDER_ROUTING_RESET: 'aiOps:resetProviderRoutingHealth',
   AI_CHAT_ASK: 'aiOps:askChat',
   AI_CHAT_STREAM_START: 'aiOps:startChatStream',
   AI_CHAT_STREAM_CANCEL: 'aiOps:cancelChatStream',

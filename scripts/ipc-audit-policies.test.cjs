@@ -384,6 +384,31 @@ const requiredChannels = [
     targetKeys: ['contentType']
   },
   {
+    name: 'AI_PROVIDER_ROUTING_SAVE',
+    channel: IPC_CHANNELS.AI_PROVIDER_ROUTING_SAVE,
+    action: 'ai-provider.routing-save',
+    category: 'ai-config',
+    args: [
+      {
+        enabled: true,
+        preferLocal: false,
+        maxAttempts: 3,
+        cooldownMinutes: 10,
+        apiKey: sensitiveValues[5],
+        prompt: sensitiveValues[0]
+      }
+    ],
+    targetKeys: ['enabled', 'preferLocal', 'maxAttempts', 'cooldownMinutes']
+  },
+  {
+    name: 'AI_PROVIDER_ROUTING_RESET',
+    channel: IPC_CHANNELS.AI_PROVIDER_ROUTING_RESET,
+    action: 'ai-provider.routing-reset',
+    category: 'ai-config',
+    args: [{ apiKey: sensitiveValues[5], response: sensitiveValues[0] }],
+    targetKeys: ['operation']
+  },
+  {
     name: 'GPT_IMAGE_CONFIG_GET',
     channel: IPC_CHANNELS.GPT_IMAGE_CONFIG_GET,
     action: 'ai-image.config-get',
